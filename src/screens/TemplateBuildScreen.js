@@ -86,12 +86,23 @@ function getPlainTextNodes(root) {
   return { nodes, fullText };
 }
 
-function replaceTextWithPlaceholder(root, matchText, field) {
+function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   if (!root || !matchText) return false;
 
   const { nodes, fullText } = getPlainTextNodes(root);
 
-  const matchIndex = fullText.indexOf(matchText);
+  // For blank fill-in fields (a label followed by underscores/dots), the
+  // blank run alone is often ambiguous — several identical-looking blanks
+  // can exist for different fields. contextText (the label right before
+  // it) disambiguates WHERE to look, but is never itself removed.
+  let matchIndex;
+  if (contextText) {
+    const combinedIndex = fullText.indexOf(contextText + matchText);
+    if (combinedIndex === -1) return false;
+    matchIndex = combinedIndex + contextText.length;
+  } else {
+    matchIndex = fullText.indexOf(matchText);
+  }
   if (matchIndex === -1) return false;
   const matchEnd = matchIndex + matchText.length;
 
@@ -424,29 +435,31 @@ function TemplateBuildScreen() {
       const rawSuggestions = await analyzeTemplateWithAI(documentText, fields);
 
       // Safety net against a hallucinated placeholder code or an altered
-      // match string — only keep suggestions that point at a real field
-      // AND whose matchText genuinely appears in the document.
+      // match string — only keep suggestions whose "search key" (the
+      // label + blank together, for fill-in fields, or just the value
+      // otherwise) genuinely appears in the document.
       const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
-      const seenMatchText = new Set();
+      const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
+      const seenSearchKey = new Set();
       const candidates = rawSuggestions.filter((s) => {
-        if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder) || !documentText.includes(s.matchText)) {
-          return false;
-        }
-        // Two suggestions pointing at the exact same text can't both be
+        if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder)) return false;
+        const key = searchKeyOf(s);
+        if (!documentText.includes(key)) return false;
+        // Two suggestions pointing at the exact same spot can't both be
         // applied — the first one consumes it, so the second would
         // silently fail. Keep only the first.
-        if (seenMatchText.has(s.matchText)) return false;
-        seenMatchText.add(s.matchText);
+        if (seenSearchKey.has(key)) return false;
+        seenSearchKey.add(key);
         return true;
       });
 
-      // Drop any suggestion whose matchText fully contains ANOTHER
-      // suggestion's matchText as a substring — that's almost always an
+      // Drop any suggestion whose search key fully contains ANOTHER
+      // suggestion's search key as a substring — that's almost always an
       // overly broad match (e.g. "Account Name" accidentally swallowing
       // the address text right next to it), which would silently "steal"
       // the text a more precise suggestion needs.
       const valid = candidates.filter(
-        (s) => !candidates.some((other) => other !== s && s.matchText.includes(other.matchText))
+        (s) => !candidates.some((other) => other !== s && searchKeyOf(s).includes(searchKeyOf(other)))
       );
 
       setAiSuggestions(valid);
@@ -473,16 +486,18 @@ function TemplateBuildScreen() {
     const editable = editableRef.current;
     if (!editable) return;
 
+    const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
+
     const selected = aiSuggestions
       .map((s, index) => ({ s, index }))
       .filter(({ index }) => selectedSuggestions[index])
       // Apply longer matches first so a short, generic phrase doesn't get
       // consumed before a longer match that contains it.
-      .sort((a, b) => b.s.matchText.length - a.s.matchText.length);
+      .sort((a, b) => searchKeyOf(b.s).length - searchKeyOf(a.s).length);
 
     const failedLabels = [];
     selected.forEach(({ s }) => {
-      const ok = replaceTextWithPlaceholder(editable, s.matchText, { placeholder: s.placeholder, label: s.label });
+      const ok = replaceTextWithPlaceholder(editable, s.matchText, { placeholder: s.placeholder, label: s.label }, s.contextText);
       if (!ok) failedLabels.push(s.label);
     });
 
@@ -812,7 +827,7 @@ function TemplateBuildScreen() {
                           onClick={(e) => e.stopPropagation()}
                         />
                         <div className="aib__suggestion-body">
-                          <span className="aib__suggestion-match">“{s.matchText}”</span>
+                          <span className="aib__suggestion-match">“{s.contextText ? `${s.contextText} ` : ''}{s.matchText}”</span>
                           <div className="aib__suggestion-arrow">
                             → <span className="aib__suggestion-field">{s.label}</span>
                           </div>
