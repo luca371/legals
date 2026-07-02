@@ -270,7 +270,7 @@ function TemplateBuildScreen() {
     }
     setError('');
     try {
-      const [fields, configs, map] = await Promise.all([
+      const [, configs, map] = await Promise.all([
         getObjectSchema('agreement'),
         getBuiltInFieldConfigs('agreement'),
         getTypeSubtypeMap(),
