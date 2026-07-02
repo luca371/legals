@@ -273,3 +273,9 @@
   color: #ffffff;
   border: none;
 }
+
+.arv__trigger-btn:hover {
+  background: linear-gradient(135deg, #001272, #3b5bfe);
+  color: #ffffff;
+  opacity: 0.9;
+}
