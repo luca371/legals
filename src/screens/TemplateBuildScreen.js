@@ -433,6 +433,8 @@ function TemplateBuildScreen() {
       }
       const fields = [...directFields, ...lookupGroups.flatMap((g) => g.fields)];
       const rawSuggestions = await analyzeTemplateWithAI(documentText, fields);
+      // eslint-disable-next-line no-console
+      console.log('AI Builder — raw suggestions from Claude:', rawSuggestions);
 
       // Safety net against a hallucinated placeholder code or an altered
       // match string — only keep suggestions whose "search key" (the
@@ -462,6 +464,11 @@ function TemplateBuildScreen() {
         (s) => !candidates.some((other) => other !== s && searchKeyOf(s).includes(searchKeyOf(other)))
       );
 
+      // eslint-disable-next-line no-console
+      console.log(
+        `AI Builder — raw: ${rawSuggestions.length}, passed validation: ${candidates.length}, after overlap filter: ${valid.length}`,
+        { candidates, valid }
+      );
       setAiSuggestions(valid);
       setSelectedSuggestions(Object.fromEntries(valid.map((_, i) => [i, true])));
       if (valid.length === 0) setAiError('No confident field matches found in this document.');
