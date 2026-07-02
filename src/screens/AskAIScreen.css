@@ -10,18 +10,10 @@
 
 .ask__header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-}
-
-.ask__title {
-  font-family: 'Sora', sans-serif;
-  font-weight: 700;
-  font-size: 1.3rem;
-  color: #001272;
-  margin: 0 0 4px;
 }
 
 .ask__subtitle {

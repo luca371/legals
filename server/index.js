@@ -20,6 +20,7 @@ const express = require('express');
 const cors = require('cors');
 const { callClaude } = require('../lib/aiBuilder');
 const { askClaude } = require('../lib/askAi');
+const { reviewAgreement } = require('../lib/reviewAgreement');
 
 const app = express();
 app.use(cors());
@@ -56,9 +57,20 @@ app.post('/api/ask-ai', async (req, res) => {
   }
 });
 
+app.post('/api/review-agreement', async (req, res) => {
+  try {
+    const { documentText, metadata } = req.body || {};
+    const review = await reviewAgreement({ documentText, metadata, apiKey: process.env.ANTHROPIC_API_KEY });
+    res.json(review);
+  } catch (err) {
+    console.error('Review AI error:', err);
+    res.status(500).json({ error: err.message || 'Review failed.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`AI proxy (AI Builder + Ask AI) running on http://localhost:${PORT}`);
+  console.log(`AI proxy (AI Builder + Ask AI + Review) running on http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
     console.warn('⚠️  ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
   }

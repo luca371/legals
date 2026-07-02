@@ -229,10 +229,7 @@ function AskAIScreen() {
   return (
     <div className="ask">
       <div className="ask__header">
-        <div>
-          <h2 className="ask__title">Ask AI</h2>
-          <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
-        </div>
+        <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
         {chatLog.length > 0 && (
           <button type="button" className="ask__new-btn" onClick={handleNewConversation}>
             New conversation

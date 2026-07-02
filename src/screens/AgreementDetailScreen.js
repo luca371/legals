@@ -31,7 +31,9 @@ import {
   deleteFileFromOneDrive,
 } from '../graphApi';
 import { sendApprovalEmail } from '../emailApi';
+import { reviewAgreementWithAI } from '../reviewApi';
 import './AgreementDetailScreen.css';
+import './ReviewModal.css';
 
 const PIPELINE_STATUSES = [
   'Draft', 'Generated', 'Import offline', 'In review', 'Reviewed',
@@ -204,6 +206,22 @@ async function attachmentToMergeHtml(attachment) {
   return result.value;
 }
 
+// Plain text (not HTML) version of an attachment, for feeding to the AI
+// review feature — Claude reads the actual clauses, not markup.
+async function attachmentToPlainText(attachment) {
+  if (attachment.sourceHtml) {
+    const div = document.createElement('div');
+    div.innerHTML = attachment.sourceHtml;
+    return (div.innerText || div.textContent || '').trim();
+  }
+  if (attachment.dataBase64) {
+    const arrayBuffer = base64ToArrayBuffer(attachment.dataBase64);
+    const result = await mammoth.extractRawText({ arrayBuffer });
+    return (result.value || '').trim();
+  }
+  return '';
+}
+
 // Joins multiple HTML fragments with a page break between each.
 function buildMergedHtml(htmlParts) {
   return htmlParts
@@ -337,6 +355,12 @@ function AgreementDetailScreen() {
   const [approvalError, setApprovalError] = useState('');
   const [approvalRequests, setApprovalRequests] = useState([]);
   const [copiedApprovalId, setCopiedApprovalId] = useState('');
+
+  // Review with AI modal
+  const [showReviewAIModal, setShowReviewAIModal] = useState(false);
+  const [reviewingAI, setReviewingAI] = useState(false);
+  const [aiReview, setAiReview] = useState(null);
+  const [reviewAIError, setReviewAIError] = useState('');
 
   // Subtypes filtered by selected type in edit form
   const filteredSubtypes = useMemo(() => {
@@ -876,6 +900,59 @@ function AgreementDetailScreen() {
     }
   };
 
+  // ---- Review with AI ----
+
+  const handleReviewWithAI = async () => {
+    setShowReviewAIModal(true);
+    setReviewingAI(true);
+    setReviewAIError('');
+    setAiReview(null);
+    try {
+      const attachments = agreement.attachments || [];
+      if (attachments.length === 0) {
+        setReviewAIError('This agreement has no attached document to review yet.');
+        return;
+      }
+
+      const texts = await Promise.all(
+        attachments.map(async (att) => ({ name: att.name, text: await attachmentToPlainText(att) }))
+      );
+      const documentText = texts
+        .filter((t) => t.text)
+        .map((t) => `--- ${t.name} ---\n${t.text}`)
+        .join('\n\n')
+        .slice(0, 20000);
+
+      if (!documentText.trim()) {
+        setReviewAIError('Could not extract any readable text from the attached document(s).');
+        return;
+      }
+
+      const metadata = {
+        title: agreement.title,
+        accountName: agreement.accountName,
+        agreementType: agreement.agreementType,
+        agreementSubtype: agreement.agreementSubtype,
+        status: agreement.status,
+        effectiveDate: agreement.effectiveDate,
+        endDate: agreement.endDate,
+      };
+
+      const review = await reviewAgreementWithAI(documentText, metadata);
+      setAiReview(review);
+    } catch (err) {
+      console.error('AI review failed:', err);
+      setReviewAIError(err.message || 'Something went wrong while reviewing the agreement.');
+    } finally {
+      setReviewingAI(false);
+    }
+  };
+
+  const closeReviewAIModal = () => {
+    if (reviewingAI) return;
+    setShowReviewAIModal(false);
+  };
+
   const renderCustomFieldInput = (field) => {
     const value = customValues[field.id] ?? '';
     if (field.type === 'dropdown') {
@@ -1246,6 +1323,7 @@ function AgreementDetailScreen() {
             <button className="agrd__btn-secondary-sm" onClick={openMergeModal}>Merge files</button>
             <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
             <button className="agrd__btn-secondary-sm" onClick={openApprovalModal}>Send for approval</button>
+            <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleReviewWithAI}>✨ Review with AI</button>
             <input
               ref={importFileInputRef}
               type="file"
@@ -1569,6 +1647,78 @@ function AgreementDetailScreen() {
               >
                 {sendingApproval ? 'Sending…' : 'Send for approval'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Review with AI modal */}
+      {showReviewAIModal && (
+        <div className="arv__backdrop" onClick={closeReviewAIModal}>
+          <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="arv__header">
+              <h3 className="arv__title">✨ Review with AI</h3>
+              <p className="arv__subtitle">
+                A contract-manager-style quality check — not legal advice. Based only on the attached document text.
+              </p>
+            </div>
+
+            <div className="arv__body">
+              {reviewingAI ? (
+                <div className="arv__loading">
+                  <div className="arv__spinner" />
+                  <span>Reading the document…</span>
+                </div>
+              ) : reviewAIError ? (
+                <p className="arv__error">{reviewAIError}</p>
+              ) : aiReview ? (
+                <>
+                  <div className="arv__score-row">
+                    <div className={`arv__score-badge arv__score-badge--${aiReview.score >= 8 ? 'good' : aiReview.score >= 5 ? 'mid' : 'low'}`}>
+                      {aiReview.score}<span className="arv__score-max">/10</span>
+                    </div>
+                    <p className="arv__summary">{aiReview.summary}</p>
+                  </div>
+
+                  {aiReview.strengths.length > 0 && (
+                    <div className="arv__section">
+                      <h4 className="arv__section-title arv__section-title--good">Strengths</h4>
+                      <ul className="arv__list">
+                        {aiReview.strengths.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiReview.gaps.length > 0 && (
+                    <div className="arv__section">
+                      <h4 className="arv__section-title arv__section-title--warn">Gaps</h4>
+                      <ul className="arv__list">
+                        {aiReview.gaps.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {aiReview.suggestions.length > 0 && (
+                    <div className="arv__section">
+                      <h4 className="arv__section-title">Suggestions</h4>
+                      <ul className="arv__list">
+                        {aiReview.suggestions.map((item, i) => <li key={i}>{item}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                </>
+              ) : null}
+            </div>
+
+            <div className="arv__footer">
+              <button type="button" className="arv__btn-secondary" onClick={closeReviewAIModal} disabled={reviewingAI}>
+                Close
+              </button>
+              {!reviewingAI && (aiReview || reviewAIError) && (
+                <button type="button" className="arv__btn-primary" onClick={handleReviewWithAI}>
+                  Re-run review
+                </button>
+              )}
             </div>
           </div>
         </div>
