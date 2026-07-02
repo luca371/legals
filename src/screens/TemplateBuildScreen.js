@@ -415,7 +415,7 @@ function TemplateBuildScreen() {
       // AND whose matchText genuinely appears in the document.
       const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
       const seenMatchText = new Set();
-      const valid = rawSuggestions.filter((s) => {
+      const candidates = rawSuggestions.filter((s) => {
         if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder) || !documentText.includes(s.matchText)) {
           return false;
         }
@@ -426,6 +426,15 @@ function TemplateBuildScreen() {
         seenMatchText.add(s.matchText);
         return true;
       });
+
+      // Drop any suggestion whose matchText fully contains ANOTHER
+      // suggestion's matchText as a substring — that's almost always an
+      // overly broad match (e.g. "Account Name" accidentally swallowing
+      // the address text right next to it), which would silently "steal"
+      // the text a more precise suggestion needs.
+      const valid = candidates.filter(
+        (s) => !candidates.some((other) => other !== s && s.matchText.includes(other.matchText))
+      );
 
       setAiSuggestions(valid);
       setSelectedSuggestions(Object.fromEntries(valid.map((_, i) => [i, true])));
