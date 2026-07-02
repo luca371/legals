@@ -86,6 +86,15 @@ function FileIcon() {
   );
 }
 
+function SparkleIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="arv__sparkle-icon">
+      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor" />
+      <path d="M19 15l0.8 2.2L22 18l-2.2 0.8L19 21l-0.8-2.2L16 18l2.2-0.8L19 15z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function formatFileSize(bytes) {
   if (!bytes) return '0 KB';
   const kb = bytes / 1024;
@@ -358,6 +367,7 @@ function AgreementDetailScreen() {
 
   // Review with AI modal
   const [showReviewAIModal, setShowReviewAIModal] = useState(false);
+  const [aiReviewAttachmentId, setAiReviewAttachmentId] = useState('');
   const [reviewingAI, setReviewingAI] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [reviewAIError, setReviewAIError] = useState('');
@@ -902,20 +912,38 @@ function AgreementDetailScreen() {
 
   // ---- Review with AI ----
 
-  const handleReviewWithAI = async () => {
+  const handleOpenReviewAI = () => {
     setShowReviewAIModal(true);
+    setReviewAIError('');
+    setAiReview(null);
+    const attachments = agreement.attachments || [];
+    if (attachments.length === 0) {
+      setAiReviewAttachmentId('');
+      setReviewAIError('This agreement has no attached document to review yet.');
+    } else if (attachments.length === 1) {
+      setAiReviewAttachmentId(attachments[0].id);
+    } else {
+      setAiReviewAttachmentId('ALL');
+    }
+  };
+
+  const closeReviewAIModal = () => {
+    if (reviewingAI) return;
+    setShowReviewAIModal(false);
+  };
+
+  const handleRunReviewAI = async () => {
+    if (!aiReviewAttachmentId) return;
     setReviewingAI(true);
     setReviewAIError('');
     setAiReview(null);
     try {
       const attachments = agreement.attachments || [];
-      if (attachments.length === 0) {
-        setReviewAIError('This agreement has no attached document to review yet.');
-        return;
-      }
+      const targets =
+        aiReviewAttachmentId === 'ALL' ? attachments : attachments.filter((a) => a.id === aiReviewAttachmentId);
 
       const texts = await Promise.all(
-        attachments.map(async (att) => ({ name: att.name, text: await attachmentToPlainText(att) }))
+        targets.map(async (att) => ({ name: att.name, text: await attachmentToPlainText(att) }))
       );
       const documentText = texts
         .filter((t) => t.text)
@@ -924,7 +952,7 @@ function AgreementDetailScreen() {
         .slice(0, 20000);
 
       if (!documentText.trim()) {
-        setReviewAIError('Could not extract any readable text from the attached document(s).');
+        setReviewAIError('Could not extract any readable text from the selected document(s).');
         return;
       }
 
@@ -946,11 +974,6 @@ function AgreementDetailScreen() {
     } finally {
       setReviewingAI(false);
     }
-  };
-
-  const closeReviewAIModal = () => {
-    if (reviewingAI) return;
-    setShowReviewAIModal(false);
   };
 
   const renderCustomFieldInput = (field) => {
@@ -1323,7 +1346,7 @@ function AgreementDetailScreen() {
             <button className="agrd__btn-secondary-sm" onClick={openMergeModal}>Merge files</button>
             <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
             <button className="agrd__btn-secondary-sm" onClick={openApprovalModal}>Send for approval</button>
-            <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleReviewWithAI}>✨ Review with AI</button>
+            <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleOpenReviewAI}><SparkleIcon /> Review with AI</button>
             <input
               ref={importFileInputRef}
               type="file"
@@ -1657,68 +1680,114 @@ function AgreementDetailScreen() {
         <div className="arv__backdrop" onClick={closeReviewAIModal}>
           <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
             <div className="arv__header">
-              <h3 className="arv__title">✨ Review with AI</h3>
+              <h3 className="arv__title"><SparkleIcon /> Review with AI</h3>
               <p className="arv__subtitle">
-                A contract-manager-style quality check — not legal advice. Based only on the attached document text.
+                A contract-manager-style quality check — not legal advice. Based only on the document text you pick below.
               </p>
             </div>
 
             <div className="arv__body">
-              {reviewingAI ? (
-                <div className="arv__loading">
-                  <div className="arv__spinner" />
-                  <span>Reading the document…</span>
-                </div>
-              ) : reviewAIError ? (
-                <p className="arv__error">{reviewAIError}</p>
-              ) : aiReview ? (
+              {(agreement.attachments || []).length === 0 ? (
+                <p className="arv__error">This agreement has no attached document to review yet.</p>
+              ) : (
                 <>
-                  <div className="arv__score-row">
-                    <div className={`arv__score-badge arv__score-badge--${aiReview.score >= 8 ? 'good' : aiReview.score >= 5 ? 'mid' : 'low'}`}>
-                      {aiReview.score}<span className="arv__score-max">/10</span>
+                  <div className="arv__doc-select">
+                    <span className="arv__doc-select-label">Document to review</span>
+                    <div className="arv__doc-options">
+                      {agreement.attachments.map((att) => (
+                        <label
+                          key={att.id}
+                          className={`arv__doc-option ${aiReviewAttachmentId === att.id ? 'arv__doc-option--selected' : ''}`}
+                        >
+                          <input
+                            type="radio"
+                            name="aiReviewAttachment"
+                            checked={aiReviewAttachmentId === att.id}
+                            onChange={() => setAiReviewAttachmentId(att.id)}
+                          />
+                          <span>{att.name}</span>
+                        </label>
+                      ))}
+                      {agreement.attachments.length > 1 && (
+                        <label
+                          className={`arv__doc-option ${aiReviewAttachmentId === 'ALL' ? 'arv__doc-option--selected' : ''}`}
+                        >
+                          <input
+                            type="radio"
+                            name="aiReviewAttachment"
+                            checked={aiReviewAttachmentId === 'ALL'}
+                            onChange={() => setAiReviewAttachmentId('ALL')}
+                          />
+                          <span>All documents combined</span>
+                        </label>
+                      )}
                     </div>
-                    <p className="arv__summary">{aiReview.summary}</p>
+                    <button
+                      type="button"
+                      className="arv__btn-primary arv__run-btn"
+                      onClick={handleRunReviewAI}
+                      disabled={reviewingAI || !aiReviewAttachmentId}
+                    >
+                      {reviewingAI ? 'Reviewing…' : aiReview ? 'Re-run review' : 'Run review'}
+                    </button>
                   </div>
 
-                  {aiReview.strengths.length > 0 && (
-                    <div className="arv__section">
-                      <h4 className="arv__section-title arv__section-title--good">Strengths</h4>
-                      <ul className="arv__list">
-                        {aiReview.strengths.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
+                  {reviewingAI && (
+                    <div className="arv__loading">
+                      <div className="arv__spinner" />
+                      <span>Reading the document…</span>
                     </div>
                   )}
 
-                  {aiReview.gaps.length > 0 && (
-                    <div className="arv__section">
-                      <h4 className="arv__section-title arv__section-title--warn">Gaps</h4>
-                      <ul className="arv__list">
-                        {aiReview.gaps.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
-                  )}
+                  {!reviewingAI && reviewAIError && <p className="arv__error">{reviewAIError}</p>}
 
-                  {aiReview.suggestions.length > 0 && (
-                    <div className="arv__section">
-                      <h4 className="arv__section-title">Suggestions</h4>
-                      <ul className="arv__list">
-                        {aiReview.suggestions.map((item, i) => <li key={i}>{item}</li>)}
-                      </ul>
-                    </div>
+                  {!reviewingAI && aiReview && (
+                    <>
+                      <div className="arv__score-row">
+                        <div
+                          className={`arv__score-badge arv__score-badge--${aiReview.score >= 8 ? 'good' : aiReview.score >= 5 ? 'mid' : 'low'}`}
+                        >
+                          {aiReview.score}<span className="arv__score-max">/10</span>
+                        </div>
+                        <p className="arv__summary">{aiReview.summary}</p>
+                      </div>
+
+                      {aiReview.strengths.length > 0 && (
+                        <div className="arv__section">
+                          <h4 className="arv__section-title arv__section-title--good">Strengths</h4>
+                          <ul className="arv__list">
+                            {aiReview.strengths.map((item, i) => <li key={i}>{item}</li>)}
+                          </ul>
+                        </div>
+                      )}
+
+                      {aiReview.gaps.length > 0 && (
+                        <div className="arv__section">
+                          <h4 className="arv__section-title arv__section-title--warn">Gaps</h4>
+                          <ul className="arv__list">
+                            {aiReview.gaps.map((item, i) => <li key={i}>{item}</li>)}
+                          </ul>
+                        </div>
+                      )}
+
+                      {aiReview.suggestions.length > 0 && (
+                        <div className="arv__section">
+                          <h4 className="arv__section-title">Suggestions</h4>
+                          <ul className="arv__list">
+                            {aiReview.suggestions.map((item, i) => <li key={i}>{item}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </>
                   )}
                 </>
-              ) : null}
+              )}
             </div>
 
             <div className="arv__footer">
               <button type="button" className="arv__btn-secondary" onClick={closeReviewAIModal} disabled={reviewingAI}>
                 Close
               </button>
-              {!reviewingAI && (aiReview || reviewAIError) && (
-                <button type="button" className="arv__btn-primary" onClick={handleReviewWithAI}>
-                  Re-run review
-                </button>
-              )}
             </div>
           </div>
         </div>

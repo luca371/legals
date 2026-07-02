@@ -34,6 +34,68 @@
   font-size: 1.15rem;
   color: #001272;
   margin: 0 0 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arv__sparkle-icon {
+  width: 17px;
+  height: 17px;
+  flex-shrink: 0;
+}
+
+.arv__doc-select {
+  background: #f7f8fc;
+  border: 1px solid #eceef5;
+  border-radius: 10px;
+  padding: 14px;
+  margin-bottom: 20px;
+}
+
+.arv__doc-select-label {
+  display: block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: #6b6f86;
+  margin-bottom: 10px;
+}
+
+.arv__doc-options {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+.arv__doc-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: #26283a;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.arv__doc-option:hover {
+  background: #eceefa;
+}
+
+.arv__doc-option--selected {
+  background: #eceefa;
+  font-weight: 600;
+}
+
+.arv__doc-option input {
+  flex-shrink: 0;
+}
+
+.arv__run-btn {
+  width: 100%;
 }
 
 .arv__subtitle {
@@ -204,6 +266,9 @@
 }
 
 .arv__trigger-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   background: linear-gradient(135deg, #001272, #3b5bfe);
   color: #ffffff;
   border: none;
