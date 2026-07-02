@@ -86,6 +86,27 @@ function getPlainTextNodes(root) {
   return { nodes, fullText };
 }
 
+// Finds where `matchText` sits, optionally anchored just after `contextText`.
+// Models reliably copy each string correctly on its own, but often trim the
+// whitespace/punctuation that sits exactly on the boundary between the two
+// (e.g. the document literally has "Name/Company: ____", but the model
+// returns contextText "Name/Company:" and matchText "____" with the space
+// dropped from both). Requiring byte-for-byte adjacency made that a hard
+// failure; instead, once contextText is found, matchText is searched for in
+// a small window right after it, tolerating a short gap in between.
+function findAnchoredIndex(fullText, contextText, matchText, maxGap = 12) {
+  if (!contextText) {
+    const idx = fullText.indexOf(matchText);
+    return idx === -1 ? null : idx;
+  }
+  const contextIndex = fullText.indexOf(contextText);
+  if (contextIndex === -1) return null;
+  const searchStart = contextIndex + contextText.length;
+  const window = fullText.slice(searchStart, searchStart + matchText.length + maxGap);
+  const offset = window.indexOf(matchText);
+  return offset === -1 ? null : searchStart + offset;
+}
+
 function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   if (!root || !matchText) return false;
 
@@ -95,15 +116,8 @@ function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   // blank run alone is often ambiguous — several identical-looking blanks
   // can exist for different fields. contextText (the label right before
   // it) disambiguates WHERE to look, but is never itself removed.
-  let matchIndex;
-  if (contextText) {
-    const combinedIndex = fullText.indexOf(contextText + matchText);
-    if (combinedIndex === -1) return false;
-    matchIndex = combinedIndex + contextText.length;
-  } else {
-    matchIndex = fullText.indexOf(matchText);
-  }
-  if (matchIndex === -1) return false;
+  const matchIndex = findAnchoredIndex(fullText, contextText, matchText);
+  if (matchIndex === null) return false;
   const matchEnd = matchIndex + matchText.length;
 
   const startEntry = nodes.find((n) => matchIndex >= n.start && matchIndex < n.end);
@@ -437,19 +451,18 @@ function TemplateBuildScreen() {
       console.log('AI Builder — raw suggestions from Claude:', rawSuggestions);
 
       // Safety net against a hallucinated placeholder code or an altered
-      // match string — only keep suggestions whose "search key" (the
-      // label + blank together, for fill-in fields, or just the value
-      // otherwise) genuinely appears in the document.
+      // match string — only keep suggestions that can actually be located
+      // in the document (same tolerant anchored search used at apply time).
       const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
       const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
       const seenSearchKey = new Set();
       const candidates = rawSuggestions.filter((s) => {
         if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder)) return false;
-        const key = searchKeyOf(s);
-        if (!documentText.includes(key)) return false;
+        if (findAnchoredIndex(documentText, s.contextText, s.matchText) === null) return false;
         // Two suggestions pointing at the exact same spot can't both be
         // applied — the first one consumes it, so the second would
         // silently fail. Keep only the first.
+        const key = searchKeyOf(s);
         if (seenSearchKey.has(key)) return false;
         seenSearchKey.add(key);
         return true;
