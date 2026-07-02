@@ -66,9 +66,15 @@ function extractPlaceholders(html) {
 // split what looks like one continuous sentence into several small text
 // nodes (separate bold/italic/spell-check runs), so a naive per-node
 // search misses most real matches and silently applies nothing.
-function replaceTextWithPlaceholder(root, matchText, field) {
-  if (!root || !matchText) return false;
-
+// Concatenates every text node inside `root`, in DOM order, along with the
+// [start, end) offset each node occupies in that concatenation. Used by
+// BOTH the AI analysis (what text Claude sees) and the replacement search
+// below — they must use the exact same extraction, or a match Claude finds
+// against one representation of the text can become unfindable against a
+// different one (e.g. `element.innerText` collapses whitespace and
+// converts <br> per browser rendering rules, in ways raw textContent does
+// not — a mismatch that caused matches to silently fail to apply).
+function getPlainTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
   let fullText = '';
@@ -77,6 +83,13 @@ function replaceTextWithPlaceholder(root, matchText, field) {
     nodes.push({ node, start: fullText.length, end: fullText.length + node.textContent.length });
     fullText += node.textContent;
   }
+  return { nodes, fullText };
+}
+
+function replaceTextWithPlaceholder(root, matchText, field) {
+  if (!root || !matchText) return false;
+
+  const { nodes, fullText } = getPlainTextNodes(root);
 
   const matchIndex = fullText.indexOf(matchText);
   if (matchIndex === -1) return false;
@@ -402,7 +415,7 @@ function TemplateBuildScreen() {
     setAiSuggestions([]);
     setSelectedSuggestions({});
     try {
-      const documentText = (editableRef.current?.innerText || '').trim();
+      const documentText = editableRef.current ? getPlainTextNodes(editableRef.current).fullText.trim() : '';
       if (!documentText) {
         setAiError('The document looks empty — nothing to analyze.');
         return;
