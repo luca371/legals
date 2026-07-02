@@ -60,28 +60,44 @@ function extractPlaceholders(html) {
 // `root` and replaces it with a placeholder <span>, the same way manual
 // drag-and-drop does. Walking text nodes (rather than string-replacing
 // innerHTML) avoids corrupting existing tags/attributes in the document.
+// Finds `matchText` across the FULL concatenated text of `root` — not just
+// within a single text node — and replaces it with a placeholder <span>.
+// This matters because Word documents converted through mammoth often
+// split what looks like one continuous sentence into several small text
+// nodes (separate bold/italic/spell-check runs), so a naive per-node
+// search misses most real matches and silently applies nothing.
 function replaceTextWithPlaceholder(root, matchText, field) {
   if (!root || !matchText) return false;
+
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const nodes = [];
+  let fullText = '';
   let node;
   while ((node = walker.nextNode())) {
-    const idx = node.textContent.indexOf(matchText);
-    if (idx !== -1) {
-      const range = document.createRange();
-      range.setStart(node, idx);
-      range.setEnd(node, idx + matchText.length);
-      range.deleteContents();
-
-      const span = document.createElement('span');
-      span.className = 'tpl-placeholder';
-      span.setAttribute('contenteditable', 'false');
-      span.setAttribute('data-field', field.placeholder);
-      span.textContent = `{{${field.label}}}`;
-      range.insertNode(span);
-      return true;
-    }
+    nodes.push({ node, start: fullText.length, end: fullText.length + node.textContent.length });
+    fullText += node.textContent;
   }
-  return false;
+
+  const matchIndex = fullText.indexOf(matchText);
+  if (matchIndex === -1) return false;
+  const matchEnd = matchIndex + matchText.length;
+
+  const startEntry = nodes.find((n) => matchIndex >= n.start && matchIndex < n.end);
+  const endEntry = nodes.find((n) => matchEnd > n.start && matchEnd <= n.end);
+  if (!startEntry || !endEntry) return false;
+
+  const range = document.createRange();
+  range.setStart(startEntry.node, matchIndex - startEntry.start);
+  range.setEnd(endEntry.node, matchEnd - endEntry.start);
+  range.deleteContents();
+
+  const span = document.createElement('span');
+  span.className = 'tpl-placeholder';
+  span.setAttribute('contenteditable', 'false');
+  span.setAttribute('data-field', field.placeholder);
+  span.textContent = `{{${field.label}}}`;
+  range.insertNode(span);
+  return true;
 }
 
 function BackIcon() {
@@ -425,15 +441,23 @@ function TemplateBuildScreen() {
   const handleApplyAISuggestions = () => {
     const editable = editableRef.current;
     if (!editable) return;
+
+    const selected = aiSuggestions
+      .map((s, index) => ({ s, index }))
+      .filter(({ index }) => selectedSuggestions[index])
+      // Apply longer matches first so a short, generic phrase doesn't get
+      // consumed before a longer match that contains it.
+      .sort((a, b) => b.s.matchText.length - a.s.matchText.length);
+
     let appliedCount = 0;
-    aiSuggestions.forEach((s, index) => {
-      if (!selectedSuggestions[index]) return;
+    selected.forEach(({ s }) => {
       const ok = replaceTextWithPlaceholder(editable, s.matchText, { placeholder: s.placeholder, label: s.label });
       if (ok) appliedCount += 1;
     });
+
     setShowAIModal(false);
-    if (appliedCount === 0) {
-      alert('Could not apply the selected suggestions — the document text may have changed since analysis.');
+    if (appliedCount < selected.length) {
+      alert(`Applied ${appliedCount} of ${selected.length} selected suggestions. Some matching text may have overlapped with another suggestion.`);
     }
   };
 
