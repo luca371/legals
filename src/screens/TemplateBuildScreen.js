@@ -414,9 +414,18 @@ function TemplateBuildScreen() {
       // match string — only keep suggestions that point at a real field
       // AND whose matchText genuinely appears in the document.
       const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
-      const valid = rawSuggestions.filter(
-        (s) => s && s.matchText && fieldByPlaceholder.has(s.placeholder) && documentText.includes(s.matchText)
-      );
+      const seenMatchText = new Set();
+      const valid = rawSuggestions.filter((s) => {
+        if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder) || !documentText.includes(s.matchText)) {
+          return false;
+        }
+        // Two suggestions pointing at the exact same text can't both be
+        // applied — the first one consumes it, so the second would
+        // silently fail. Keep only the first.
+        if (seenMatchText.has(s.matchText)) return false;
+        seenMatchText.add(s.matchText);
+        return true;
+      });
 
       setAiSuggestions(valid);
       setSelectedSuggestions(Object.fromEntries(valid.map((_, i) => [i, true])));
@@ -449,15 +458,19 @@ function TemplateBuildScreen() {
       // consumed before a longer match that contains it.
       .sort((a, b) => b.s.matchText.length - a.s.matchText.length);
 
-    let appliedCount = 0;
+    const failedLabels = [];
     selected.forEach(({ s }) => {
       const ok = replaceTextWithPlaceholder(editable, s.matchText, { placeholder: s.placeholder, label: s.label });
-      if (ok) appliedCount += 1;
+      if (!ok) failedLabels.push(s.label);
     });
 
     setShowAIModal(false);
-    if (appliedCount < selected.length) {
-      alert(`Applied ${appliedCount} of ${selected.length} selected suggestions. Some matching text may have overlapped with another suggestion.`);
+    if (failedLabels.length > 0) {
+      alert(
+        `Applied ${selected.length - failedLabels.length} of ${selected.length} selected suggestions.\n\n` +
+        `Couldn't apply: ${failedLabels.join(', ')}.\n` +
+        `This usually means that text was already used by another suggestion, or the document changed since analysis.`
+      );
     }
   };
 
