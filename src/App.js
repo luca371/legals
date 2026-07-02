@@ -12,7 +12,6 @@ import AgreementDetailScreen from './screens/AgreementDetailScreen';
 import DashboardsScreen from './screens/DashboardsScreen';
 import TemplateBuildScreen from './screens/TemplateBuildScreen';
 import AskAIScreen from './screens/AskAIScreen';
-import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
 import ApprovalScreen from './screens/ApprovalScreen';
 
@@ -82,7 +81,6 @@ function App() {
           <Route path="dashboards" element={<DashboardsScreen />} />
           <Route path="templates" element={<TemplateBuildScreen />} />
           <Route path="ask-ai" element={<AskAIScreen />} />
-          <Route path="settings" element={<SettingsScreen />} />
           <Route
             path="admin"
             element={isAdmin ? <AdminScreen /> : <Navigate to="/dashboard/agreements" replace />}

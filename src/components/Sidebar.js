@@ -7,7 +7,6 @@ const NAV_ITEMS = [
   { path: '/dashboard/dashboards', label: 'Dashboards', icon: IconDashboards },
   { path: '/dashboard/templates', label: 'Template build', icon: IconTemplates },
   { path: '/dashboard/ask-ai', label: 'Ask AI', icon: IconAskAI },
-  { path: '/dashboard/settings', label: 'Settings', icon: IconSettings },
 ];
 
 const ADMIN_ITEM = { path: '/dashboard/admin', label: 'Admin', icon: IconAdmin };
@@ -129,20 +128,6 @@ function IconAskAI({ className }) {
         strokeLinejoin="round"
       />
       <path d="M18.5 15.5l.9 2.2 2.2.9-2.2.9-.9 2.2-.9-2.2-2.2-.9 2.2-.9.9-2.2z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconSettings({ className }) {
-  return (
-    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
-      <path
-        d="M19.4 13.5a7.4 7.4 0 0 0 0-3l1.9-1.4-2-3.4-2.2.7a7.6 7.6 0 0 0-2.6-1.5L14 2.5h-4l-.5 2.4a7.6 7.6 0 0 0-2.6 1.5l-2.2-.7-2 3.4 1.9 1.4a7.4 7.4 0 0 0 0 3L2.7 14.9l2 3.4 2.2-.7c.76.66 1.64 1.17 2.6 1.5l.5 2.4h4l.5-2.4a7.6 7.6 0 0 0 2.6-1.5l2.2.7 2-3.4-1.9-1.4z"
-        stroke="currentColor"
-        strokeWidth="1.4"
-        strokeLinejoin="round"
-      />
     </svg>
   );
 }
