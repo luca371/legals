@@ -23,7 +23,10 @@ import {
   updateReviewSession,
   createApprovalRequest,
   listApprovalRequestsForAgreement,
+  addDocusignEnvelope,
+  updateDocusignEnvelope,
 } from '../firebase';
+import { sendForSignature, getSignatureStatus } from '../docusignApi';
 import {
   uploadFileToOneDrive,
   shareFileForReview,
@@ -231,6 +234,22 @@ async function attachmentToPlainText(attachment) {
   return '';
 }
 
+// DocuSign accepts .docx directly (it renders it internally), so real
+// uploaded/imported Word attachments are sent as-is. Generated agreements
+// only have sourceHtml (no binary file) — that gets base64-encoded and
+// sent as an .html document instead, which DocuSign also accepts.
+function attachmentToDocusignPayload(attachment) {
+  if (attachment.dataBase64) {
+    const ext = (attachment.name || '').split('.').pop() || 'docx';
+    return { documentBase64: attachment.dataBase64, fileExtension: ext };
+  }
+  if (attachment.sourceHtml) {
+    const base64 = btoa(unescape(encodeURIComponent(attachment.sourceHtml)));
+    return { documentBase64: base64, fileExtension: 'html' };
+  }
+  return null;
+}
+
 // Joins multiple HTML fragments with a page break between each.
 function buildMergedHtml(htmlParts) {
   return htmlParts
@@ -371,6 +390,16 @@ function AgreementDetailScreen() {
   const [reviewingAI, setReviewingAI] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [reviewAIError, setReviewAIError] = useState('');
+
+  // Send for signature (DocuSign) modal
+  const [showSignatureModal, setShowSignatureModal] = useState(false);
+  const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
+  const [signerName, setSignerName] = useState('');
+  const [signerEmail, setSignerEmail] = useState('');
+  const [signatureMessage, setSignatureMessage] = useState('');
+  const [sendingSignature, setSendingSignature] = useState(false);
+  const [signatureError, setSignatureError] = useState('');
+  const [refreshingEnvelopeId, setRefreshingEnvelopeId] = useState('');
 
   // Subtypes filtered by selected type in edit form
   const filteredSubtypes = useMemo(() => {
@@ -932,6 +961,90 @@ function AgreementDetailScreen() {
     setShowReviewAIModal(false);
   };
 
+  // ---- Send for signature (DocuSign) ----
+
+  const openSignatureModal = () => {
+    setShowSignatureModal(true);
+    setSignatureError('');
+    setSignerName('');
+    setSignerEmail('');
+    setSignatureMessage('');
+    const attachments = agreement.attachments || [];
+    setSignatureAttachmentId(attachments.length === 1 ? attachments[0].id : '');
+  };
+
+  const closeSignatureModal = () => {
+    if (sendingSignature) return;
+    setShowSignatureModal(false);
+  };
+
+  const handleSendForSignature = async () => {
+    const email = signerEmail.trim();
+    if (!signatureAttachmentId) {
+      setSignatureError('Choose a document to send.');
+      return;
+    }
+    if (!signerName.trim() || !email || !/^\S+@\S+\.\S+$/.test(email)) {
+      setSignatureError('Enter a valid signer name and email.');
+      return;
+    }
+
+    const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentId);
+    const payload = attachment && attachmentToDocusignPayload(attachment);
+    if (!payload) {
+      setSignatureError('Could not read that document — try a different attachment.');
+      return;
+    }
+
+    setSendingSignature(true);
+    setSignatureError('');
+    try {
+      const envelope = await sendForSignature({
+        documentBase64: payload.documentBase64,
+        documentName: attachment.name,
+        fileExtension: payload.fileExtension,
+        signerEmail: email,
+        signerName: signerName.trim(),
+        emailSubject: `Please sign: ${agreement.title}`,
+        emailMessage: signatureMessage,
+      });
+
+      await addDocusignEnvelope(agreementId, {
+        envelopeId: envelope.envelopeId,
+        attachmentName: attachment.name,
+        signerName: signerName.trim(),
+        signerEmail: email,
+        status: envelope.status || 'sent',
+        sentAt: new Date().toISOString(),
+      });
+
+      setShowSignatureModal(false);
+      setActiveNav('attachments');
+      await load();
+    } catch (err) {
+      console.error('Failed to send for signature:', err);
+      setSignatureError(err.message || 'Something went wrong while sending for signature.');
+    } finally {
+      setSendingSignature(false);
+    }
+  };
+
+  const handleRefreshEnvelopeStatus = async (envelopeId) => {
+    setRefreshingEnvelopeId(envelopeId);
+    try {
+      const status = await getSignatureStatus(envelopeId);
+      const patch = { status: status.status };
+      if (status.status === 'completed') patch.completedAt = new Date().toISOString();
+      await updateDocusignEnvelope(agreementId, envelopeId, patch);
+      await load();
+    } catch (err) {
+      console.error('Failed to refresh envelope status:', err);
+      alert(`Could not refresh status: ${err.message}`);
+    } finally {
+      setRefreshingEnvelopeId('');
+    }
+  };
+
   const handleRunReviewAI = async () => {
     if (!aiReviewAttachmentId) return;
     setReviewingAI(true);
@@ -1295,6 +1408,43 @@ function AgreementDetailScreen() {
                     ))}
                   </div>
                 )}
+                {(agreement.docusignEnvelopes || []).length > 0 && (
+                  <div className="agrd__review-sessions">
+                    <h4 className="agrd__review-sessions-title">Sent for signature</h4>
+                    {agreement.docusignEnvelopes.map((env) => (
+                      <div key={env.envelopeId} className="agrd__review-session-row">
+                        <div className="agrd__review-session-info">
+                          <span className="agrd__review-session-name">
+                            {env.signerName} · {env.signerEmail}
+                          </span>
+                          <span className="agrd__review-session-meta">
+                            {env.attachmentName} ·{' '}
+                            {env.sentAt ? new Date(env.sentAt).toLocaleDateString() : ''}
+                          </span>
+                        </div>
+                        <div className="agrd__review-session-actions">
+                          <span
+                            className={`agrd__review-session-status agrd__review-session-status--${
+                              env.status === 'completed' ? 'done' : env.status === 'declined' || env.status === 'voided' ? 'danger' : 'pending'
+                            }`}
+                          >
+                            {env.status}
+                          </span>
+                          {env.status !== 'completed' && env.status !== 'declined' && env.status !== 'voided' && (
+                            <button
+                              type="button"
+                              className="agrd__attachment-btn"
+                              onClick={() => handleRefreshEnvelopeStatus(env.envelopeId)}
+                              disabled={refreshingEnvelopeId === env.envelopeId}
+                            >
+                              {refreshingEnvelopeId === env.envelopeId ? 'Checking…' : 'Refresh status'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {(agreement.attachments || []).length === 0 ? (
                   <div className="agrd__attachments-empty">
                     <p>No attachments yet. Use "Generate agreement" from the Actions panel to create one.</p>
@@ -1347,6 +1497,7 @@ function AgreementDetailScreen() {
             <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
             <button className="agrd__btn-secondary-sm" onClick={openApprovalModal}>Send for approval</button>
             <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleOpenReviewAI}><SparkleIcon /> Review with AI</button>
+            <button className="agrd__btn-secondary-sm" onClick={openSignatureModal}>Send for signature</button>
             <input
               ref={importFileInputRef}
               type="file"
@@ -1787,6 +1938,85 @@ function AgreementDetailScreen() {
             <div className="arv__footer">
               <button type="button" className="arv__btn-secondary" onClick={closeReviewAIModal} disabled={reviewingAI}>
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send for signature modal (DocuSign) */}
+      {showSignatureModal && (
+        <div className="agrd__modal-backdrop" onClick={closeSignatureModal}>
+          <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Send for signature</h3>
+              <p className="agrd__modal-subtitle">
+                Sends the document to DocuSign for e-signature. Sandbox mode — signatures aren't legally binding yet.
+              </p>
+
+              {signatureError && <p className="agrd__error">{signatureError}</p>}
+
+              <h4 className="agrd__review-section-title">Document</h4>
+              {(agreement.attachments || []).length === 0 ? (
+                <p className="agrd__modal-hint">No attachments on this agreement yet.</p>
+              ) : (
+                <div className="agrd__merge-list">
+                  {agreement.attachments.map((att) => (
+                    <label
+                      key={att.id}
+                      className={`agrd__template-option ${signatureAttachmentId === att.id ? 'agrd__template-option--selected' : ''}`}
+                    >
+                      <input
+                        type="radio"
+                        name="signatureAttachmentId"
+                        value={att.id}
+                        checked={signatureAttachmentId === att.id}
+                        onChange={() => setSignatureAttachmentId(att.id)}
+                      />
+                      <div className="agrd__template-option-info">
+                        <span className="agrd__template-option-name">{att.name}</span>
+                        <span className="agrd__template-option-lang">{formatFileSize(att.size)}</span>
+                      </div>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              <h4 className="agrd__review-section-title">Signer</h4>
+              <input
+                type="text"
+                className="agrd__input"
+                placeholder="Signer name"
+                value={signerName}
+                onChange={(e) => setSignerName(e.target.value)}
+              />
+              <input
+                type="email"
+                className="agrd__input"
+                placeholder="signer@company.com"
+                value={signerEmail}
+                onChange={(e) => setSignerEmail(e.target.value)}
+              />
+              <textarea
+                className="agrd__input agrd__textarea"
+                placeholder="Optional message for the signer"
+                value={signatureMessage}
+                onChange={(e) => setSignatureMessage(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeSignatureModal} disabled={sendingSignature}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="agrd__btn-primary"
+                onClick={handleSendForSignature}
+                disabled={!signatureAttachmentId || !signerEmail.trim() || sendingSignature}
+              >
+                {sendingSignature ? 'Sending…' : 'Send for signature'}
               </button>
             </div>
           </div>

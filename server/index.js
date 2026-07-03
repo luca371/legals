@@ -21,6 +21,7 @@ const cors = require('cors');
 const { callClaude } = require('../lib/aiBuilder');
 const { askClaude } = require('../lib/askAi');
 const { reviewAgreement } = require('../lib/reviewAgreement');
+const { getAccessToken, sendEnvelopeForSignature, getEnvelopeStatus } = require('../lib/docusign');
 
 const app = express();
 app.use(cors());
@@ -68,10 +69,64 @@ app.post('/api/review-agreement', async (req, res) => {
   }
 });
 
+app.post('/api/docusign-send', async (req, res) => {
+  try {
+    const { documentBase64, documentName, fileExtension, signerEmail, signerName, emailSubject, emailMessage } =
+      req.body || {};
+    if (!documentBase64 || !signerEmail || !signerName) {
+      return res.status(400).json({ error: 'documentBase64, signerEmail, and signerName are required.' });
+    }
+    const accessToken = await getAccessToken({
+      integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
+      userId: process.env.DOCUSIGN_USER_ID,
+      privateKey: process.env.DOCUSIGN_PRIVATE_KEY,
+    });
+    const envelope = await sendEnvelopeForSignature({
+      accountId: process.env.DOCUSIGN_ACCOUNT_ID,
+      accessToken,
+      documentBase64,
+      documentName,
+      fileExtension,
+      signerEmail,
+      signerName,
+      emailSubject,
+      emailMessage,
+    });
+    res.json(envelope);
+  } catch (err) {
+    console.error('DocuSign send error:', err);
+    res.status(500).json({ error: err.message || 'DocuSign send failed.' });
+  }
+});
+
+app.post('/api/docusign-status', async (req, res) => {
+  try {
+    const { envelopeId } = req.body || {};
+    if (!envelopeId) return res.status(400).json({ error: 'envelopeId is required.' });
+    const accessToken = await getAccessToken({
+      integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
+      userId: process.env.DOCUSIGN_USER_ID,
+      privateKey: process.env.DOCUSIGN_PRIVATE_KEY,
+    });
+    const status = await getEnvelopeStatus({
+      accountId: process.env.DOCUSIGN_ACCOUNT_ID,
+      accessToken,
+      envelopeId,
+    });
+    res.json(status);
+  } catch (err) {
+    console.error('DocuSign status error:', err);
+    res.status(500).json({ error: err.message || 'DocuSign status check failed.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`AI proxy (AI Builder + Ask AI + Review) running on http://localhost:${PORT}`);
+  console.log(`AI proxy (AI Builder + Ask AI + Review + DocuSign) running on http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
     console.warn('⚠️  ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
+  }
+  if (!process.env.DOCUSIGN_INTEGRATION_KEY) {
+    console.warn('⚠️  DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
   }
 });
