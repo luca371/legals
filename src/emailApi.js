@@ -32,7 +32,7 @@ import emailjs from '@emailjs/browser';
 const EMAILJS_SERVICE_ID = 'service_vnyvtke';
 const EMAILJS_TEMPLATE_ID = 'template_c0tjshe';
 const EMAILJS_PUBLIC_KEY = 'XxhyAZmbDbStZ2m4E';
-const ACTIVATION_TEMPLATE_ID = 'YOUR_ACTIVATION_TEMPLATE_ID';
+const ACTIVATION_TEMPLATE_ID = 'template_mh5uqob';
 
 export const sendApprovalEmail = async ({
   toEmail,
@@ -73,7 +73,7 @@ export const sendActivationEmail = async ({
   message,
   recordLink,
 }) => {
-  if (ACTIVATION_TEMPLATE_ID === 'template_mh5uqob') {
+  if (ACTIVATION_TEMPLATE_ID === 'YOUR_ACTIVATION_TEMPLATE_ID') {
     throw new Error('The activation email template is not configured yet — set ACTIVATION_TEMPLATE_ID in src/emailApi.js.');
   }
 
