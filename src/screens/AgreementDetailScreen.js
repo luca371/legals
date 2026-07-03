@@ -33,7 +33,7 @@ import {
   downloadFileFromOneDrive,
   deleteFileFromOneDrive,
 } from '../graphApi';
-import { sendApprovalEmail } from '../emailApi';
+import { sendApprovalEmail, sendActivationEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
@@ -403,6 +403,14 @@ function AgreementDetailScreen() {
   const [sendingSignature, setSendingSignature] = useState(false);
   const [signatureError, setSignatureError] = useState('');
   const [refreshingEnvelopeId, setRefreshingEnvelopeId] = useState('');
+
+  // Activate modal
+  const [showActivateModal, setShowActivateModal] = useState(false);
+  const [activateNotifyName, setActivateNotifyName] = useState('');
+  const [activateNotifyEmail, setActivateNotifyEmail] = useState('');
+  const [activateMessage, setActivateMessage] = useState('');
+  const [activating, setActivating] = useState(false);
+  const [activateError, setActivateError] = useState('');
 
   // Subtypes filtered by selected type in edit form
   const filteredSubtypes = useMemo(() => {
@@ -1032,6 +1040,11 @@ function AgreementDetailScreen() {
         sentAt: new Date().toISOString(),
       });
 
+      const advancedStatus = computeAdvancedStatus(agreement.status, 'Pending signatures');
+      if (advancedStatus) {
+        await updateAgreementStatus(agreementId, advancedStatus);
+      }
+
       setShowSignatureModal(false);
       setActiveNav('attachments');
       await load();
@@ -1074,12 +1087,82 @@ function AgreementDetailScreen() {
       }
 
       await updateDocusignEnvelope(agreementId, envelopeId, patch);
+
+      if (status.status === 'completed') {
+        const advancedStatus = computeAdvancedStatus(agreement.status, 'Signed');
+        if (advancedStatus) {
+          await updateAgreementStatus(agreementId, advancedStatus);
+        }
+      }
+
       await load();
     } catch (err) {
       console.error('Failed to refresh envelope status:', err);
       alert(`Could not refresh status: ${err.message}`);
     } finally {
       setRefreshingEnvelopeId('');
+    }
+  };
+
+  // ---- Activate ----
+
+  const openActivateModal = () => {
+    setShowActivateModal(true);
+    setActivateError('');
+    setActivateNotifyName('');
+    setActivateNotifyEmail('');
+    setActivateMessage('');
+  };
+
+  const closeActivateModal = () => {
+    if (activating) return;
+    setShowActivateModal(false);
+  };
+
+  const handleActivate = async () => {
+    const email = activateNotifyEmail.trim();
+    if (email && !/^\S+@\S+\.\S+$/.test(email)) {
+      setActivateError('Enter a valid email, or leave it empty to skip notifying anyone.');
+      return;
+    }
+
+    setActivating(true);
+    setActivateError('');
+    let emailWarning = '';
+    try {
+      if (email) {
+        const recordLink = `${window.location.origin}/dashboard/agreements/${agreementId}`;
+        try {
+          await sendActivationEmail({
+            toEmail: email,
+            toName: activateNotifyName,
+            fromName: agreement.createdBy,
+            agreementTitle: agreement.title,
+            message: activateMessage,
+            recordLink,
+          });
+        } catch (emailErr) {
+          console.error('Failed to send the activation email:', emailErr);
+          emailWarning = `Couldn't send the notification email (${emailErr.message}), but the agreement was still activated.`;
+        }
+      }
+
+      const advancedStatus = computeAdvancedStatus(agreement.status, 'Activated');
+      if (advancedStatus) {
+        await updateAgreementStatus(agreementId, advancedStatus);
+      }
+
+      await load();
+      if (emailWarning) {
+        setActivateError(emailWarning);
+      } else {
+        setShowActivateModal(false);
+      }
+    } catch (err) {
+      console.error('Failed to activate agreement:', err);
+      setActivateError(err.message || 'Something went wrong while activating the agreement.');
+    } finally {
+      setActivating(false);
     }
   };
 
@@ -1531,15 +1614,48 @@ function AgreementDetailScreen() {
         <aside className="agrd__actions">
           <div className="agrd__actions-card">
             <h4 className="agrd__actions-title">Actions</h4>
-            <button className="agrd__btn-primary-sm" onClick={openGenerateModal}>Generate agreement</button>
-            <button className="agrd__btn-secondary-sm" onClick={handleImportClick} disabled={importing}>
-              {importing ? 'Importing…' : 'Import additional files'}
-            </button>
-            <button className="agrd__btn-secondary-sm" onClick={openMergeModal}>Merge files</button>
-            <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
-            <button className="agrd__btn-secondary-sm" onClick={openApprovalModal}>Send for approval</button>
-            <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleOpenReviewAI}><SparkleIcon /> Review with AI</button>
-            <button className="agrd__btn-secondary-sm" onClick={openSignatureModal}>Send for signature</button>
+            {(() => {
+              const status = agreement.status || 'Draft';
+              const isDraft = status === 'Draft';
+              // Statuses where the agreement is waiting on someone else
+              // (an approver, a signer, or it's already done) — only
+              // Delete makes sense while in one of these.
+              const isLocked = ['In approval', 'Pending signatures', 'Activated'].includes(status);
+              const showAll = !isDraft && !isLocked;
+
+              return (
+                <>
+                  {(isDraft || showAll) && (
+                    <button className="agrd__btn-primary-sm" onClick={openGenerateModal}>Generate agreement</button>
+                  )}
+                  {(isDraft || showAll) && (
+                    <button className="agrd__btn-secondary-sm" onClick={handleImportClick} disabled={importing}>
+                      {importing ? 'Importing…' : 'Import additional files'}
+                    </button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-secondary-sm" onClick={openMergeModal}>Merge files</button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-secondary-sm" onClick={openApprovalModal}>Send for approval</button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-secondary-sm arv__trigger-btn" onClick={handleOpenReviewAI}>
+                      <SparkleIcon /> Review with AI
+                    </button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-secondary-sm" onClick={openSignatureModal}>Send for signature</button>
+                  )}
+                  {showAll && (
+                    <button className="agrd__btn-primary agrd__btn-activate" onClick={openActivateModal}>Activate</button>
+                  )}
+                </>
+              );
+            })()}
             <input
               ref={importFileInputRef}
               type="file"
@@ -2095,6 +2211,54 @@ function AgreementDetailScreen() {
                 disabled={!signatureAttachmentId || !signer1Email.trim() || sendingSignature}
               >
                 {sendingSignature ? 'Sending…' : 'Send for signature'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Activate modal */}
+      {showActivateModal && (
+        <div className="agrd__modal-backdrop" onClick={closeActivateModal}>
+          <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Activate agreement</h3>
+              <p className="agrd__modal-subtitle">
+                Marks this agreement as Activated. Optionally notify someone by email, with a link to the record.
+              </p>
+
+              {activateError && <p className="agrd__error">{activateError}</p>}
+
+              <h4 className="agrd__review-section-title">Notify user (optional)</h4>
+              <input
+                type="text"
+                className="agrd__input"
+                placeholder="Name (optional)"
+                value={activateNotifyName}
+                onChange={(e) => setActivateNotifyName(e.target.value)}
+              />
+              <input
+                type="email"
+                className="agrd__input"
+                placeholder="Leave empty to activate without notifying anyone"
+                value={activateNotifyEmail}
+                onChange={(e) => setActivateNotifyEmail(e.target.value)}
+              />
+              <textarea
+                className="agrd__input agrd__textarea"
+                placeholder="Optional message"
+                value={activateMessage}
+                onChange={(e) => setActivateMessage(e.target.value)}
+                rows={3}
+              />
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeActivateModal} disabled={activating}>
+                Cancel
+              </button>
+              <button type="button" className="agrd__btn-primary" onClick={handleActivate} disabled={activating}>
+                {activating ? 'Activating…' : 'Activate'}
               </button>
             </div>
           </div>

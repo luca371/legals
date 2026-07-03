@@ -346,6 +346,14 @@
   background: #1a2e8c;
 }
 
+.agrd__btn-activate {
+  background: #1a7a41;
+}
+
+.agrd__btn-activate:hover {
+  background: #145c31;
+}
+
 .agrd__btn-primary:disabled {
   opacity: 0.6;
   cursor: not-allowed;
