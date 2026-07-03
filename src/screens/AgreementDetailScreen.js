@@ -234,6 +234,15 @@ async function attachmentToPlainText(attachment) {
   return '';
 }
 
+// @emailjs/browser rejects with a plain {status, text} object, not a real
+// Error — so err.message is always undefined. This pulls the actual
+// reason out of whichever shape shows up.
+function describeEmailError(err) {
+  if (err?.text) return `${err.text}${err.status ? ` (${err.status})` : ''}`;
+  if (err?.message) return err.message;
+  return 'unknown error';
+}
+
 // DocuSign accepts .docx directly (it renders it internally), so real
 // uploaded/imported Word attachments are sent as-is. Generated agreements
 // only have sourceHtml (no binary file) — that gets base64-encoded and
@@ -1143,7 +1152,7 @@ function AgreementDetailScreen() {
           });
         } catch (emailErr) {
           console.error('Failed to send the activation email:', emailErr);
-          emailWarning = `Couldn't send the notification email (${emailErr.message}), but the agreement was still activated.`;
+          emailWarning = `Couldn't send the notification email (${describeEmailError(emailErr)}), but the agreement was still activated.`;
         }
       }
 
