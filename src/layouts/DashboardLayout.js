@@ -17,8 +17,10 @@ const SECTION_LABELS = {
 function DashboardLayout({ user, isAdmin }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const currentKey = location.pathname.split('/dashboard/')[1] || 'agreements';
-  const sectionTitle = SECTION_LABELS[currentKey] || 'Dashboard';
+  const pathAfterDashboard = location.pathname.split('/dashboard/')[1] || 'agreements';
+  const [currentKey, subPath] = pathAfterDashboard.split('/');
+  const sectionTitle =
+    currentKey === 'agreements' && subPath ? 'Agreement Dashboard' : SECTION_LABELS[currentKey] || 'Dashboard';
 
   const handleLogout = async () => {
     try {
