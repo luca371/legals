@@ -26,7 +26,7 @@ import {
   addDocusignEnvelope,
   updateDocusignEnvelope,
 } from '../firebase';
-import { sendForSignature, getSignatureStatus } from '../docusignApi';
+import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import {
   uploadFileToOneDrive,
   shareFileForReview,
@@ -1034,7 +1034,31 @@ function AgreementDetailScreen() {
     try {
       const status = await getSignatureStatus(envelopeId);
       const patch = { status: status.status };
-      if (status.status === 'completed') patch.completedAt = new Date().toISOString();
+
+      const envelope = (agreement.docusignEnvelopes || []).find((e) => e.envelopeId === envelopeId);
+
+      if (status.status === 'completed') {
+        patch.completedAt = new Date().toISOString();
+
+        // Only pull the signed file down and attach it once — repeated
+        // "Refresh status" clicks on an already-completed envelope
+        // shouldn't keep adding duplicate attachments.
+        if (!envelope?.signedAttachmentId) {
+          const signedDoc = await getSignedDocument(envelopeId);
+          const baseName = (envelope?.attachmentName || 'document').replace(/\.[^./]+$/, '');
+          const signedAttachment = {
+            id: `att_${Date.now()}`,
+            name: `${baseName} - signed.pdf`,
+            size: Math.round((signedDoc.dataBase64.length * 3) / 4),
+            mimeType: signedDoc.mimeType,
+            dataBase64: signedDoc.dataBase64,
+            uploadedAt: new Date().toISOString(),
+          };
+          await addAgreementAttachment(agreementId, signedAttachment);
+          patch.signedAttachmentId = signedAttachment.id;
+        }
+      }
+
       await updateDocusignEnvelope(agreementId, envelopeId, patch);
       await load();
     } catch (err) {
@@ -1430,14 +1454,18 @@ function AgreementDetailScreen() {
                           >
                             {env.status}
                           </span>
-                          {env.status !== 'completed' && env.status !== 'declined' && env.status !== 'voided' && (
+                          {env.status !== 'declined' && env.status !== 'voided' && (env.status !== 'completed' || !env.signedAttachmentId) && (
                             <button
                               type="button"
                               className="agrd__attachment-btn"
                               onClick={() => handleRefreshEnvelopeStatus(env.envelopeId)}
                               disabled={refreshingEnvelopeId === env.envelopeId}
                             >
-                              {refreshingEnvelopeId === env.envelopeId ? 'Checking…' : 'Refresh status'}
+                              {refreshingEnvelopeId === env.envelopeId
+                                ? 'Checking…'
+                                : env.status === 'completed'
+                                ? 'Fetch signed document'
+                                : 'Refresh status'}
                             </button>
                           )}
                         </div>

@@ -21,7 +21,7 @@ const cors = require('cors');
 const { callClaude } = require('../lib/aiBuilder');
 const { askClaude } = require('../lib/askAi');
 const { reviewAgreement } = require('../lib/reviewAgreement');
-const { getAccessToken, sendEnvelopeForSignature, getEnvelopeStatus } = require('../lib/docusign');
+const { getAccessToken, sendEnvelopeForSignature, getEnvelopeStatus, getEnvelopeDocument } = require('../lib/docusign');
 
 const app = express();
 app.use(cors());
@@ -120,13 +120,35 @@ app.post('/api/docusign-status', async (req, res) => {
   }
 });
 
+app.post('/api/docusign-document', async (req, res) => {
+  try {
+    const { envelopeId, documentId } = req.body || {};
+    if (!envelopeId) return res.status(400).json({ error: 'envelopeId is required.' });
+    const accessToken = await getAccessToken({
+      integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
+      userId: process.env.DOCUSIGN_USER_ID,
+      privateKey: process.env.DOCUSIGN_PRIVATE_KEY,
+    });
+    const document = await getEnvelopeDocument({
+      accountId: process.env.DOCUSIGN_ACCOUNT_ID,
+      accessToken,
+      envelopeId,
+      documentId,
+    });
+    res.json(document);
+  } catch (err) {
+    console.error('DocuSign document fetch error:', err);
+    res.status(500).json({ error: err.message || 'DocuSign document fetch failed.' });
+  }
+});
+
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`AI proxy (AI Builder + Ask AI + Review + DocuSign) running on http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('⚠️  ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
+    console.warn('ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
   }
   if (!process.env.DOCUSIGN_INTEGRATION_KEY) {
-    console.warn('⚠️  DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
+    console.warn('DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
   }
 });
