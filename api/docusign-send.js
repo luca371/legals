@@ -20,11 +20,14 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { documentBase64, documentName, fileExtension, signerEmail, signerName, emailSubject, emailMessage } =
-      req.body || {};
+    const { documentBase64, documentName, fileExtension, signers, emailSubject, emailMessage } = req.body || {};
 
-    if (!documentBase64 || !signerEmail || !signerName) {
-      res.status(400).json({ error: 'documentBase64, signerEmail, and signerName are required.' });
+    if (!documentBase64 || !Array.isArray(signers) || signers.length === 0) {
+      res.status(400).json({ error: 'documentBase64 and at least one signer are required.' });
+      return;
+    }
+    if (signers.some((s) => !s.email || !s.name)) {
+      res.status(400).json({ error: 'Every signer needs a name and email.' });
       return;
     }
 
@@ -40,8 +43,7 @@ module.exports = async (req, res) => {
       documentBase64,
       documentName,
       fileExtension,
-      signerEmail,
-      signerName,
+      signers,
       emailSubject,
       emailMessage,
     });

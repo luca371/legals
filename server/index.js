@@ -71,10 +71,12 @@ app.post('/api/review-agreement', async (req, res) => {
 
 app.post('/api/docusign-send', async (req, res) => {
   try {
-    const { documentBase64, documentName, fileExtension, signerEmail, signerName, emailSubject, emailMessage } =
-      req.body || {};
-    if (!documentBase64 || !signerEmail || !signerName) {
-      return res.status(400).json({ error: 'documentBase64, signerEmail, and signerName are required.' });
+    const { documentBase64, documentName, fileExtension, signers, emailSubject, emailMessage } = req.body || {};
+    if (!documentBase64 || !Array.isArray(signers) || signers.length === 0) {
+      return res.status(400).json({ error: 'documentBase64 and at least one signer are required.' });
+    }
+    if (signers.some((s) => !s.email || !s.name)) {
+      return res.status(400).json({ error: 'Every signer needs a name and email.' });
     }
     const accessToken = await getAccessToken({
       integrationKey: process.env.DOCUSIGN_INTEGRATION_KEY,
@@ -87,8 +89,7 @@ app.post('/api/docusign-send', async (req, res) => {
       documentBase64,
       documentName,
       fileExtension,
-      signerEmail,
-      signerName,
+      signers,
       emailSubject,
       emailMessage,
     });
@@ -146,9 +147,9 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`AI proxy (AI Builder + Ask AI + Review + DocuSign) running on http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
+    console.warn('⚠️  ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
   }
   if (!process.env.DOCUSIGN_INTEGRATION_KEY) {
-    console.warn('DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
+    console.warn('⚠️  DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
   }
 });

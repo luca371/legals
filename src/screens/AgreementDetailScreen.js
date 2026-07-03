@@ -394,8 +394,11 @@ function AgreementDetailScreen() {
   // Send for signature (DocuSign) modal
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
-  const [signerName, setSignerName] = useState('');
-  const [signerEmail, setSignerEmail] = useState('');
+  const [signer1Name, setSigner1Name] = useState('');
+  const [signer1Email, setSigner1Email] = useState('');
+  const [includeSecondSigner, setIncludeSecondSigner] = useState(false);
+  const [signer2Name, setSigner2Name] = useState('');
+  const [signer2Email, setSigner2Email] = useState('');
   const [signatureMessage, setSignatureMessage] = useState('');
   const [sendingSignature, setSendingSignature] = useState(false);
   const [signatureError, setSignatureError] = useState('');
@@ -966,8 +969,11 @@ function AgreementDetailScreen() {
   const openSignatureModal = () => {
     setShowSignatureModal(true);
     setSignatureError('');
-    setSignerName('');
-    setSignerEmail('');
+    setSigner1Name('');
+    setSigner1Email('');
+    setIncludeSecondSigner(false);
+    setSigner2Name('');
+    setSigner2Email('');
     setSignatureMessage('');
     const attachments = agreement.attachments || [];
     setSignatureAttachmentId(attachments.length === 1 ? attachments[0].id : '');
@@ -979,13 +985,18 @@ function AgreementDetailScreen() {
   };
 
   const handleSendForSignature = async () => {
-    const email = signerEmail.trim();
+    const isValidSigner = (name, email) => name.trim() && /^\S+@\S+\.\S+$/.test(email.trim());
+
     if (!signatureAttachmentId) {
       setSignatureError('Choose a document to send.');
       return;
     }
-    if (!signerName.trim() || !email || !/^\S+@\S+\.\S+$/.test(email)) {
-      setSignatureError('Enter a valid signer name and email.');
+    if (!isValidSigner(signer1Name, signer1Email)) {
+      setSignatureError('Enter a valid name and email for the first signer.');
+      return;
+    }
+    if (includeSecondSigner && !isValidSigner(signer2Name, signer2Email)) {
+      setSignatureError('Enter a valid name and email for the second signer.');
       return;
     }
 
@@ -996,6 +1007,11 @@ function AgreementDetailScreen() {
       return;
     }
 
+    const signers = [{ name: signer1Name.trim(), email: signer1Email.trim() }];
+    if (includeSecondSigner) {
+      signers.push({ name: signer2Name.trim(), email: signer2Email.trim() });
+    }
+
     setSendingSignature(true);
     setSignatureError('');
     try {
@@ -1003,8 +1019,7 @@ function AgreementDetailScreen() {
         documentBase64: payload.documentBase64,
         documentName: attachment.name,
         fileExtension: payload.fileExtension,
-        signerEmail: email,
-        signerName: signerName.trim(),
+        signers,
         emailSubject: `Please sign: ${agreement.title}`,
         emailMessage: signatureMessage,
       });
@@ -1012,8 +1027,7 @@ function AgreementDetailScreen() {
       await addDocusignEnvelope(agreementId, {
         envelopeId: envelope.envelopeId,
         attachmentName: attachment.name,
-        signerName: signerName.trim(),
-        signerEmail: email,
+        signers,
         status: envelope.status || 'sent',
         sentAt: new Date().toISOString(),
       });
@@ -1439,7 +1453,7 @@ function AgreementDetailScreen() {
                       <div key={env.envelopeId} className="agrd__review-session-row">
                         <div className="agrd__review-session-info">
                           <span className="agrd__review-session-name">
-                            {env.signerName} · {env.signerEmail}
+                            {(env.signers || []).map((s) => `${s.name} (${s.email})`).join('  →  ')}
                           </span>
                           <span className="agrd__review-session-meta">
                             {env.attachmentName} ·{' '}
@@ -1980,6 +1994,7 @@ function AgreementDetailScreen() {
               <h3 className="agrd__modal-title">Send for signature</h3>
               <p className="agrd__modal-subtitle">
                 Sends the document to DocuSign for e-signature. Sandbox mode — signatures aren't legally binding yet.
+                {includeSecondSigner && ' Make sure the document also has /sig2/, /name2/, /title2/, /date2/ tags for the second signer.'}
               </p>
 
               {signatureError && <p className="agrd__error">{signatureError}</p>}
@@ -2010,21 +2025,56 @@ function AgreementDetailScreen() {
                 </div>
               )}
 
-              <h4 className="agrd__review-section-title">Signer</h4>
+              <h4 className="agrd__review-section-title">Signer 1</h4>
               <input
                 type="text"
                 className="agrd__input"
                 placeholder="Signer name"
-                value={signerName}
-                onChange={(e) => setSignerName(e.target.value)}
+                value={signer1Name}
+                onChange={(e) => setSigner1Name(e.target.value)}
               />
               <input
                 type="email"
                 className="agrd__input"
                 placeholder="signer@company.com"
-                value={signerEmail}
-                onChange={(e) => setSignerEmail(e.target.value)}
+                value={signer1Email}
+                onChange={(e) => setSigner1Email(e.target.value)}
               />
+
+              {includeSecondSigner ? (
+                <>
+                  <h4 className="agrd__review-section-title">
+                    Signer 2 <span className="agrd__modal-hint">(signs after Signer 1)</span>
+                  </h4>
+                  <input
+                    type="text"
+                    className="agrd__input"
+                    placeholder="Signer name"
+                    value={signer2Name}
+                    onChange={(e) => setSigner2Name(e.target.value)}
+                  />
+                  <input
+                    type="email"
+                    className="agrd__input"
+                    placeholder="signer@company.com"
+                    value={signer2Email}
+                    onChange={(e) => setSigner2Email(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="agrd__attachment-btn"
+                    onClick={() => { setIncludeSecondSigner(false); setSigner2Name(''); setSigner2Email(''); }}
+                  >
+                    Remove second signer
+                  </button>
+                </>
+              ) : (
+                <button type="button" className="agrd__attachment-btn" onClick={() => setIncludeSecondSigner(true)}>
+                  + Add a second signer
+                </button>
+              )}
+
+              <h4 className="agrd__review-section-title">Message</h4>
               <textarea
                 className="agrd__input agrd__textarea"
                 placeholder="Optional message for the signer"
@@ -2042,7 +2092,7 @@ function AgreementDetailScreen() {
                 type="button"
                 className="agrd__btn-primary"
                 onClick={handleSendForSignature}
-                disabled={!signatureAttachmentId || !signerEmail.trim() || sendingSignature}
+                disabled={!signatureAttachmentId || !signer1Email.trim() || sendingSignature}
               >
                 {sendingSignature ? 'Sending…' : 'Send for signature'}
               </button>
