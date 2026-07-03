@@ -107,6 +107,25 @@ function findAnchoredIndex(fullText, contextText, matchText, maxGap = 12) {
   return offset === -1 ? null : searchStart + offset;
 }
 
+// Pseudo-fields offered to the AI Builder alongside real Agreement/Account
+// fields — these don't come from the object schema and never get resolved
+// to real data. They mark where DocuSign should place its own fields when
+// the document is later sent for signature (see AgreementDetailScreen's
+// "Send for signature" and lib/docusign.js). "n" is the signer number (1
+// or 2) DocuSign uses to match each anchor tag to a recipient.
+const DOCUSIGN_AI_FIELDS = [1, 2].flatMap((n) => [
+  { label: `Signature (Signer ${n})`, placeholder: `docusign.sig${n}` },
+  { label: `Printed Name (Signer ${n})`, placeholder: `docusign.name${n}` },
+  { label: `Title (Signer ${n})`, placeholder: `docusign.title${n}` },
+  { label: `Date Signed (Signer ${n})`, placeholder: `docusign.date${n}` },
+]);
+
+// "docusign.sig1" -> "/sig1/", matching the literal anchor text DocuSign
+// scans for (see lib/docusign.js sendEnvelopeForSignature).
+function docusignAnchorTag(placeholder) {
+  return `/${placeholder.replace('docusign.', '')}/`;
+}
+
 function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   if (!root || !matchText) return false;
 
@@ -129,11 +148,29 @@ function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   range.setEnd(endEntry.node, matchEnd - endEntry.start);
   range.deleteContents();
 
+  const isDocusignTag = field.placeholder.startsWith('docusign.');
   const span = document.createElement('span');
-  span.className = 'tpl-placeholder';
-  span.setAttribute('contenteditable', 'false');
-  span.setAttribute('data-field', field.placeholder);
-  span.textContent = `{{${field.label}}}`;
+
+  if (isDocusignTag) {
+    // Deliberately a DIFFERENT class from 'tpl-placeholder': the merge
+    // step that fills a template with real agreement data (see
+    // AgreementDetailScreen's fillTemplateHtml) only ever touches
+    // .tpl-placeholder spans, so this literal anchor text — which
+    // DocuSign needs to find as-is in the final document — survives
+    // generation completely untouched.
+    span.className = 'tpl-docusign-tag';
+    span.setAttribute('contenteditable', 'false');
+    span.setAttribute('data-docusign-field', field.placeholder);
+    span.textContent = docusignAnchorTag(field.placeholder);
+    span.style.cssText =
+      'background:#f4ecff; color:#7c3aed; border-radius:4px; padding:1px 5px; font-size:0.85em; font-weight:600;';
+  } else {
+    span.className = 'tpl-placeholder';
+    span.setAttribute('contenteditable', 'false');
+    span.setAttribute('data-field', field.placeholder);
+    span.textContent = `{{${field.label}}}`;
+  }
+
   range.insertNode(span);
   return true;
 }
@@ -445,7 +482,7 @@ function TemplateBuildScreen() {
         setAiError('The document looks empty — nothing to analyze.');
         return;
       }
-      const fields = [...directFields, ...lookupGroups.flatMap((g) => g.fields)];
+      const fields = [...directFields, ...lookupGroups.flatMap((g) => g.fields), ...DOCUSIGN_AI_FIELDS];
       const rawSuggestions = await analyzeTemplateWithAI(documentText, fields);
       // eslint-disable-next-line no-console
       console.log('AI Builder — raw suggestions from Claude:', rawSuggestions);
