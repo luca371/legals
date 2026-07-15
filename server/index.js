@@ -1,20 +1,3 @@
-// Local development proxy — mirrors what the Vercel functions do in
-// production (api/ai-builder.js and api/ask-ai.js). Run this separately
-// from the React dev server:
-//
-//   1. npm install express cors dotenv --save-dev   (already done if you
-//      set up AI Builder earlier)
-//   2. Create a .env file at the project root with:
-//      ANTHROPIC_API_KEY=sk-ant-...
-//   3. Add .env to .gitignore (should not be committed, ever)
-//   4. Add src/setupProxy.js pointing '/api' at this server (already done
-//      if you set up AI Builder earlier)
-//   5. Run this server:  node server/index.js
-//   6. In another terminal, run the app as usual:  npm start
-//
-// The API key lives ONLY in this process's environment — it is never
-// sent to, or bundled into, the React app.
-
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -147,9 +130,9 @@ const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
   console.log(`AI proxy (AI Builder + Ask AI + Review + DocuSign) running on http://localhost:${PORT}`);
   if (!process.env.ANTHROPIC_API_KEY) {
-    console.warn('⚠️  ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
+    console.warn('ANTHROPIC_API_KEY is not set — create a .env file (see comments at the top of this file).');
   }
   if (!process.env.DOCUSIGN_INTEGRATION_KEY) {
-    console.warn('⚠️  DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
+    console.warn('DOCUSIGN_INTEGRATION_KEY is not set — DocuSign features will fail until it is.');
   }
 });
