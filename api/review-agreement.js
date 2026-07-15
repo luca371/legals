@@ -1,8 +1,3 @@
-// Vercel serverless function — thin proxy for the "Review with AI" feature.
-// Uses the same ANTHROPIC_API_KEY environment variable as the other AI
-// features. Never touches Firestore — the agreement text is extracted and
-// sent by the client, which already has authenticated read access.
-
 const { reviewAgreement } = require('../lib/reviewAgreement');
 
 module.exports = async (req, res) => {

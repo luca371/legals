@@ -20,7 +20,6 @@ function StartScreen() {
     setLoading(true);
     try {
       await loginWithEmail(email, password);
-      // onAuthStateChanged in App.js picks up the change and switches to DashboardScreen
     } catch (err) {
       setError(mapAuthError(err.code));
     } finally {
@@ -54,7 +53,6 @@ function StartScreen() {
 
   return (
     <div className="start-screen">
-      {/* Zona stânga - 30% */}
       <div className="start-screen__left">
         <div className="start-screen__left-content">
           <img
@@ -69,7 +67,6 @@ function StartScreen() {
         </div>
       </div>
 
-      {/* Zona dreapta - 70% */}
       <div className="start-screen__right">
         <div className="start-screen__right-content">
           <form className="login-form" onSubmit={handleEmailLogin}>

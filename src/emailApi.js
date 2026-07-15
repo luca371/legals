@@ -1,32 +1,3 @@
-// EmailJS integration — sends real emails straight from the browser, no
-// backend/Cloud Functions needed (those are blocked by the corporate VPN
-// anyway). Used by the "Send for approval" flow, and the "Activate"
-// notification (with the signed/final document attached).
-//
-// ---- One-time setup (emailjs.com, free tier) ----
-// 1. Create an account at https://www.emailjs.com and add an Email Service
-//    (Gmail, Outlook, or SMTP) under Email Services -> copy its Service ID.
-// 2. Create an Email Template under Email Templates with these variables
-//    available to use in the subject/body: {{to_email}}, {{to_name}},
-//    {{from_name}}, {{agreement_title}}, {{message}}, {{approval_link}}
-//    -> copy its Template ID.
-//    Example body:
-//      Hi {{to_name}},
-//      {{from_name}} sent you "{{agreement_title}}" for approval on Legal Space.
-//      {{message}}
-//      Review and approve/reject it here: {{approval_link}}
-// 3. Account -> General -> Public Key -> copy it.
-// 4. Paste all three values below.
-//
-// ---- Second template, for "Activate" ----
-// 5. Create a SECOND template (e.g. "Agreement Activated"), with variables
-//    {{to_email}}, {{to_name}}, {{from_name}}, {{agreement_title}},
-//    {{message}}, {{record_link}}. No attachment needed — EmailJS gates
-//    attachments behind a paid plan, so this links back to the record in
-//    Legal Space instead (the recipient needs a Legal Space account and to
-//    be signed in to view it).
-// 6. Copy that template's Template ID into ACTIVATION_TEMPLATE_ID below.
-
 import emailjs from '@emailjs/browser';
 
 const EMAILJS_SERVICE_ID = 'service_vnyvtke';

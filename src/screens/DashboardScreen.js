@@ -5,7 +5,6 @@ function DashboardScreen({ user }) {
   const handleLogout = async () => {
     try {
       await logout();
-      // onAuthStateChanged in App.js picks this up and switches back to StartScreen
     } catch (err) {
       console.error('Logout failed:', err);
     }
@@ -30,7 +29,6 @@ function DashboardScreen({ user }) {
       </header>
 
       <main className="dashboard__content">
-        {/* TODO: conținutul real al dashboard-ului - detalii ulterioare */}
         <p className="dashboard__placeholder">Dashboard content goes here</p>
       </main>
     </div>

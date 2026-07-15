@@ -1,4 +1,3 @@
-// Firebase initialization and Auth exports
 import { initializeApp, getApps, deleteApp } from 'firebase/app';
 import { getAnalytics } from 'firebase/analytics';
 import {
@@ -55,14 +54,8 @@ export const db = getFirestore(app);
 
 const googleProvider = new GoogleAuthProvider();
 
-// NOTE: "microsoft.com" must be enabled as a provider in the Firebase Console
-// (Authentication > Sign-in method > Microsoft), with Azure AD app credentials configured there.
 const microsoftProvider = new OAuthProvider('microsoft.com');
 
-// Separate provider, scoped for Microsoft Graph (OneDrive) access, used
-// only by the "Send to review" / Office 365 Word Online feature — kept
-// apart from the plain sign-in provider so normal login doesn't prompt for
-// extra permissions it doesn't need.
 const microsoftGraphProvider = new OAuthProvider('microsoft.com');
 microsoftGraphProvider.addScope('Files.ReadWrite');
 microsoftGraphProvider.addScope('User.Read');
@@ -74,25 +67,12 @@ export const loginWithGoogle = () => signInWithPopup(auth, googleProvider);
 
 export const loginWithMicrosoft = () => signInWithPopup(auth, microsoftProvider);
 
-// Firebase does not persist or refresh the underlying OAuth provider's
-// access token across sessions — it's only available on the sign-in
-// result, right after the popup completes, and expires in about an hour.
-// So this must be called fresh right before each Graph API call (right
-// before uploading a file for review, and again right before fetching the
-// reviewed copy back), not cached long-term.
 export const connectMicrosoftGraph = async () => {
   const currentUser = auth.currentUser;
   if (!currentUser) {
     throw new Error('You need to be signed in to Legal Space first.');
   }
 
-  // Using signInWithPopup here would try to start a brand new sign-in and
-  // can collide with the already-signed-in account (auth/account-exists-
-  // with-different-credential) if that account's email is linked to a
-  // different provider (email/password, Google, etc). Instead, we attach
-  // the Microsoft credential to the CURRENT user via linkWithPopup. If
-  // Microsoft is already linked from a previous "Send to review" call, it
-  // falls back to reauthenticateWithPopup to just get a fresh token.
   let result;
   try {
     result = await linkWithPopup(currentUser, microsoftGraphProvider);
@@ -113,11 +93,6 @@ export const connectMicrosoftGraph = async () => {
 
 export const logout = () => signOut(auth);
 
-// ---- Admin / Users feature ----
-
-// Checks the Firestore profile doc for an `isAdmin: true` flag and whether
-// the account is still active. (Temporary demo approach — will move to
-// Custom Claims + Cloud Functions later, once VPN/CLI access is sorted.)
 export const getUserStatus = async (user) => {
   if (!user) return { isAdmin: false, isActive: true };
   const snap = await getDoc(doc(db, 'users', user.uid));
@@ -129,16 +104,9 @@ export const getUserStatus = async (user) => {
   };
 };
 
-// Sends Firebase's built-in "reset your password" email — used both as the
-// invite email for newly created users, and for the "Reset password for
-// this user" action in the admin menu. No backend needed.
 export const sendInviteEmail = (email) => sendPasswordResetEmail(auth, email);
 
-// Creates a new user from the Admin screen WITHOUT logging out the
-// currently signed-in admin. Uses a second, throwaway Firebase App
-// instance just for the create-user call, then tears it down.
 export const createUserAsAdmin = async (userData) => {
-  // Clean up any leftover "Secondary" app instance from a previous failed attempt
   const existingSecondary = getApps().find((a) => a.name === 'Secondary');
   if (existingSecondary) {
     await deleteApp(existingSecondary);
@@ -171,10 +139,6 @@ export const createUserAsAdmin = async (userData) => {
   return user.uid;
 };
 
-// Updates the editable profile fields for an existing user.
-// Email and password are intentionally excluded here — changing email
-// requires re-authenticating that specific user's Auth account, and
-// password changes go through the "Reset password" email flow instead.
 export const updateUserProfile = (uid, updates) =>
   updateDoc(doc(db, 'users', uid), {
     firstName: updates.firstName,
@@ -184,23 +148,11 @@ export const updateUserProfile = (uid, updates) =>
     employeeId: updates.employeeId || '',
   });
 
-// Blocks/unblocks app access without touching the real Firebase Auth account
-// (that needs Admin SDK / Cloud Functions — see notes).
 export const setUserActive = (uid, isActive) =>
   updateDoc(doc(db, 'users', uid), { isActive });
 
-// "Soft delete" — marks the user as deleted + inactive, hides them from the
-// admin list, and blocks their login. The underlying Auth account still
-// technically exists until Cloud Functions are wired up.
 export const softDeleteUser = (uid) =>
   updateDoc(doc(db, 'users', uid), { isActive: false, isDeleted: true });
-
-// ---- Object schemas (Admin > Objects) ----
-// Each object type (account / agreement / template) has a Firestore doc
-// under `objectSchemas/{type}` storing only the ADMIN-DEFINED custom fields.
-// Built-in fields (Title, Status, the Account lookup on Agreement, etc.)
-// are hardcoded in the UI/business logic — they're not part of this schema,
-// since they're structural, not configurable.
 
 export const OBJECT_TYPES = ['account', 'agreement', 'template'];
 
@@ -217,7 +169,7 @@ export const addCustomField = async (objectType, field) => {
   const newField = {
     id: `f_${Date.now()}`,
     label: field.label,
-    type: field.type, // 'text' | 'number' | 'date' | 'dropdown' | 'lookup'
+    type: field.type, 
     options: field.type === 'dropdown' ? field.options : null,
     lookupTarget: field.type === 'lookup' ? field.lookupTarget : null,
   };
@@ -245,11 +197,6 @@ export const removeCustomField = async (objectType, fieldId) => {
     updatedAt: serverTimestamp(),
   });
 };
-
-// ---- Template Builder ----
-// Templates are matched later (at Agreement generation time) by
-// agreementType + agreementSubtype + language, so those three fields
-// are what the generation screen will filter/search on.
 
 export const saveTemplate = (templateData) =>
   addDoc(collection(db, 'templates'), {
@@ -285,8 +232,6 @@ export const getTemplate = async (templateId) => {
 };
 
 export const deleteTemplate = (templateId) => deleteDoc(doc(db, 'templates', templateId));
-
-// ---- Accounts ----
 
 export const createAccount = async (accountData) => {
   const currentUser = auth.currentUser;
@@ -333,8 +278,6 @@ export const getAccount = async (accountId) => {
 
 export const deleteAccount = (accountId) => deleteDoc(doc(db, 'accounts', accountId));
 
-// ---- Agreements ----
-
 export const createAgreement = async (agreementData) => {
   const currentUser = auth.currentUser;
   const createdByName = currentUser?.displayName || currentUser?.email || 'Unknown';
@@ -355,10 +298,6 @@ export const createAgreement = async (agreementData) => {
     customFields: agreementData.customFields || {},
     createdBy: createdByName,
     createdAt: serverTimestamp(),
-    // Powers the "Time to contract" dashboard metric (time between the
-    // Draft and Activated entries). Uses a client-side ISO timestamp
-    // rather than serverTimestamp(), since Firestore doesn't allow the
-    // serverTimestamp() sentinel value inside array elements.
     statusHistory: [{ status: initialStatus, changedAt: new Date().toISOString() }],
   });
 };
@@ -400,10 +339,6 @@ export const getAgreement = async (agreementId) => {
 export const deleteAgreement = (agreementId) =>
   deleteDoc(doc(db, 'agreements', agreementId));
 
-// Marks which template was used and bumps status after a successful
-// "Generate agreement" — the actual .docx file itself is stored as a
-// base64 attachment directly on the agreement doc (see below), since
-// Firebase Storage requires the Blaze plan.
 export const generateAgreementDocument = async (agreementId, data) => {
   const agr = await getAgreement(agreementId);
   const nextStatus = data.status || 'Generated';
@@ -419,12 +354,6 @@ export const generateAgreementDocument = async (agreementId, data) => {
   });
 };
 
-// Lightweight status-only update — unlike updateAgreement (which writes the
-// full form and would blank out fields if called partially), this only
-// touches `status`. Used when an action (send to review, etc.) should move
-// the pipeline forward without the user editing the record themselves.
-// Also appends to `statusHistory`, which the Dashboards screen uses to
-// compute "Time to contract" and time-in-stage metrics.
 export const updateAgreementStatus = async (agreementId, status) => {
   const agr = await getAgreement(agreementId);
   const statusHistory = [...(agr?.statusHistory || [])];
@@ -437,12 +366,6 @@ export const updateAgreementStatus = async (agreementId, status) => {
     updatedAt: serverTimestamp(),
   });
 };
-
-// ---- Agreement attachments (stored inline in Firestore, base64) ----
-// No Firebase Storage (that needs the Blaze plan) — attachments are kept
-// as a plain array field on the agreement doc, with the file content
-// base64-encoded. Firestore documents cap at 1MB total, so this is fine
-// for typical generated contracts but not for large/many files.
 
 export const addAgreementAttachment = async (agreementId, attachment) => {
   const agr = await getAgreement(agreementId);
@@ -463,11 +386,6 @@ export const deleteAgreementAttachment = async (agreementId, attachmentId) => {
   });
   return attachments;
 };
-
-// ---- Review sessions ("Send to review" via Office 365 / Word Online) ----
-// Tracks which attachment was sent out, to whom, and whether the redlined
-// copy has been fetched back yet. Kept as a plain array field on the
-// agreement doc, same pattern as attachments.
 
 export const addReviewSession = async (agreementId, session) => {
   const agr = await getAgreement(agreementId);
@@ -501,11 +419,6 @@ export const deleteReviewSession = async (agreementId, sessionId) => {
   return reviewSessions;
 };
 
-// ---- DocuSign envelopes (Send for signature) ----
-// Stored as an array field directly on the agreement, same pattern as
-// reviewSessions — unlike approvalRequests, only signed-in app users ever
-// touch this, so there's no need for a separate top-level collection.
-
 export const addDocusignEnvelope = async (agreementId, envelope) => {
   const agr = await getAgreement(agreementId);
   const docusignEnvelopes = [...(agr?.docusignEnvelopes || []), envelope];
@@ -527,21 +440,6 @@ export const updateDocusignEnvelope = async (agreementId, envelopeId, patch) => 
   });
   return docusignEnvelopes;
 };
-
-
-// Kept as their OWN top-level collection — unlike reviewSessions, which
-// live as an array field on the agreement doc — because the approver who
-// opens this link has NO Legal Space account. The doc ID itself acts as
-// the secret "magic link" token (same demo-phase trade-off already made
-// elsewhere, e.g. isAdmin as a Firestore flag instead of Custom Claims).
-// Isolating approvals into their own collection means public/unauthenticated
-// access only ever touches this one narrow collection, never the rest of
-// the agreement's data or other agreements. See firestore.rules.
-//
-// Each request is a self-contained snapshot: the document being approved
-// is copied into the request itself (attachmentDataBase64 / sourceHtml),
-// so the public approval screen never needs read access to the
-// `agreements` collection at all.
 
 export const createApprovalRequest = async ({
   agreementId,
@@ -574,17 +472,11 @@ export const createApprovalRequest = async ({
   return ref.id;
 };
 
-// Public read — no auth required. The approval ID in the URL IS the access
-// token, so anyone who has the link (and only them) can look this up.
-// See firestore.rules: `allow read: if true` on this collection.
 export const getApprovalRequest = async (approvalId) => {
   const snap = await getDoc(doc(db, 'approvalRequests', approvalId));
   return snap.exists() ? { id: snap.id, ...snap.data() } : null;
 };
 
-// Used by AgreementDetailScreen to show every approval sent for a given
-// agreement. Filtered client-side (rather than a Firestore `where` query)
-// to avoid needing a composite index just for this list.
 export const listApprovalRequestsForAgreement = async (agreementId) => {
   const snap = await getDocs(collection(db, 'approvalRequests'));
   return snap.docs
@@ -593,9 +485,6 @@ export const listApprovalRequestsForAgreement = async (agreementId) => {
     .sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
 };
 
-// Called from the PUBLIC approval screen — the approver has no account, so
-// this must work while fully signed out. Firestore rules only allow this
-// update while status is still "Pending", and only for these three fields.
 export const decideApprovalRequest = async (approvalId, decision, comment) => {
   await updateDoc(doc(db, 'approvalRequests', approvalId), {
     status: decision,
@@ -603,11 +492,6 @@ export const decideApprovalRequest = async (approvalId, decision, comment) => {
     decidedAt: serverTimestamp(),
   });
 
-  // Best-effort: also advance the underlying agreement's own status once
-  // approved. This is a SEPARATE write against the `agreements` collection,
-  // guarded by its own narrow public rule (see firestore.rules) — if that
-  // rule isn't in place, this just fails silently and the agreement's
-  // status stays as-is until an admin updates it manually.
   if (decision === 'Approved') {
     try {
       const approval = await getApprovalRequest(approvalId);
@@ -623,14 +507,10 @@ export const decideApprovalRequest = async (approvalId, decision, comment) => {
   }
 };
 
-// Used by the Dashboards screen (approval funnel chart) — every approval
-// request across every agreement, not scoped to one.
 export const listAllApprovalRequests = async () => {
   const snap = await getDocs(collection(db, 'approvalRequests'));
   return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
 };
-
-// ---- Built-in field configs (configurable dropdowns on built-in fields) ----
 
 export const getBuiltInFieldConfigs = async (objectType) => {
   const snap = await getDoc(doc(db, 'objectSchemas', objectType));
@@ -644,7 +524,6 @@ export const updateBuiltInFieldConfig = async (objectType, fieldKey, options) =>
   }, { merge: true });
 };
 
-// ---- Type → Subtype mapping ----
 export const getTypeSubtypeMap = async () => {
   const configs = await getBuiltInFieldConfigs('agreement');
   return configs.agreementTypeSubtypeMap || {};

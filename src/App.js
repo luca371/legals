@@ -61,8 +61,6 @@ function App() {
           }
         />
 
-        {/* Public — no login required. The approvalId in the URL is itself
-            the access token (see firebase.js createApprovalRequest). */}
         <Route path="/approve/:approvalId" element={<ApprovalScreen />} />
 
         <Route

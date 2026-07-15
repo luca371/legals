@@ -1,6 +1,3 @@
-// Vercel serverless function — checks the current status of a DocuSign
-// envelope (sent, delivered, completed, declined, voided...).
-
 const { getAccessToken, getEnvelopeStatus } = require('../lib/docusign');
 
 module.exports = async (req, res) => {

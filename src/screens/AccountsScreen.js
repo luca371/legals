@@ -40,12 +40,10 @@ function AccountsScreen() {
   const [loading, setLoading] = useState(true);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
 
-  // Filters
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterCountry, setFilterCountry] = useState('');
 
-  // Form
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [customValues, setCustomValues] = useState({});
@@ -76,13 +74,11 @@ function AccountsScreen() {
     loadSchema();
   }, []);
 
-  // Unique countries from loaded accounts, for the country filter dropdown
   const countryOptions = useMemo(() => {
     const set = new Set(accounts.map((a) => a.country).filter(Boolean));
     return [...set].sort();
   }, [accounts]);
 
-  // Filtered list — recalculated whenever search/filters or accounts change
   const filtered = useMemo(() => {
     const q = search.toLowerCase().trim();
     return accounts.filter((acc) => {

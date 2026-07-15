@@ -99,7 +99,6 @@ function fieldTypeDisplay(f) {
 function AdminScreen() {
   const [tab, setTab] = useState('users');
 
-  // ---- Users state ----
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -111,7 +110,6 @@ function AdminScreen() {
   const [openMenu, setOpenMenu] = useState(null);
   const menuRef = useRef(null);
 
-  // ---- Objects state ----
   const [objectType, setObjectType] = useState('account');
   const [customFields, setCustomFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
@@ -122,19 +120,16 @@ function AdminScreen() {
   const [fieldError, setFieldError] = useState('');
   const [savingField, setSavingField] = useState(false);
 
-  // ---- Built-in edit state ----
   const [editingBuiltIn, setEditingBuiltIn] = useState(null);
   const [builtInOptions, setBuiltInOptions] = useState(['']);
   const [savingBuiltIn, setSavingBuiltIn] = useState(false);
 
-  // ---- Type→Subtype map state ----
   const [showMapModal, setShowMapModal] = useState(false);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
   const [savingMap, setSavingMap] = useState(false);
 
   const isEditMode = editingUser !== null;
 
-  // ---------- Users ----------
   const loadUsers = async () => {
     setLoadingUsers(true);
     try {
@@ -270,7 +265,6 @@ function AdminScreen() {
     }
   };
 
-  // ---------- Objects ----------
   const loadFields = async (type) => {
     setLoadingFields(true);
     try {
@@ -347,7 +341,6 @@ function AdminScreen() {
     }
   };
 
-  // ---------- Built-in field edit ----------
   const handleOpenBuiltInEdit = (field) => {
     if (field.isMap) {
       setShowMapModal(true);
@@ -387,7 +380,6 @@ function AdminScreen() {
     return opts.length > 0 ? `Dropdown (${opts.join(', ')})` : 'Dropdown (not configured)';
   };
 
-  // ---------- Type→Subtype map ----------
   const handleMapSubtypeChange = (type, index, value) => {
     setTypeSubtypeMap((prev) => {
       const current = [...(prev[type] || [])];
@@ -439,7 +431,6 @@ function AdminScreen() {
 
       {successMsg && <div className="admin__toast">{successMsg}</div>}
 
-      {/* ---- Users tab ---- */}
       {tab === 'users' && (
         <div className="admin__panel">
           <div className="admin__panel-header">
@@ -482,7 +473,6 @@ function AdminScreen() {
         </div>
       )}
 
-      {/* ---- Objects tab ---- */}
       {tab === 'objects' && (
         <div className="admin__objects">
           <div className="admin__object-cards">
@@ -682,7 +672,6 @@ function AdminScreen() {
         </div>
       )}
 
-      {/* Type → Subtype mapping modal */}
       {showMapModal && objectType === 'agreement' && (
         <div className="admin__modal-backdrop" onClick={() => setShowMapModal(false)}>
           <div className="admin__modal admin__modal--wide" onClick={(e) => e.stopPropagation()}>

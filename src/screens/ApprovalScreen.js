@@ -4,7 +4,6 @@ import mammoth from 'mammoth';
 import { getApprovalRequest, decideApprovalRequest } from '../firebase';
 import './ApprovalScreen.css';
 
-// base64 -> ArrayBuffer, for feeding a stored .docx attachment into mammoth.
 function base64ToArrayBuffer(base64) {
   const byteChars = atob(base64);
   const bytes = new Uint8Array(byteChars.length);
@@ -12,7 +11,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// base64 -> Blob, for triggering a download in the browser.
 function base64ToBlob(base64, mimeType) {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);

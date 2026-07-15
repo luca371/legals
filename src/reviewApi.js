@@ -1,6 +1,3 @@
-// Calls our own backend proxy (server/index.js locally, api/review-agreement.js
-// on Vercel) — never the Anthropic API directly, and never holds an API key.
-
 export async function reviewAgreementWithAI(documentText, metadata) {
   const response = await fetch('/api/review-agreement', {
     method: 'POST',

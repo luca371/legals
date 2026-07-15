@@ -11,8 +11,8 @@ import { sendToClaudeWithTools } from '../askAiApi';
 import './AskAIScreen.css';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-const MAX_DOC_CHARS = 15000; // per document, keeps a single tool result from blowing up the context
-const MAX_TOOL_ROUNDS = 6; // safety cap against a runaway tool-call loop
+const MAX_DOC_CHARS = 15000; 
+const MAX_TOOL_ROUNDS = 6; 
 
 const STARTER_PROMPTS = [
   'How many agreements do we have in total?',
@@ -31,9 +31,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// Attachments are stored as base64 .docx or as generated sourceHtml (see
-// AgreementDetailScreen) — this pulls plain text out of either, so Claude
-// can actually read clause/term content instead of just seeing metadata.
 async function extractAttachmentText(attachment) {
   if (!attachment) return '';
   if (attachment.sourceHtml) {
@@ -54,10 +51,6 @@ async function extractAttachmentText(attachment) {
   return '';
 }
 
-// Dispatches a tool call requested by Claude to the matching Firestore
-// read, using the SAME authenticated session and security rules as the
-// rest of the app — this is why the server never needs its own Firebase
-// Admin credentials for Ask AI.
 async function executeTool(name, input = {}) {
   try {
     switch (name) {
@@ -145,9 +138,6 @@ function describeTools(blocks) {
   return `${labels.join(', ')}…`;
 }
 
-// The actual agent loop: ask Claude, and if it wants to use a tool, run it
-// and feed the result back, repeating until Claude gives a final text
-// answer (or the safety cap is hit).
 async function runConversationTurn(startMessages, onStatus) {
   let messages = startMessages;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {

@@ -1,7 +1,3 @@
-// Calls our own backend proxy (server/index.js locally, api/docusign-*.js
-// on Vercel) — never DocuSign directly, and never holds any DocuSign
-// credentials.
-
 export async function sendForSignature({
   documentBase64,
   documentName,
@@ -58,5 +54,5 @@ export async function getSignedDocument(envelopeId, documentId) {
     throw new Error(body.error || `DocuSign document fetch failed (${response.status}).`);
   }
 
-  return response.json(); // { dataBase64, mimeType }
+  return response.json();
 }

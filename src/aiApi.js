@@ -1,7 +1,3 @@
-// Calls our own backend proxy (server/index.js locally, api/ai-builder.js
-// on Vercel) — NEVER the Anthropic API directly, and NEVER holds an API
-// key. See server/index.js for local setup instructions.
-
 export async function analyzeTemplateWithAI(documentText, fields) {
   const response = await fetch('/api/ai-builder', {
     method: 'POST',

@@ -175,7 +175,6 @@ function AccountDetailScreen() {
       </button>
 
       <div className="accd__card">
-        {/* Chrome-style tabs on top of the card */}
         <div className="accd__tab-bar">
           <div className="accd__tabs">
             <button
@@ -195,7 +194,6 @@ function AccountDetailScreen() {
             </button>
           </div>
 
-          {/* Actions always visible top-right */}
           <div className="accd__top-actions">
             <button className="accd__btn-create-agreement" onClick={() => {}}>
               + Create an agreement
@@ -211,7 +209,6 @@ function AccountDetailScreen() {
 
         <div className="accd__tab-content">
 
-          {/* ---- Tab: Account information ---- */}
           {activeTab === 'info' && (
             <>
               {!editing ? (
@@ -321,7 +318,6 @@ function AccountDetailScreen() {
             </>
           )}
 
-          {/* ---- Tab: Agreements ---- */}
           {activeTab === 'agreements' && (
             <>
               {loadingAgreements ? (

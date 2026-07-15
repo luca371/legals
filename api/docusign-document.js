@@ -1,7 +1,3 @@
-// Vercel serverless function — downloads the (signed) document from a
-// DocuSign envelope, base64-encoded, ready to store as a Legal Space
-// attachment.
-
 const { getAccessToken, getEnvelopeDocument } = require('../lib/docusign');
 
 module.exports = async (req, res) => {

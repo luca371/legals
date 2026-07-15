@@ -63,7 +63,6 @@ function AlertIcon() {
   );
 }
 
-// Firestore Timestamp ({seconds, nanoseconds}) or ISO string -> JS Date.
 function toDate(value) {
   if (!value) return null;
   if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
@@ -323,7 +322,6 @@ function DashboardsScreen() {
 
   return (
     <div className="dbd">
-      {/* Filters */}
       <div className="dbd__filters">
         <div className="dbd__filter-group">
           <span className="dbd__filter-label">Period</span>
@@ -442,7 +440,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* By type */}
           <div className="dbd__card">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">By agreement type</h3>
@@ -462,7 +459,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* By subtype */}
           <div className="dbd__card">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">By agreement subtype</h3>
@@ -482,7 +478,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* By account */}
           <div className="dbd__card dbd__card--full">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">By account {byAccountFull.length > 8 ? '(top 8)' : ''}</h3>
@@ -500,7 +495,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* By status */}
           <div className="dbd__card dbd__card--full">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">By status</h3>
@@ -520,7 +514,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* Upcoming expirations */}
           <div className="dbd__card dbd__card--full">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">Upcoming expirations (by end date)</h3>
@@ -553,7 +546,6 @@ function DashboardsScreen() {
             </div>
           </div>
 
-          {/* Time to contract */}
           <div className="dbd__card">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">Time to contract by type</h3>
@@ -576,7 +568,6 @@ function DashboardsScreen() {
             )}
           </div>
 
-          {/* Approval funnel */}
           <div className="dbd__card">
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">Approval funnel</h3>

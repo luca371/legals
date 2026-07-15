@@ -1,9 +1,3 @@
-// Vercel serverless function — thin proxy for the Ask AI chat. Set
-// ANTHROPIC_API_KEY as an Environment Variable in the Vercel project
-// dashboard (same one used by api/ai-builder.js). Never exposed to the
-// browser — this function runs server-side only, and never touches
-// Firestore itself (see lib/askAi.js for why).
-
 const { askClaude } = require('../lib/askAi');
 
 module.exports = async (req, res) => {

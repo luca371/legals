@@ -1,8 +1,3 @@
-// Vercel serverless function — sends a document to DocuSign for signature.
-// Requires these Environment Variables in the Vercel dashboard:
-//   DOCUSIGN_INTEGRATION_KEY, DOCUSIGN_USER_ID, DOCUSIGN_ACCOUNT_ID,
-//   DOCUSIGN_PRIVATE_KEY (the full RSA private key, PEM format)
-
 const { getAccessToken, sendEnvelopeForSignature } = require('../lib/docusign');
 
 module.exports = async (req, res) => {

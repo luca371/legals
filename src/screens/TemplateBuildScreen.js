@@ -56,24 +56,6 @@ function extractPlaceholders(html) {
   return [...new Set(matches.map((m) => m.replace(/[{}]/g, '').trim()))];
 }
 
-// Finds the first occurrence of `matchText` among the text nodes inside
-// `root` and replaces it with a placeholder <span>, the same way manual
-// drag-and-drop does. Walking text nodes (rather than string-replacing
-// innerHTML) avoids corrupting existing tags/attributes in the document.
-// Finds `matchText` across the FULL concatenated text of `root` — not just
-// within a single text node — and replaces it with a placeholder <span>.
-// This matters because Word documents converted through mammoth often
-// split what looks like one continuous sentence into several small text
-// nodes (separate bold/italic/spell-check runs), so a naive per-node
-// search misses most real matches and silently applies nothing.
-// Concatenates every text node inside `root`, in DOM order, along with the
-// [start, end) offset each node occupies in that concatenation. Used by
-// BOTH the AI analysis (what text Claude sees) and the replacement search
-// below — they must use the exact same extraction, or a match Claude finds
-// against one representation of the text can become unfindable against a
-// different one (e.g. `element.innerText` collapses whitespace and
-// converts <br> per browser rendering rules, in ways raw textContent does
-// not — a mismatch that caused matches to silently fail to apply).
 function getPlainTextNodes(root) {
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
   const nodes = [];
@@ -86,14 +68,6 @@ function getPlainTextNodes(root) {
   return { nodes, fullText };
 }
 
-// Finds where `matchText` sits, optionally anchored just after `contextText`.
-// Models reliably copy each string correctly on its own, but often trim the
-// whitespace/punctuation that sits exactly on the boundary between the two
-// (e.g. the document literally has "Name/Company: ____", but the model
-// returns contextText "Name/Company:" and matchText "____" with the space
-// dropped from both). Requiring byte-for-byte adjacency made that a hard
-// failure; instead, once contextText is found, matchText is searched for in
-// a small window right after it, tolerating a short gap in between.
 function findAnchoredIndex(fullText, contextText, matchText, maxGap = 12) {
   if (!contextText) {
     const idx = fullText.indexOf(matchText);
@@ -107,12 +81,6 @@ function findAnchoredIndex(fullText, contextText, matchText, maxGap = 12) {
   return offset === -1 ? null : searchStart + offset;
 }
 
-// Pseudo-fields offered to the AI Builder alongside real Agreement/Account
-// fields — these don't come from the object schema and never get resolved
-// to real data. They mark where DocuSign should place its own fields when
-// the document is later sent for signature (see AgreementDetailScreen's
-// "Send for signature" and lib/docusign.js). "n" is the signer number (1
-// or 2) DocuSign uses to match each anchor tag to a recipient.
 const DOCUSIGN_AI_FIELDS = [1, 2].flatMap((n) => [
   { label: `Signature (Signer ${n})`, placeholder: `docusign.sig${n}` },
   { label: `Printed Name (Signer ${n})`, placeholder: `docusign.name${n}` },
@@ -120,8 +88,6 @@ const DOCUSIGN_AI_FIELDS = [1, 2].flatMap((n) => [
   { label: `Date Signed (Signer ${n})`, placeholder: `docusign.date${n}` },
 ]);
 
-// "docusign.sig1" -> "/sig1/", matching the literal anchor text DocuSign
-// scans for (see lib/docusign.js sendEnvelopeForSignature).
 function docusignAnchorTag(placeholder) {
   return `/${placeholder.replace('docusign.', '')}/`;
 }
@@ -131,10 +97,6 @@ function replaceTextWithPlaceholder(root, matchText, field, contextText) {
 
   const { nodes, fullText } = getPlainTextNodes(root);
 
-  // For blank fill-in fields (a label followed by underscores/dots), the
-  // blank run alone is often ambiguous — several identical-looking blanks
-  // can exist for different fields. contextText (the label right before
-  // it) disambiguates WHERE to look, but is never itself removed.
   const matchIndex = findAnchoredIndex(fullText, contextText, matchText);
   if (matchIndex === null) return false;
   const matchEnd = matchIndex + matchText.length;
@@ -152,12 +114,6 @@ function replaceTextWithPlaceholder(root, matchText, field, contextText) {
   const span = document.createElement('span');
 
   if (isDocusignTag) {
-    // Deliberately a DIFFERENT class from 'tpl-placeholder': the merge
-    // step that fills a template with real agreement data (see
-    // AgreementDetailScreen's fillTemplateHtml) only ever touches
-    // .tpl-placeholder spans, so this literal anchor text — which
-    // DocuSign needs to find as-is in the final document — survives
-    // generation completely untouched.
     span.className = 'tpl-docusign-tag';
     span.setAttribute('contenteditable', 'false');
     span.setAttribute('data-docusign-field', field.placeholder);
@@ -253,14 +209,12 @@ function TemplateBuildScreen() {
   const [error, setError] = useState('');
   const [dragOverField, setDragOverField] = useState(false);
 
-  // AI Builder modal
   const [showAIModal, setShowAIModal] = useState(false);
   const [aiAnalyzing, setAiAnalyzing] = useState(false);
   const [aiSuggestions, setAiSuggestions] = useState([]);
   const [selectedSuggestions, setSelectedSuggestions] = useState({});
   const [aiError, setAiError] = useState('');
 
-  // Built-in configs
   const [typeOptions, setTypeOptions] = useState([]);
   const [subtypeOptions, setSubtypeOptions] = useState([]);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
@@ -269,7 +223,6 @@ function TemplateBuildScreen() {
   const fileInputRef = useRef(null);
   const draggedFieldRef = useRef(null);
 
-  // Filtered subtypes based on selected type
   const filteredSubtypes = meta.agreementType && Object.keys(typeSubtypeMap).length > 0
     ? (typeSubtypeMap[meta.agreementType] || subtypeOptions)
     : subtypeOptions;
@@ -315,10 +268,6 @@ function TemplateBuildScreen() {
     setView('setup');
   };
 
-  // Opens an existing template straight in the document editor (skips the
-  // setup step, since name/type/subtype/document already exist) — the
-  // "Back" button from there still routes through setup if the user wants
-  // to change those fields.
   const handleEditTemplate = async (template) => {
     setError('');
     setMeta({
@@ -331,11 +280,6 @@ function TemplateBuildScreen() {
     setFileName(template.name ? `${template.name}.docx` : '');
     if (editableRef.current) delete editableRef.current.dataset.loaded;
     setHtmlContent(template.contentHtml || '');
-    // Switch views in the same synchronous batch as setHtmlContent above —
-    // the editable <div> only exists in the DOM once view === 'builder', so
-    // if this were delayed until after the awaits below, htmlContent would
-    // already have "changed" on a previous render with no element to load
-    // it into, and the effect (keyed on htmlContent) wouldn't fire again.
     setView('builder');
     try {
       const [configs, map] = await Promise.all([
@@ -468,8 +412,6 @@ function TemplateBuildScreen() {
     draggedFieldRef.current = null;
   };
 
-  // ---- AI Builder ----
-
   const handleOpenAIBuilder = async () => {
     setShowAIModal(true);
     setAiAnalyzing(true);
@@ -484,37 +426,24 @@ function TemplateBuildScreen() {
       }
       const fields = [...directFields, ...lookupGroups.flatMap((g) => g.fields), ...DOCUSIGN_AI_FIELDS];
       const rawSuggestions = await analyzeTemplateWithAI(documentText, fields);
-      // eslint-disable-next-line no-console
       console.log('AI Builder — raw suggestions from Claude:', rawSuggestions);
 
-      // Safety net against a hallucinated placeholder code or an altered
-      // match string — only keep suggestions that can actually be located
-      // in the document (same tolerant anchored search used at apply time).
       const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
       const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
       const seenSearchKey = new Set();
       const candidates = rawSuggestions.filter((s) => {
         if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder)) return false;
         if (findAnchoredIndex(documentText, s.contextText, s.matchText) === null) return false;
-        // Two suggestions pointing at the exact same spot can't both be
-        // applied — the first one consumes it, so the second would
-        // silently fail. Keep only the first.
         const key = searchKeyOf(s);
         if (seenSearchKey.has(key)) return false;
         seenSearchKey.add(key);
         return true;
       });
 
-      // Drop any suggestion whose search key fully contains ANOTHER
-      // suggestion's search key as a substring — that's almost always an
-      // overly broad match (e.g. "Account Name" accidentally swallowing
-      // the address text right next to it), which would silently "steal"
-      // the text a more precise suggestion needs.
       const valid = candidates.filter(
         (s) => !candidates.some((other) => other !== s && searchKeyOf(s).includes(searchKeyOf(other)))
       );
 
-      // eslint-disable-next-line no-console
       console.log(
         `AI Builder — raw: ${rawSuggestions.length}, passed validation: ${candidates.length}, after overlap filter: ${valid.length}`,
         { candidates, valid }
@@ -548,8 +477,6 @@ function TemplateBuildScreen() {
     const selected = aiSuggestions
       .map((s, index) => ({ s, index }))
       .filter(({ index }) => selectedSuggestions[index])
-      // Apply longer matches first so a short, generic phrase doesn't get
-      // consumed before a longer match that contains it.
       .sort((a, b) => searchKeyOf(b.s).length - searchKeyOf(a.s).length);
 
     const failedLabels = [];
@@ -603,8 +530,6 @@ function TemplateBuildScreen() {
   const toggleLookupGroup = (id) => {
     setExpandedLookups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
-
-  // ---- Views ----
 
   if (view === 'list') {
     return (
@@ -732,7 +657,6 @@ function TemplateBuildScreen() {
     );
   }
 
-  // view === 'builder'
   return (
     <div className="tpl tpl--builder">
       <div className="tpl__builder-topbar">
@@ -846,7 +770,6 @@ function TemplateBuildScreen() {
         </div>
       )}
 
-      {/* AI Builder modal */}
       {showAIModal && (
         <div className="aib__backdrop" onClick={closeAIModal}>
           <div className="aib__modal" onClick={(e) => e.stopPropagation()}>

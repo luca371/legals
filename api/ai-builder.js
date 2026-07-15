@@ -1,14 +1,6 @@
-// Vercel serverless function — deployed automatically from the /api folder.
-// Set ANTHROPIC_API_KEY as an Environment Variable in the Vercel project
-// dashboard (Settings -> Environment Variables). It is NEVER exposed to
-// the browser — this function runs server-side only.
-
 const { callClaude } = require('../lib/aiBuilder');
 
 module.exports = async (req, res) => {
-  // Same-origin in production (React app + this function share the Vercel
-  // domain), but CORS headers are kept as a safety net in case this is
-  // ever called from a different origin during testing.
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');

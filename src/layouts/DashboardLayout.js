@@ -25,7 +25,6 @@ function DashboardLayout({ user, isAdmin }) {
   const handleLogout = async () => {
     try {
       await logout();
-      // onAuthStateChanged in App.js picks this up and redirects to /
     } catch (err) {
       console.error('Logout failed:', err);
     }

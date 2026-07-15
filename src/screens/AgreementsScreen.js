@@ -90,7 +90,6 @@ function AgreementsScreen() {
   const [uploadError, setUploadError] = useState('');
   const fileInputRef = useRef(null);
 
-  // Subtypes filtered by selected type
   const filteredSubtypes = useMemo(() => {
     if (!form.agreementType) return subtypeOptions;
     if (Object.keys(typeSubtypeMap).length > 0) {

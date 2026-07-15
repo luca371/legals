@@ -107,14 +107,8 @@ function formatFileSize(bytes) {
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-// Firestore documents cap at 1MB total; leave headroom for the rest of the
-// agreement's fields (customFields, etc.) alongside the base64 attachment.
 const MAX_ATTACHMENT_BYTES = 650 * 1024;
 
-// Resolves a template placeholder key (e.g. "agreement.effectiveDate",
-// "template.name", "builtin_account.name", a plain custom-field id, or a
-// "<lookupId>.<targetFieldKey>" pair) against the loaded agreement/account/
-// template data, mirroring how TemplateBuildScreen builds these placeholders.
 function resolvePlaceholderValue(fieldKey, { agreement, account, template }) {
   if (!fieldKey) return '';
   const parts = fieldKey.split('.');
@@ -126,16 +120,12 @@ function resolvePlaceholderValue(fieldKey, { agreement, account, template }) {
     return template ? (template[parts[1]] ?? '') : '';
   }
   if (parts.length === 2) {
-    // Lookup field (built-in Account lookup or a custom lookup targeting Account)
     if (!account) return '';
     return account[parts[1]] ?? (account.customFields || {})[parts[1]] ?? '';
   }
-  // Plain field id -> custom field on the agreement itself
   return (agreement.customFields || {})[fieldKey] ?? '';
 }
 
-// Replaces every `.tpl-placeholder` span in the template HTML with the
-// resolved value from the agreement's own details.
 function fillTemplateHtml(html, context) {
   const container = document.createElement('div');
   container.innerHTML = html || '';
@@ -147,25 +137,19 @@ function fillTemplateHtml(html, context) {
   return container.innerHTML;
 }
 
-// html-docx-js expects a full HTML document, not just a fragment.
 function wrapAsHtmlDocument(bodyHtml) {
   return `<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>${bodyHtml}</body></html>`;
 }
 
-// Keeps the generated .docx file name filesystem-safe.
 function sanitizeFileName(name) {
   return (name || 'Agreement').replace(/[\\/:*?"<>|]+/g, '').trim() || 'Agreement';
 }
 
-// "Contract.docx" -> "Contract - Redlines.docx"
 function buildRedlineFileName(originalName) {
   const base = (originalName || 'Document').replace(/\.docx$/i, '');
   return `${base} - Redlines.docx`;
 }
 
-// Only moves the status forward along the pipeline — e.g. sending an
-// already-Approved agreement back out for review shouldn't regress its
-// status. Returns null when no change is needed.
 function computeAdvancedStatus(currentStatus, targetStatus) {
   const currentIndex = PIPELINE_STATUSES.indexOf(currentStatus);
   const targetIndex = PIPELINE_STATUSES.indexOf(targetStatus);
@@ -174,8 +158,6 @@ function computeAdvancedStatus(currentStatus, targetStatus) {
   return null;
 }
 
-// Blob -> base64 (without the "data:...;base64," prefix), for storing the
-// file content directly on the Firestore document.
 function blobToBase64(blob) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -189,7 +171,6 @@ function blobToBase64(blob) {
   });
 }
 
-// base64 -> Blob, for triggering a download in the browser.
 function base64ToBlob(base64, mimeType) {
   const byteChars = atob(base64);
   const byteNumbers = new Array(byteChars.length);
@@ -199,7 +180,6 @@ function base64ToBlob(base64, mimeType) {
   return new Blob([new Uint8Array(byteNumbers)], { type: mimeType });
 }
 
-// base64 -> ArrayBuffer, for feeding a stored .docx attachment into mammoth.
 function base64ToArrayBuffer(base64) {
   const byteChars = atob(base64);
   const bytes = new Uint8Array(byteChars.length);
@@ -207,10 +187,6 @@ function base64ToArrayBuffer(base64) {
   return bytes.buffer;
 }
 
-// Reads an attachment's content as HTML for merging. Documents produced by
-// "Generate agreement" carry their original sourceHtml (see handleGenerate)
-// and are used directly; real imported .docx files (from Word) don't have
-// that, so their content is extracted with mammoth instead.
 async function attachmentToMergeHtml(attachment) {
   if (attachment.sourceHtml) return attachment.sourceHtml;
   const arrayBuffer = base64ToArrayBuffer(attachment.dataBase64);
@@ -218,8 +194,6 @@ async function attachmentToMergeHtml(attachment) {
   return result.value;
 }
 
-// Plain text (not HTML) version of an attachment, for feeding to the AI
-// review feature — Claude reads the actual clauses, not markup.
 async function attachmentToPlainText(attachment) {
   if (attachment.sourceHtml) {
     const div = document.createElement('div');
@@ -234,19 +208,12 @@ async function attachmentToPlainText(attachment) {
   return '';
 }
 
-// @emailjs/browser rejects with a plain {status, text} object, not a real
-// Error — so err.message is always undefined. This pulls the actual
-// reason out of whichever shape shows up.
 function describeEmailError(err) {
   if (err?.text) return `${err.text}${err.status ? ` (${err.status})` : ''}`;
   if (err?.message) return err.message;
   return 'unknown error';
 }
 
-// DocuSign accepts .docx directly (it renders it internally), so real
-// uploaded/imported Word attachments are sent as-is. Generated agreements
-// only have sourceHtml (no binary file) — that gets base64-encoded and
-// sent as an .html document instead, which DocuSign also accepts.
 function attachmentToDocusignPayload(attachment) {
   if (attachment.dataBase64) {
     const ext = (attachment.name || '').split('.').pop() || 'docx';
@@ -259,7 +226,6 @@ function attachmentToDocusignPayload(attachment) {
   return null;
 }
 
-// Joins multiple HTML fragments with a page break between each.
 function buildMergedHtml(htmlParts) {
   return htmlParts
     .map((html, idx) => (idx === 0 ? html : `<div style="page-break-before: always;"></div>${html}`))
@@ -277,11 +243,6 @@ function downloadBlob(blob, fileName) {
   URL.revokeObjectURL(url);
 }
 
-// Renders an HTML string into an offscreen container, rasterizes it with
-// html2canvas, and slices the resulting image across as many A4 pages as
-// needed in jsPDF. (jsPDF's own `.html()` plugin was tried first but is
-// known to silently produce blank PDFs in many setups — this approach is
-// more predictable.)
 async function exportHtmlAsPdf(html, fileName) {
   const container = document.createElement('div');
   container.style.position = 'fixed';
@@ -296,7 +257,6 @@ async function exportHtmlAsPdf(html, fileName) {
   document.body.appendChild(container);
 
   try {
-    // Let the browser paint the container before capturing it.
     await new Promise((resolve) => setTimeout(resolve, 50));
 
     const canvas = await html2canvas(container, {
@@ -353,7 +313,6 @@ function AgreementDetailScreen() {
   const [subtypeOptions, setSubtypeOptions] = useState([]);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
 
-  // Generate agreement modal
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [loadingGenTemplates, setLoadingGenTemplates] = useState(false);
   const [availableTemplates, setAvailableTemplates] = useState([]);
@@ -361,18 +320,15 @@ function AgreementDetailScreen() {
   const [generating, setGenerating] = useState(false);
   const [generateError, setGenerateError] = useState('');
 
-  // Import additional files
   const importFileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
 
-  // Merge files modal
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [selectedMergeIds, setSelectedMergeIds] = useState([]);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState('');
 
-  // Send to review modal
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewAttachmentId, setReviewAttachmentId] = useState('');
   const [reviewRecipients, setReviewRecipients] = useState('');
@@ -382,7 +338,6 @@ function AgreementDetailScreen() {
   const [fetchingSessionId, setFetchingSessionId] = useState('');
   const [copiedSessionId, setCopiedSessionId] = useState('');
 
-  // Send for approval modal
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAttachmentId, setApprovalAttachmentId] = useState('');
   const [approverEmail, setApproverEmail] = useState('');
@@ -393,14 +348,12 @@ function AgreementDetailScreen() {
   const [approvalRequests, setApprovalRequests] = useState([]);
   const [copiedApprovalId, setCopiedApprovalId] = useState('');
 
-  // Review with AI modal
   const [showReviewAIModal, setShowReviewAIModal] = useState(false);
   const [aiReviewAttachmentId, setAiReviewAttachmentId] = useState('');
   const [reviewingAI, setReviewingAI] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [reviewAIError, setReviewAIError] = useState('');
 
-  // Send for signature (DocuSign) modal
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
   const [signer1Name, setSigner1Name] = useState('');
@@ -413,7 +366,6 @@ function AgreementDetailScreen() {
   const [signatureError, setSignatureError] = useState('');
   const [refreshingEnvelopeId, setRefreshingEnvelopeId] = useState('');
 
-  // Activate modal
   const [showActivateModal, setShowActivateModal] = useState(false);
   const [activateNotifyName, setActivateNotifyName] = useState('');
   const [activateNotifyEmail, setActivateNotifyEmail] = useState('');
@@ -421,7 +373,6 @@ function AgreementDetailScreen() {
   const [activating, setActivating] = useState(false);
   const [activateError, setActivateError] = useState('');
 
-  // Subtypes filtered by selected type in edit form
   const filteredSubtypes = useMemo(() => {
     if (!form?.agreementType) return subtypeOptions;
     if (Object.keys(typeSubtypeMap).length > 0) {
@@ -529,8 +480,6 @@ function AgreementDetailScreen() {
     }
   };
 
-  // ---- Generate agreement ----
-
   const openGenerateModal = async () => {
     setShowGenerateModal(true);
     setGenerateError('');
@@ -582,10 +531,6 @@ function AgreementDetailScreen() {
         size: docxBlob.size,
         mimeType: DOCX_MIME,
         dataBase64,
-        // html-docx-js embeds the HTML as a Word "altChunk" rather than real
-        // OOXML paragraphs — Word renders it fine, but mammoth (used by
-        // Merge to re-extract content) sees an empty body. Keeping the
-        // original HTML here lets Merge use it directly instead.
         sourceHtml: filledHtml,
         uploadedAt: new Date().toISOString(),
       };
@@ -628,8 +573,6 @@ function AgreementDetailScreen() {
     }
   };
 
-  // ---- Import additional files ----
-
   const handleImportClick = () => {
     setImportError('');
     importFileInputRef.current?.click();
@@ -637,7 +580,7 @@ function AgreementDetailScreen() {
 
   const handleImportFilesSelected = async (e) => {
     const files = Array.from(e.target.files || []);
-    e.target.value = ''; // allow re-selecting the same file next time
+    e.target.value = ''; 
     if (files.length === 0) return;
 
     setImporting(true);
@@ -649,10 +592,6 @@ function AgreementDetailScreen() {
           continue;
         }
         const dataBase64 = await blobToBase64(file);
-        // Browsers unreliably report the MIME type for .docx files (often
-        // returning "" or a generic type), so detect it from the extension
-        // instead — otherwise imported Word files silently fail to show up
-        // as mergeable later.
         const isDocx = /\.docx$/i.test(file.name);
         const attachment = {
           id: `att_${Date.now()}_${file.name}`,
@@ -674,8 +613,6 @@ function AgreementDetailScreen() {
     }
   };
 
-  // ---- Merge files ----
-
   const isDocxAttachment = (att) => att.mimeType === DOCX_MIME || /\.docx$/i.test(att.name || '');
 
   const mergeableAttachments = useMemo(
@@ -687,11 +624,6 @@ function AgreementDetailScreen() {
     [agreement]
   );
 
-  // Word Online can't open .docx files produced by html-docx-js (they use
-  // an "altChunk" trick that only desktop Word can resolve) — those carry
-  // a `sourceHtml` field (see handleGenerate). Only real Word-produced
-  // .docx files (imported, or already round-tripped through a review) can
-  // be sent for online review.
   const reviewableAttachments = useMemo(
     () => mergeableAttachments.filter((a) => !a.sourceHtml),
     [mergeableAttachments]
@@ -752,8 +684,6 @@ function AgreementDetailScreen() {
     }
   };
 
-  // ---- Send to review (Office 365 / Word Online) ----
-
   const openReviewModal = () => {
     setShowReviewModal(true);
     setReviewError('');
@@ -785,9 +715,6 @@ function AgreementDetailScreen() {
     setSendingReview(true);
     setReviewError('');
     try {
-      // Fresh Graph-scoped Microsoft sign-in — Firebase doesn't keep the
-      // provider's access token around, so this popup is required here
-      // even if the user is already logged into the app.
       const { accessToken } = await connectMicrosoftGraph();
 
       const blob = base64ToBlob(attachment.dataBase64, DOCX_MIME);
@@ -874,8 +801,6 @@ function AgreementDetailScreen() {
     }
   };
 
-  // ---- Send for approval ----
-
   const openApprovalModal = () => {
     setShowApprovalModal(true);
     setApprovalError('');
@@ -958,8 +883,6 @@ function AgreementDetailScreen() {
       window.prompt('Copy this link:', link);
     }
   };
-
-  // ---- Review with AI ----
 
   const handleOpenReviewAI = () => {
     setShowReviewAIModal(true);
@@ -1076,9 +999,6 @@ function AgreementDetailScreen() {
       if (status.status === 'completed') {
         patch.completedAt = new Date().toISOString();
 
-        // Only pull the signed file down and attach it once — repeated
-        // "Refresh status" clicks on an already-completed envelope
-        // shouldn't keep adding duplicate attachments.
         if (!envelope?.signedAttachmentId) {
           const signedDoc = await getSignedDocument(envelopeId);
           const baseName = (envelope?.attachmentName || 'document').replace(/\.[^./]+$/, '');
@@ -1112,8 +1032,6 @@ function AgreementDetailScreen() {
       setRefreshingEnvelopeId('');
     }
   };
-
-  // ---- Activate ----
 
   const openActivateModal = () => {
     setShowActivateModal(true);
@@ -1257,7 +1175,6 @@ function AgreementDetailScreen() {
         <h2 className="agrd__title">{agreement.title}</h2>
       </div>
 
-      {/* Status pipeline */}
       <div className="agrd__pipeline">
         {PIPELINE_STATUSES.map((status, index) => {
           const isPast = index < pipelineIndex;
@@ -1273,10 +1190,8 @@ function AgreementDetailScreen() {
         })}
       </div>
 
-      {/* 3-column grid */}
       <div className="agrd__grid">
 
-        {/* Left icon nav */}
         <aside className="agrd__nav">
           <button className={`agrd__nav-btn ${activeNav === 'details' ? 'agrd__nav-btn--active' : ''}`} onClick={() => setActiveNav('details')} title="Agreement details">
             <DetailsIcon />
@@ -1288,7 +1203,6 @@ function AgreementDetailScreen() {
           </button>
         </aside>
 
-        {/* Middle content */}
         <div className="agrd__content">
           <div className="agrd__content-card">
 
@@ -1626,9 +1540,6 @@ function AgreementDetailScreen() {
             {(() => {
               const status = agreement.status || 'Draft';
               const isDraft = status === 'Draft';
-              // Statuses where the agreement is waiting on someone else
-              // (an approver, a signer, or it's already done) — only
-              // Delete makes sense while in one of these.
               const isLocked = ['In approval', 'Pending signatures', 'Activated'].includes(status);
               const showAll = !isDraft && !isLocked;
 
@@ -1679,7 +1590,6 @@ function AgreementDetailScreen() {
         </aside>
       </div>
 
-      {/* Generate agreement modal */}
       {showGenerateModal && (
         <div className="agrd__modal-backdrop" onClick={closeGenerateModal}>
           <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
@@ -1837,7 +1747,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Send to review modal */}
       {showReviewModal && (
         <div className="agrd__modal-backdrop" onClick={closeReviewModal}>
           <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -1913,7 +1822,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Send for approval modal */}
       {showApprovalModal && (
         <div className="agrd__modal-backdrop" onClick={closeApprovalModal}>
           <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -1993,7 +1901,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Review with AI modal */}
       {showReviewAIModal && (
         <div className="arv__backdrop" onClick={closeReviewAIModal}>
           <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
