@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
-import { logout } from '../firebase';
+import { logout } from '../supabase';
 import './DashboardLayout.css';
 
 const SECTION_LABELS = {
@@ -17,20 +17,23 @@ const SECTION_LABELS = {
 function DashboardLayout({ user, isAdmin }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
-  const pathAfterDashboard = location.pathname.split('/dashboard/')[1] || 'agreements';
-  const [currentKey, subPath] = pathAfterDashboard.split('/');
-  const sectionTitle =
-    currentKey === 'agreements' && subPath ? 'Agreement Dashboard' : SECTION_LABELS[currentKey] || 'Dashboard';
+  const currentKey = location.pathname.split('/dashboard/')[1] || 'agreements';
+  const sectionTitle = SECTION_LABELS[currentKey] || 'Dashboard';
 
   const handleLogout = async () => {
     try {
       await logout();
+      // onAuthStateChange in App.js picks this up and redirects to /
     } catch (err) {
       console.error('Logout failed:', err);
     }
   };
 
-  const displayName = user?.displayName || user?.email || 'User';
+  // Supabase users don't have `displayName` like Firebase did — the name
+  // comes from user_metadata (populated by whichever provider was used,
+  // e.g. Google's "full_name"). Falls back to email if metadata is missing
+  // (e.g. plain email/password signups with no name set).
+  const displayName = user?.user_metadata?.full_name || user?.email || 'User';
 
   return (
     <div className="dashboard">

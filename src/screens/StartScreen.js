@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import './StartScreen.css';
-import { loginWithEmail, loginWithGoogle, loginWithMicrosoft } from '../firebase';
+import { loginWithEmail, loginWithGoogle, loginWithMicrosoft } from '../supabase';
 
 function StartScreen() {
   const [email, setEmail] = useState('');
@@ -18,41 +18,36 @@ function StartScreen() {
     }
 
     setLoading(true);
-    try {
-      await loginWithEmail(email, password);
-    } catch (err) {
-      setError(mapAuthError(err.code));
-    } finally {
-      setLoading(false);
+    const { error: authError } = await loginWithEmail(email, password);
+    setLoading(false);
+
+    if (authError) {
+      setError(mapAuthError(authError));
     }
+    // onAuthStateChange in App.js picks up the change and switches to DashboardScreen
   };
 
   const handleGoogleLogin = async () => {
     setError('');
-    setLoading(true);
-    try {
-      await loginWithGoogle();
-    } catch (err) {
-      setError(mapAuthError(err.code));
-    } finally {
-      setLoading(false);
+    // No setLoading here — signInWithOAuth redirects the whole page away
+    // immediately, so there's no "after" state to manage on this screen.
+    const { error: authError } = await loginWithGoogle();
+    if (authError) {
+      setError(mapAuthError(authError));
     }
   };
 
   const handleMicrosoftLogin = async () => {
     setError('');
-    setLoading(true);
-    try {
-      await loginWithMicrosoft();
-    } catch (err) {
-      setError(mapAuthError(err.code));
-    } finally {
-      setLoading(false);
+    const { error: authError } = await loginWithMicrosoft();
+    if (authError) {
+      setError(mapAuthError(authError));
     }
   };
 
   return (
     <div className="start-screen">
+      {/* Zona stânga - 30% */}
       <div className="start-screen__left">
         <div className="start-screen__left-content">
           <img
@@ -67,6 +62,7 @@ function StartScreen() {
         </div>
       </div>
 
+      {/* Zona dreapta - 70% */}
       <div className="start-screen__right">
         <div className="start-screen__right-content">
           <form className="login-form" onSubmit={handleEmailLogin}>
@@ -167,21 +163,21 @@ function StartScreen() {
   );
 }
 
-function mapAuthError(code) {
-  switch (code) {
-    case 'auth/invalid-email':
-      return 'That email address looks invalid.';
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-    case 'auth/invalid-credential':
-      return 'Incorrect email or password.';
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Please try again later.';
-    case 'auth/popup-closed-by-user':
-      return 'Sign-in window was closed before completing.';
-    default:
-      return 'Something went wrong. Please try again.';
+// Supabase doesn't return Firebase-style error codes (e.g. "auth/wrong-password") —
+// it returns plain text messages on error.message. We match on message content instead.
+function mapAuthError(error) {
+  const msg = error?.message || '';
+
+  if (msg.includes('Invalid login credentials')) {
+    return 'Incorrect email or password.';
   }
+  if (msg.includes('Email not confirmed')) {
+    return 'Please confirm your email before signing in.';
+  }
+  if (msg.toLowerCase().includes('rate limit')) {
+    return 'Too many attempts. Please try again later.';
+  }
+  return 'Something went wrong. Please try again.';
 }
 
 export default StartScreen;

@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import StartScreen from './screens/StartScreen';
 import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
-import { auth, onAuthStateChanged, getUserStatus, logout } from './firebase';
+import { onAuthStateChange, getUserStatus, logout } from './supabase';
 
 import AgreementsScreen from './screens/AgreementsScreen';
 import AccountsScreen from './screens/AccountsScreen';
@@ -12,8 +12,8 @@ import AgreementDetailScreen from './screens/AgreementDetailScreen';
 import DashboardsScreen from './screens/DashboardsScreen';
 import TemplateBuildScreen from './screens/TemplateBuildScreen';
 import AskAIScreen from './screens/AskAIScreen';
+import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
-import ApprovalScreen from './screens/ApprovalScreen';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -22,7 +22,7 @@ function App() {
   const [blockedMessage, setBlockedMessage] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = onAuthStateChange(async (currentUser) => {
       if (currentUser) {
         const status = await getUserStatus(currentUser);
 
@@ -61,8 +61,6 @@ function App() {
           }
         />
 
-        <Route path="/approve/:approvalId" element={<ApprovalScreen />} />
-
         <Route
           path="/dashboard"
           element={
@@ -79,6 +77,7 @@ function App() {
           <Route path="dashboards" element={<DashboardsScreen />} />
           <Route path="templates" element={<TemplateBuildScreen />} />
           <Route path="ask-ai" element={<AskAIScreen />} />
+          <Route path="settings" element={<SettingsScreen />} />
           <Route
             path="admin"
             element={isAdmin ? <AdminScreen /> : <Navigate to="/dashboard/agreements" replace />}
