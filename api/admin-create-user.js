@@ -89,4 +89,4 @@ function mapCreateUserError(error) {
     return 'Password must be at least 6 characters.';
   }
   return msg || 'Something went wrong creating the user.';
-}
+} 
