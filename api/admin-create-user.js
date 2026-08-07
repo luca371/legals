@@ -1,3 +1,7 @@
+// api/admin-create-user.js
+// Runs server-side only (Vercel serverless function) — this is the ONE place
+// the service_role key is allowed to be used. Never import this key into
+// React/client code.
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseAdmin = createClient(
@@ -31,6 +35,8 @@ export default async function handler(req, res) {
 
   const finalPassword = password || generateTempPassword();
 
+  // 1. Create the auth user (admin API — bypasses normal signup flow,
+  // does NOT affect the currently logged-in admin's session).
   const { data: authUser, error: authError } = await supabaseAdmin.auth.admin.createUser({
     email,
     password: finalPassword,
@@ -41,6 +47,7 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: mapCreateUserError(authError) });
   }
 
+  // 2. Insert the business-data row into the public `users` table.
   const { error: profileError } = await supabaseAdmin.from('users').insert({
     id: authUser.user.id,
     tenant_id: tenantId,
@@ -55,11 +62,17 @@ export default async function handler(req, res) {
   });
 
   if (profileError) {
+    // Roll back the auth user if the profile insert fails, so we don't end
+    // up with an orphaned auth.users row that has no matching profile.
     await supabaseAdmin.auth.admin.deleteUser(authUser.user.id);
     return res.status(400).json({ error: profileError.message });
   }
 
-  await supabaseAdmin.auth.resetPasswordForEmail(email);
+  // 3. Send the "set your password" email — same purpose as the old
+  // sendInviteEmail (Firebase's sendPasswordResetEmail), just via Supabase.
+  await supabaseAdmin.auth.resetPasswordForEmail(email, {
+    redirectTo: `${process.env.APP_URL}/reset-password`,
+  });
 
   return res.status(200).json({ userId: authUser.user.id });
 }
