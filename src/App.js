@@ -14,6 +14,7 @@ import TemplateBuildScreen from './screens/TemplateBuildScreen';
 import AskAIScreen from './screens/AskAIScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
+import ResetPasswordScreen from './screens/ResetPasswordScreen';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -89,6 +90,7 @@ function App() {
           element={<Navigate to={user ? '/dashboard/agreements' : '/'} replace />}
         />
       </Routes>
+      <Route path="/reset-password" element={<ResetPasswordScreen />} />
     </BrowserRouter>
   );
 }
