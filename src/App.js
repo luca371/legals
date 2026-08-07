@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import StartScreen from './screens/StartScreen';
+import ResetPasswordScreen from './screens/ResetPasswordScreen';
 import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { onAuthStateChange, getUserStatus, logout } from './supabase';
@@ -14,7 +15,6 @@ import TemplateBuildScreen from './screens/TemplateBuildScreen';
 import AskAIScreen from './screens/AskAIScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
-import ResetPasswordScreen from './screens/ResetPasswordScreen';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -62,6 +62,8 @@ function App() {
           }
         />
 
+        <Route path="/reset-password" element={<ResetPasswordScreen />} />
+
         <Route
           path="/dashboard"
           element={
@@ -90,7 +92,6 @@ function App() {
           element={<Navigate to={user ? '/dashboard/agreements' : '/'} replace />}
         />
       </Routes>
-      <Route path="/reset-password" element={<ResetPasswordScreen />} />
     </BrowserRouter>
   );
 }
