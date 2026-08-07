@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 import {
-  db,
+  listUsers,
   createUserAsAdmin,
   updateUserProfile,
   sendInviteEmail,
   setUserActive,
   softDeleteUser,
+} from '../supabase';
+import {
   OBJECT_TYPES,
   getObjectSchema,
   addCustomField,
@@ -86,10 +87,6 @@ const FIELD_TYPES = [
   { value: 'lookup', label: 'Lookup' },
 ];
 
-function generateTempPassword() {
-  return Math.random().toString(36).slice(-8) + 'A1!';
-}
-
 function fieldTypeDisplay(f) {
   if (f.type === 'dropdown') return `Dropdown (${(f.options || []).join(', ')})`;
   if (f.type === 'lookup') return `Lookup to ${OBJECT_LABELS[f.lookupTarget] || '—'}`;
@@ -99,6 +96,7 @@ function fieldTypeDisplay(f) {
 function AdminScreen() {
   const [tab, setTab] = useState('users');
 
+  // ---- Users state ----
   const [users, setUsers] = useState([]);
   const [loadingUsers, setLoadingUsers] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -110,6 +108,7 @@ function AdminScreen() {
   const [openMenu, setOpenMenu] = useState(null);
   const menuRef = useRef(null);
 
+  // ---- Objects state ----
   const [objectType, setObjectType] = useState('account');
   const [customFields, setCustomFields] = useState([]);
   const [loadingFields, setLoadingFields] = useState(true);
@@ -120,21 +119,24 @@ function AdminScreen() {
   const [fieldError, setFieldError] = useState('');
   const [savingField, setSavingField] = useState(false);
 
+  // ---- Built-in edit state ----
   const [editingBuiltIn, setEditingBuiltIn] = useState(null);
   const [builtInOptions, setBuiltInOptions] = useState(['']);
   const [savingBuiltIn, setSavingBuiltIn] = useState(false);
 
+  // ---- Type→Subtype map state ----
   const [showMapModal, setShowMapModal] = useState(false);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
   const [savingMap, setSavingMap] = useState(false);
 
   const isEditMode = editingUser !== null;
 
+  // ---------- Users ----------
   const loadUsers = async () => {
     setLoadingUsers(true);
     try {
-      const snap = await getDocs(query(collection(db, 'users'), orderBy('createdAt', 'desc')));
-      setUsers(snap.docs.map((d) => ({ id: d.id, ...d.data() })).filter((u) => !u.isDeleted));
+      const data = await listUsers();
+      setUsers(data);
     } catch (err) {
       console.error('Failed to load users:', err);
     } finally {
@@ -212,9 +214,9 @@ function AdminScreen() {
         await updateUserProfile(editingUser.id, form);
         setSuccessMsg(`${form.firstName} ${form.lastName} was updated.`);
       } else {
-        const password = form.password || generateTempPassword();
-        await createUserAsAdmin({ ...form, password });
-        await sendInviteEmail(form.email);
+        // Password is optional here — the server route auto-generates one
+        // if it's left empty, same behavior as before.
+        await createUserAsAdmin(form);
         setSuccessMsg(`${form.firstName} ${form.lastName} was added and received an invite email.`);
       }
       handleCloseForm();
@@ -222,7 +224,7 @@ function AdminScreen() {
       setTimeout(() => setSuccessMsg(''), 5000);
     } catch (err) {
       console.error('Save user failed:', err);
-      setError(mapCreateUserError(err.code) || 'Something went wrong while saving the user.');
+      setError(err.message || 'Something went wrong while saving the user.');
     } finally {
       setSubmitting(false);
     }
@@ -265,6 +267,7 @@ function AdminScreen() {
     }
   };
 
+  // ---------- Objects (still on Firebase — scheduled for a later migration step) ----------
   const loadFields = async (type) => {
     setLoadingFields(true);
     try {
@@ -341,6 +344,7 @@ function AdminScreen() {
     }
   };
 
+  // ---------- Built-in field edit ----------
   const handleOpenBuiltInEdit = (field) => {
     if (field.isMap) {
       setShowMapModal(true);
@@ -380,6 +384,7 @@ function AdminScreen() {
     return opts.length > 0 ? `Dropdown (${opts.join(', ')})` : 'Dropdown (not configured)';
   };
 
+  // ---------- Type→Subtype map ----------
   const handleMapSubtypeChange = (type, index, value) => {
     setTypeSubtypeMap((prev) => {
       const current = [...(prev[type] || [])];
@@ -431,6 +436,7 @@ function AdminScreen() {
 
       {successMsg && <div className="admin__toast">{successMsg}</div>}
 
+      {/* ---- Users tab ---- */}
       {tab === 'users' && (
         <div className="admin__panel">
           <div className="admin__panel-header">
@@ -473,6 +479,7 @@ function AdminScreen() {
         </div>
       )}
 
+      {/* ---- Objects tab ---- */}
       {tab === 'objects' && (
         <div className="admin__objects">
           <div className="admin__object-cards">
@@ -672,6 +679,7 @@ function AdminScreen() {
         </div>
       )}
 
+      {/* Type → Subtype mapping modal */}
       {showMapModal && objectType === 'agreement' && (
         <div className="admin__modal-backdrop" onClick={() => setShowMapModal(false)}>
           <div className="admin__modal admin__modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -718,15 +726,6 @@ function AdminScreen() {
       )}
     </div>
   );
-}
-
-function mapCreateUserError(code) {
-  switch (code) {
-    case 'auth/email-already-in-use': return 'A user with this email already exists.';
-    case 'auth/invalid-email': return 'That email address looks invalid.';
-    case 'auth/weak-password': return 'Password must be at least 6 characters.';
-    default: return null;
-  }
 }
 
 export default AdminScreen;
