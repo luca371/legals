@@ -4,13 +4,11 @@ import htmlDocx from 'html-docx-js/dist/html-docx';
 import mammoth from 'mammoth';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
+import { getObjectSchema, getBuiltInFieldConfigs, getTypeSubtypeMap, connectMicrosoftGraph } from '../firebase';
 import {
   getAgreement,
   updateAgreement,
   deleteAgreement,
-  getObjectSchema,
-  getBuiltInFieldConfigs,
-  getTypeSubtypeMap,
   listAccounts,
   getAccount,
   listTemplates,
@@ -18,14 +16,13 @@ import {
   updateAgreementStatus,
   addAgreementAttachment,
   deleteAgreementAttachment,
-  connectMicrosoftGraph,
   addReviewSession,
   updateReviewSession,
   createApprovalRequest,
   listApprovalRequestsForAgreement,
   addDocusignEnvelope,
   updateDocusignEnvelope,
-} from '../firebase';
+} from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import {
   uploadFileToOneDrive,
@@ -580,7 +577,7 @@ function AgreementDetailScreen() {
 
   const handleImportFilesSelected = async (e) => {
     const files = Array.from(e.target.files || []);
-    e.target.value = ''; 
+    e.target.value = '';
     if (files.length === 0) return;
 
     setImporting(true);
@@ -773,8 +770,6 @@ function AgreementDetailScreen() {
         await updateAgreementStatus(agreementId, advancedStatus);
       }
 
-      // OneDrive is just the transient workbench — clean up now that the
-      // redlined copy lives back in Firebase.
       try {
         await deleteFileFromOneDrive(accessToken, session.oneDriveItemId);
       } catch (cleanupErr) {
@@ -903,8 +898,6 @@ function AgreementDetailScreen() {
     if (reviewingAI) return;
     setShowReviewAIModal(false);
   };
-
-  // ---- Send for signature (DocuSign) ----
 
   const openSignatureModal = () => {
     setShowSignatureModal(true);
@@ -1427,7 +1420,7 @@ function AgreementDetailScreen() {
                               : 'just now'}
                           </span>
                           {request.status !== 'Pending' && request.comment && (
-                            <span className="agrd__review-session-meta">“{request.comment}”</span>
+                            <span className="agrd__review-session-meta">"{request.comment}"</span>
                           )}
                         </div>
                         <div className="agrd__review-session-actions">
@@ -1533,7 +1526,6 @@ function AgreementDetailScreen() {
           </div>
         </div>
 
-        {/* Right actions panel */}
         <aside className="agrd__actions">
           <div className="agrd__actions-card">
             <h4 className="agrd__actions-title">Actions</h4>
@@ -1648,7 +1640,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Merge files modal */}
       {showMergeModal && (
         <div className="agrd__modal-backdrop" onClick={closeMergeModal}>
           <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
@@ -2018,7 +2009,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Send for signature modal (DocuSign) */}
       {showSignatureModal && (
         <div className="agrd__modal-backdrop" onClick={closeSignatureModal}>
           <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
@@ -2133,7 +2123,6 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {/* Activate modal */}
       {showActivateModal && (
         <div className="agrd__modal-backdrop" onClick={closeActivateModal}>
           <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>

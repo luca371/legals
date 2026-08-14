@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getObjectSchema, createAccount, listAccounts, deleteAccount } from '../firebase';
+import { getObjectSchema } from '../firebase';
+import { listAccounts, createAccount, deleteAccount } from '../supabase';
 import './AccountsScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -186,7 +187,6 @@ function AccountsScreen() {
         <button className="acc__add-btn" onClick={handleOpenCreate}>+ Create account</button>
       </div>
 
-      {/* Search + Filters */}
       <div className="acc__toolbar">
         <div className="acc__search-wrap">
           <SearchIcon />

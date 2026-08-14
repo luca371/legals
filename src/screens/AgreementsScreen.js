@@ -1,15 +1,15 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mammoth from 'mammoth';
+import { getObjectSchema, getBuiltInFieldConfigs, getTypeSubtypeMap } from '../firebase';
 import {
   listAgreements,
   createAgreement,
-  getObjectSchema,
-  getBuiltInFieldConfigs,
-  getTypeSubtypeMap,
   listAccounts,
-  auth,
-} from '../firebase';
+  listTemplates,
+  generateAgreementFromTemplate,
+  getCurrentUser,
+} from '../supabase';
 import './AgreementsScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
@@ -25,6 +25,7 @@ const EMPTY_FORM = {
   status: 'Draft',
   effectiveDate: '',
   endDate: '',
+  templateId: '',
 };
 
 function ChevronIcon() {
@@ -63,7 +64,7 @@ function SignedIcon() {
 
 function AgreementsScreen() {
   const navigate = useNavigate();
-  const currentUser = auth.currentUser;
+  const [currentUser, setCurrentUser] = useState(null);
 
   const [sideFilter, setSideFilter] = useState('mine');
   const [agreements, setAgreements] = useState([]);
@@ -77,6 +78,7 @@ function AgreementsScreen() {
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [customValues, setCustomValues] = useState({});
   const [accounts, setAccounts] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
@@ -111,8 +113,10 @@ function AgreementsScreen() {
 
   useEffect(() => {
     loadAgreements();
+    getCurrentUser().then(setCurrentUser).catch(console.error);
     getObjectSchema('agreement').then(setCustomFieldDefs).catch(console.error);
     listAccounts().then(setAccounts).catch(console.error);
+    listTemplates().then(setTemplates).catch(console.error);
     Promise.all([
       getBuiltInFieldConfigs('agreement'),
       getTypeSubtypeMap(),
@@ -126,7 +130,7 @@ function AgreementsScreen() {
 
   const filtered = useMemo(() => {
     if (sideFilter === 'mine') {
-      return agreements.filter((a) => a.createdBy === (currentUser?.displayName || currentUser?.email));
+      return agreements.filter((a) => a.createdBy === currentUser?.email);
     }
     return agreements;
   }, [agreements, sideFilter, currentUser]);
@@ -150,7 +154,11 @@ function AgreementsScreen() {
 
   const handleChooseFlow = (flow) => {
     setCreateFlow(flow);
-    setCreateStep(flow === 'form' ? 'form' : 'upload');
+    if (flow === 'form') {
+      setCreateStep('template');
+    } else {
+      setCreateStep('upload');
+    }
   };
 
   const handleFileChange = async (e) => {
@@ -176,11 +184,14 @@ function AgreementsScreen() {
       const acc = accounts.find((a) => a.id === value);
       setForm((prev) => ({ ...prev, accountId: value, accountName: acc?.name || '' }));
     } else if (name === 'agreementType') {
-      // Reset subtype when type changes
       setForm((prev) => ({ ...prev, agreementType: value, agreementSubtype: '' }));
     } else {
       setForm((prev) => ({ ...prev, [name]: value }));
     }
+  };
+
+  const handleSelectTemplate = (templateId) => {
+    setForm((prev) => ({ ...prev, templateId }));
   };
 
   const handleCustomChange = (fieldId, value) => setCustomValues((prev) => ({ ...prev, [fieldId]: value }));
@@ -191,15 +202,35 @@ function AgreementsScreen() {
     if (!form.title.trim()) { setFormError('Agreement title is required.'); return; }
     setSaving(true);
     try {
-      const statusOverride = createFlow === 'signed' ? 'Signed' : form.status;
-      const docRef = await createAgreement({
+      let contentHtml = uploadedFile?.contentHtml || '';
+      let statusOverride = createFlow === 'signed' ? 'Signed' : form.status;
+
+      if (createFlow === 'form' && form.templateId) {
+        const template = templates.find((t) => t.id === form.templateId);
+        if (template) {
+          const mergeValues = {
+            title: form.title,
+            account_name: form.accountName,
+            agreement_type: form.agreementType,
+            agreement_subtype: form.agreementSubtype,
+            language: form.language,
+            effective_date: form.effectiveDate,
+            end_date: form.endDate,
+            ...customValues,
+          };
+          contentHtml = generateAgreementFromTemplate(template.contentHtml, mergeValues);
+          statusOverride = 'Generated';
+        }
+      }
+
+      const created = await createAgreement({
         ...form,
         status: statusOverride,
         customFields: customValues,
-        contentHtml: uploadedFile?.contentHtml || '',
+        contentHtml,
       });
       handleCloseCreate();
-      navigate(`/dashboard/agreements/${docRef.id}`);
+      navigate(`/dashboard/agreements/${created.id}`);
     } catch (err) {
       console.error('Failed to create agreement:', err);
       setFormError('Something went wrong while saving the agreement.');
@@ -226,6 +257,7 @@ function AgreementsScreen() {
   const statusClass = (status) => {
     switch ((status || '').toLowerCase()) {
       case 'draft': return 'agr__status--draft';
+      case 'generated': return 'agr__status--draft';
       case 'in review': return 'agr__status--review';
       case 'approved': return 'agr__status--approved';
       case 'signed': return 'agr__status--signed';
@@ -295,7 +327,7 @@ function AgreementsScreen() {
                   <button className="agr__flow-card" onClick={() => handleChooseFlow('form')}>
                     <FormIcon />
                     <span className="agr__flow-card-title">Contract form</span>
-                    <span className="agr__flow-card-desc">Fill in the agreement details using a structured form and generate the document.</span>
+                    <span className="agr__flow-card-desc">Fill in the agreement details, optionally pick a template, and generate the document.</span>
                   </button>
                   <button className="agr__flow-card" onClick={() => handleChooseFlow('offline')}>
                     <UploadIcon />
@@ -310,6 +342,44 @@ function AgreementsScreen() {
                 </div>
                 <div className="agr__modal-actions">
                   <button className="agr__btn-secondary" onClick={handleCloseCreate}>Cancel</button>
+                </div>
+              </>
+            )}
+
+            {createStep === 'template' && (
+              <>
+                <div className="agr__modal-header">
+                  <h3 className="agr__modal-title">Choose a template</h3>
+                  <p className="agr__modal-subtitle">Pick a template to auto-generate the document, or skip and fill it in manually later.</p>
+                </div>
+                <div className="agr__modal-scroll">
+                  <div className="agr__flow-cards">
+                    <button
+                      className={`agr__flow-card ${!form.templateId ? 'agr__flow-card--selected' : ''}`}
+                      onClick={() => handleSelectTemplate('')}
+                    >
+                      <FormIcon />
+                      <span className="agr__flow-card-title">No template</span>
+                      <span className="agr__flow-card-desc">Start with a blank agreement.</span>
+                    </button>
+                    {templates.map((t) => (
+                      <button
+                        key={t.id}
+                        className={`agr__flow-card ${form.templateId === t.id ? 'agr__flow-card--selected' : ''}`}
+                        onClick={() => handleSelectTemplate(t.id)}
+                      >
+                        <FormIcon />
+                        <span className="agr__flow-card-title">{t.title}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {templates.length === 0 && (
+                    <p className="agr__empty">No templates yet — you can still continue and fill in the agreement manually.</p>
+                  )}
+                </div>
+                <div className="agr__modal-actions">
+                  <button className="agr__btn-secondary" onClick={() => setCreateStep('choose')}>Back</button>
+                  <button className="agr__btn-primary" onClick={() => setCreateStep('form')}>Next</button>
                 </div>
               </>
             )}
@@ -361,6 +431,7 @@ function AgreementsScreen() {
                 <div className="agr__modal-header">
                   <h3 className="agr__modal-title">Agreement details</h3>
                   {createFlow === 'signed' && <p className="agr__modal-subtitle">Status will be set to <strong>Signed</strong> automatically.</p>}
+                  {createFlow === 'form' && form.templateId && <p className="agr__modal-subtitle">The document will be generated from the selected template.</p>}
                 </div>
                 <div className="agr__modal-scroll">
                   {formError && <p className="agr__form-error">{formError}</p>}
@@ -452,9 +523,9 @@ function AgreementsScreen() {
                   </div>
                 </div>
                 <div className="agr__modal-actions">
-                  <button className="agr__btn-secondary" onClick={() => createFlow === 'form' ? setCreateStep('choose') : setCreateStep('upload')}>Back</button>
+                  <button className="agr__btn-secondary" onClick={() => createFlow === 'form' ? setCreateStep('template') : setCreateStep('upload')}>Back</button>
                   <button className="agr__btn-primary" disabled={saving} onClick={handleSubmit}>
-                    {saving ? 'Saving…' : 'Create agreement'}
+                    {saving ? 'Saving…' : createFlow === 'form' && form.templateId ? 'Generate agreement' : 'Create agreement'}
                   </button>
                 </div>
               </>
