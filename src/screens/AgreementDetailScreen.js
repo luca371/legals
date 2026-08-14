@@ -561,6 +561,27 @@ function AgreementDetailScreen() {
     }
   };
 
+  const handlePreviewAttachment = async (attachment) => {
+    try {
+      let html = attachment.sourceHtml;
+      if (!html && attachment.dataBase64) {
+        const arrayBuffer = base64ToArrayBuffer(attachment.dataBase64);
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        html = result.value;
+      }
+      if (!html || !html.trim()) {
+        alert('This file has no readable content to preview.');
+        return;
+      }
+      const blob = new Blob([wrapAsHtmlDocument(html)], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+    } catch (err) {
+      console.error('Failed to preview attachment:', err);
+      alert('Could not preview this file.');
+    }
+  };
+
   const handleDownloadAttachment = (attachment) => {
     try {
       const blob = base64ToBlob(attachment.dataBase64, attachment.mimeType || DOCX_MIME);
@@ -1514,6 +1535,13 @@ function AgreementDetailScreen() {
                           </div>
                         </div>
                         <div className="agrd__attachment-actions">
+                          <button
+                            type="button"
+                            className="agrd__attachment-btn"
+                            onClick={() => handlePreviewAttachment(att)}
+                          >
+                            Preview
+                          </button>
                           <button
                             type="button"
                             className="agrd__attachment-btn"
