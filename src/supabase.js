@@ -362,6 +362,84 @@ export const listTemplates = async () => {
   }));
 };
 
+export const OBJECT_TYPES = ['account', 'agreement', 'template'];
+
+const ensureObjectSchemaRow = async (objectType) => {
+  const { data, error } = await supabase
+    .from('object_schemas')
+    .select('*')
+    .eq('object_type', objectType)
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+
+  const tenantId = await getCurrentTenantId();
+  const { data: created, error: insertError } = await supabase
+    .from('object_schemas')
+    .insert({ tenant_id: tenantId, object_type: objectType, custom_fields: [], built_in_configs: {} })
+    .select()
+    .single();
+  if (insertError) throw insertError;
+  return created;
+};
+
+export const getObjectSchema = async (objectType) => {
+  const row = await ensureObjectSchemaRow(objectType);
+  return row.custom_fields || [];
+};
+
+export const addCustomField = async (objectType, field) => {
+  const row = await ensureObjectSchemaRow(objectType);
+  const newField = { id: `fld_${Date.now()}`, ...field };
+  const customFields = [...(row.custom_fields || []), newField];
+  const { error } = await supabase
+    .from('object_schemas')
+    .update({ custom_fields: customFields })
+    .eq('id', row.id);
+  if (error) throw error;
+  return newField;
+};
+
+export const removeCustomField = async (objectType, fieldId) => {
+  const row = await ensureObjectSchemaRow(objectType);
+  const customFields = (row.custom_fields || []).filter((f) => f.id !== fieldId);
+  const { error } = await supabase
+    .from('object_schemas')
+    .update({ custom_fields: customFields })
+    .eq('id', row.id);
+  if (error) throw error;
+};
+
+export const getBuiltInFieldConfigs = async (objectType) => {
+  const row = await ensureObjectSchemaRow(objectType);
+  return row.built_in_configs || {};
+};
+
+export const updateBuiltInFieldConfig = async (objectType, fieldKey, options) => {
+  const row = await ensureObjectSchemaRow(objectType);
+  const builtInConfigs = { ...(row.built_in_configs || {}), [fieldKey]: options };
+  const { error } = await supabase
+    .from('object_schemas')
+    .update({ built_in_configs: builtInConfigs })
+    .eq('id', row.id);
+  if (error) throw error;
+};
+
+export const getTypeSubtypeMap = async () => {
+  const row = await ensureObjectSchemaRow('agreement');
+  return (row.built_in_configs || {}).agreementTypeSubtypeMap || {};
+};
+
+export const updateTypeSubtypeMap = async (map) => {
+  const row = await ensureObjectSchemaRow('agreement');
+  const builtInConfigs = { ...(row.built_in_configs || {}), agreementTypeSubtypeMap: map };
+  const { error } = await supabase
+    .from('object_schemas')
+    .update({ built_in_configs: builtInConfigs })
+    .eq('id', row.id);
+  if (error) throw error;
+};
+
 export const generateAgreementFromTemplate = (templateHtml, formValues) => {
   let result = templateHtml || '';
   Object.entries(formValues).forEach(([key, value]) => {

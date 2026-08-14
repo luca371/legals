@@ -7,8 +7,6 @@ import {
   sendInviteEmail,
   setUserActive,
   softDeleteUser,
-} from '../supabase';
-import {
   OBJECT_TYPES,
   getObjectSchema,
   addCustomField,
@@ -17,7 +15,7 @@ import {
   updateBuiltInFieldConfig,
   getTypeSubtypeMap,
   updateTypeSubtypeMap,
-} from '../firebase';
+} from '../supabase';
 import './AdminScreen.css';
 
 const EMPTY_FORM = {

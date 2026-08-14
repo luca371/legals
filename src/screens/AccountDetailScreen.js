@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getObjectSchema } from '../firebase';
-import { getAccount, updateAccount, deleteAccount, listAgreementsByAccount } from '../supabase';
+import { getAccount, updateAccount, deleteAccount, listAgreementsByAccount, getObjectSchema } from '../supabase';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];

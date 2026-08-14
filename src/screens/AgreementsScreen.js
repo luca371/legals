@@ -1,12 +1,14 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mammoth from 'mammoth';
-import { getObjectSchema, getBuiltInFieldConfigs, getTypeSubtypeMap } from '../firebase';
 import {
   listAgreements,
   createAgreement,
   listAccounts,
   getCurrentUser,
+  getObjectSchema,
+  getBuiltInFieldConfigs,
+  getTypeSubtypeMap,
 } from '../supabase';
 import './AgreementsScreen.css';
 

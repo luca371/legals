@@ -4,7 +4,7 @@ import htmlDocx from 'html-docx-js/dist/html-docx';
 import mammoth from 'mammoth';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { getObjectSchema, getBuiltInFieldConfigs, getTypeSubtypeMap, connectMicrosoftGraph } from '../firebase';
+import { connectMicrosoftGraph } from '../firebase';
 import {
   getAgreement,
   updateAgreement,
@@ -22,6 +22,9 @@ import {
   listApprovalRequestsForAgreement,
   addDocusignEnvelope,
   updateDocusignEnvelope,
+  getObjectSchema,
+  getBuiltInFieldConfigs,
+  getTypeSubtypeMap,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import {
