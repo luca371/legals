@@ -209,6 +209,49 @@ export const deleteAccount = async (id) => {
   if (error) throw error;
 };
 
+export const updateAccount = (id, updates) =>
+  supabase
+    .from('accounts')
+    .update({
+      name: updates.name,
+      country: updates.country,
+      city: updates.city,
+      address: updates.address,
+      tax_registration_number: updates.taxRegistrationNumber,
+      abbreviation: updates.abbreviation || '',
+      registered_office: updates.registeredOffice || '',
+      status: updates.status,
+      custom_fields: updates.customFields || {},
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+export const listAgreementsByAccount = async (accountId) => {
+  const { data, error } = await supabase
+    .from('agreements')
+    .select('*')
+    .eq('account_id', accountId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((a) => ({
+    id: a.id,
+    accountId: a.account_id,
+    accountName: a.account_name,
+    title: a.title,
+    agreementType: a.agreement_type,
+    agreementSubtype: a.agreement_subtype,
+    language: a.language,
+    status: a.status,
+    effectiveDate: a.effective_date,
+    endDate: a.end_date,
+    templateId: a.template_id,
+    contentHtml: a.content_html,
+    customFields: a.custom_fields || {},
+    createdBy: a.created_by,
+    createdAt: a.created_at,
+  }));
+};
+
 export const listAgreements = async () => {
   const { data, error } = await supabase
     .from('agreements')

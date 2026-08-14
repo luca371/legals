@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getAccount, updateAccount, deleteAccount, getObjectSchema, listAgreementsByAccount } from '../firebase';
+import { getObjectSchema } from '../firebase';
+import { getAccount, updateAccount, deleteAccount, listAgreementsByAccount } from '../supabase';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -25,7 +26,7 @@ function AccountDetailScreen() {
   const { accountId } = useParams();
   const navigate = useNavigate();
 
-  const [activeTab, setActiveTab] = useState('info'); // 'info' | 'agreements'
+  const [activeTab, setActiveTab] = useState('info');
 
   const [account, setAccount] = useState(null);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
