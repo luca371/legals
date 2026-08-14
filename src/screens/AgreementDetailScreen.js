@@ -30,6 +30,7 @@ import {
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
+import { finalizeRedlineHtml, countPendingChanges } from '../redlineUtils';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
 
@@ -333,6 +334,10 @@ function AgreementDetailScreen() {
   const [reviewRequests, setReviewRequests] = useState([]);
   const [copiedReviewId, setCopiedReviewId] = useState('');
   const [processingReviewId, setProcessingReviewId] = useState('');
+  const [showChangesModal, setShowChangesModal] = useState(false);
+  const [activeReviewRequest, setActiveReviewRequest] = useState(null);
+  const [pendingChangeCount, setPendingChangeCount] = useState(0);
+  const redlineContainerRef = useRef(null);
 
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAttachmentId, setApprovalAttachmentId] = useState('');
@@ -787,40 +792,98 @@ function AgreementDetailScreen() {
     window.open(url, '_blank');
   };
 
-  const handleAcceptReviewChanges = async (reviewRequest) => {
-    if (!window.confirm('Accept these changes? A new attachment will be created with the reviewed content.')) return;
-    setProcessingReviewId(reviewRequest.id);
+  const openChangesModal = (reviewRequest) => {
+    setActiveReviewRequest(reviewRequest);
+    setShowChangesModal(true);
+  };
+
+  const closeChangesModal = () => {
+    if (processingReviewId) return;
+    setShowChangesModal(false);
+    setActiveReviewRequest(null);
+    setPendingChangeCount(0);
+  };
+
+  useEffect(() => {
+    if (showChangesModal && redlineContainerRef.current) {
+      setPendingChangeCount(countPendingChanges(redlineContainerRef.current));
+    }
+  }, [showChangesModal, activeReviewRequest]);
+
+  const handleRedlineClick = (e) => {
+    const btn = e.target.closest('.redline-btn');
+    if (!btn) return;
+    const changeId = btn.getAttribute('data-change-id');
+    const wrapper = redlineContainerRef.current?.querySelector(`[data-change-id="${changeId}"]`);
+    if (!wrapper) return;
+    const decision = btn.classList.contains('redline-accept') ? 'accepted' : 'rejected';
+    wrapper.setAttribute('data-decision', decision);
+    wrapper.style.outline = decision === 'accepted' ? '2px solid #1a7a41' : '2px solid #b42318';
+    wrapper.style.opacity = decision === 'rejected' ? '0.55' : '1';
+    setPendingChangeCount(countPendingChanges(redlineContainerRef.current));
+  };
+
+  const handleAcceptAllRemaining = () => {
+    if (!redlineContainerRef.current) return;
+    redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
+      if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
+        el.setAttribute('data-decision', 'accepted');
+        el.style.outline = '2px solid #1a7a41';
+      }
+    });
+    setPendingChangeCount(0);
+  };
+
+  const handleRejectAllRemaining = () => {
+    if (!redlineContainerRef.current) return;
+    redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
+      if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
+        el.setAttribute('data-decision', 'rejected');
+        el.style.outline = '2px solid #b42318';
+        el.style.opacity = '0.55';
+      }
+    });
+    setPendingChangeCount(0);
+  };
+
+  const handleFinalizeReview = async () => {
+    if (!redlineContainerRef.current || !activeReviewRequest) return;
+    setProcessingReviewId(activeReviewRequest.id);
     try {
-      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(reviewRequest.submittedHtml));
+      const finalHtml = finalizeRedlineHtml(redlineContainerRef.current);
+      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(finalHtml));
       const dataBase64 = await blobToBase64(docxBlob);
       const newAttachment = {
         id: `att_${Date.now()}`,
-        name: buildRedlineFileName(reviewRequest.attachmentName),
+        name: buildRedlineFileName(activeReviewRequest.attachmentName),
         size: docxBlob.size,
         mimeType: DOCX_MIME,
         dataBase64,
-        sourceHtml: reviewRequest.submittedHtml,
+        sourceHtml: finalHtml,
         uploadedAt: new Date().toISOString(),
       };
       await addAgreementAttachment(agreementId, newAttachment);
-      await acceptReviewChanges(reviewRequest.id);
+      await acceptReviewChanges(activeReviewRequest.id);
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'Reviewed');
       if (advancedStatus) {
         await updateAgreementStatus(agreementId, advancedStatus);
       }
 
+      setShowChangesModal(false);
+      setActiveReviewRequest(null);
+      setActiveNav('attachments');
       await load();
     } catch (err) {
-      console.error('Failed to accept review changes:', err);
-      alert('Could not accept the changes. Please try again.');
+      console.error('Failed to finalize review changes:', err);
+      alert('Could not finalize the review. Please try again.');
     } finally {
       setProcessingReviewId('');
     }
   };
 
   const handleRejectReviewChanges = async (reviewRequest) => {
-    if (!window.confirm('Reject these changes? They will not be applied to the agreement.')) return;
+    if (!window.confirm('Reject this entire submission? None of these changes will be applied.')) return;
     setProcessingReviewId(reviewRequest.id);
     try {
       await rejectReviewChanges(reviewRequest.id);
@@ -1434,15 +1497,14 @@ function AgreementDetailScreen() {
                                 className="agrd__attachment-btn"
                                 onClick={() => handlePreviewSubmittedChanges(rr)}
                               >
-                                Preview changes
+                                Preview final
                               </button>
                               <button
                                 type="button"
                                 className="agrd__attachment-btn"
-                                onClick={() => handleAcceptReviewChanges(rr)}
-                                disabled={processingReviewId === rr.id}
+                                onClick={() => openChangesModal(rr)}
                               >
-                                {processingReviewId === rr.id ? 'Working…' : 'Accept'}
+                                Review changes
                               </button>
                               <button
                                 type="button"
@@ -1450,7 +1512,7 @@ function AgreementDetailScreen() {
                                 onClick={() => handleRejectReviewChanges(rr)}
                                 disabled={processingReviewId === rr.id}
                               >
-                                Reject
+                                Reject all
                               </button>
                             </>
                           )}
@@ -2224,6 +2286,60 @@ function AgreementDetailScreen() {
               </button>
               <button type="button" className="agrd__btn-primary" onClick={handleActivate} disabled={activating}>
                 {activating ? 'Activating…' : 'Activate'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {showChangesModal && activeReviewRequest && (
+        <div className="agrd__modal-backdrop" onClick={closeChangesModal}>
+          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px' }}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Review changes</h3>
+              <p className="agrd__modal-subtitle">
+                From {activeReviewRequest.reviewerName || activeReviewRequest.reviewerEmail} · deletions are struck through, additions are underlined.
+                Click ✓ to accept or ✕ to reject each change.
+              </p>
+
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                <button type="button" className="agrd__attachment-btn" onClick={handleAcceptAllRemaining}>
+                  Accept all remaining
+                </button>
+                <button type="button" className="agrd__attachment-btn" onClick={handleRejectAllRemaining}>
+                  Reject all remaining
+                </button>
+                <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: pendingChangeCount > 0 ? '#9a6a00' : '#1a7a41', alignSelf: 'center' }}>
+                  {pendingChangeCount > 0 ? `${pendingChangeCount} change${pendingChangeCount === 1 ? '' : 's'} pending` : 'All changes decided'}
+                </span>
+              </div>
+
+              <div
+                ref={redlineContainerRef}
+                onClick={handleRedlineClick}
+                style={{
+                  border: '1px solid #e6e7ee',
+                  borderRadius: '12px',
+                  padding: '24px',
+                  fontSize: '0.9rem',
+                  lineHeight: 1.7,
+                  maxHeight: '50vh',
+                  overflowY: 'auto',
+                }}
+                dangerouslySetInnerHTML={{ __html: activeReviewRequest.redlineHtml || '<p>No changes detected.</p>' }}
+              />
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeChangesModal} disabled={!!processingReviewId}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="agrd__btn-primary"
+                onClick={handleFinalizeReview}
+                disabled={pendingChangeCount > 0 || !!processingReviewId}
+              >
+                {processingReviewId ? 'Finalizing…' : 'Finalize & apply'}
               </button>
             </div>
           </div>

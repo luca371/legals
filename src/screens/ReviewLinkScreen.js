@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getReviewRequestPublic, submitReviewChanges } from '../supabase';
+import { computeRedlineHtml } from '../redlineUtils';
 import './StartScreen.css';
 
 function ReviewLinkScreen() {
@@ -37,7 +38,8 @@ function ReviewLinkScreen() {
     setError('');
     try {
       const finalHtml = editableRef.current.innerHTML || '';
-      await submitReviewChanges(reviewId, finalHtml);
+      const redlineHtml = computeRedlineHtml(review.originalHtml, finalHtml);
+      await submitReviewChanges(reviewId, finalHtml, redlineHtml);
       setSubmitted(true);
     } catch (err) {
       console.error('Failed to submit review changes:', err);

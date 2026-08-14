@@ -430,6 +430,7 @@ export const listReviewRequestsForAgreement = async (agreementId) => {
     message: r.message,
     status: r.status,
     submittedHtml: r.submitted_html,
+    redlineHtml: r.redline_html,
     submittedAt: r.submitted_at,
     createdAt: r.created_at,
   }));
@@ -454,11 +455,12 @@ export const getReviewRequestPublic = async (id) => {
   };
 };
 
-export const submitReviewChanges = async (id, submittedHtml) => {
+export const submitReviewChanges = async (id, submittedHtml, redlineHtml) => {
   const { error } = await supabase
     .from('review_requests')
     .update({
       submitted_html: submittedHtml,
+      redline_html: redlineHtml,
       status: 'Submitted',
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
