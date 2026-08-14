@@ -83,9 +83,16 @@ function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+function normalizeText(text) {
+  return text
+    .split('\n\n')
+    .map((para) => para.replace(/[ \t]+/g, ' ').replace(/\s*\n\s*/g, ' ').trim())
+    .join('\n\n');
+}
+
 export function computeRedlineHtml(originalHtml, editedHtml) {
-  const originalText = paragraphsToText(htmlToParagraphs(originalHtml));
-  const editedText = paragraphsToText(htmlToParagraphs(editedHtml));
+  const originalText = normalizeText(paragraphsToText(htmlToParagraphs(originalHtml)));
+  const editedText = normalizeText(paragraphsToText(htmlToParagraphs(editedHtml)));
   const tokens = diffTokens(tokenize(originalText), tokenize(editedText));
 
   let changeCounter = 0;
