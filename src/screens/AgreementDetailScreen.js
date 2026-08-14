@@ -380,33 +380,42 @@ function AgreementDetailScreen() {
 
   const load = async () => {
     setLoading(true);
+    let agr;
     try {
-      const [agr, schema, accs, configs, map, approvals] = await Promise.all([
-        getAgreement(agreementId),
+      agr = await getAgreement(agreementId);
+    } catch (err) {
+      console.error('Failed to load agreement:', err);
+      setNotFound(true);
+      setLoading(false);
+      return;
+    }
+    setAgreement(agr);
+
+    try {
+      const [schema, configs, map, approvals] = await Promise.all([
         getObjectSchema('agreement'),
-        listAccounts(),
         getBuiltInFieldConfigs('agreement'),
         getTypeSubtypeMap(),
         listApprovalRequestsForAgreement(agreementId),
       ]);
-      if (!agr) {
-        setNotFound(true);
-      } else {
-        setAgreement(agr);
-        setCustomFieldDefs(schema);
-        setAccounts(accs);
-        setTypeSubtypeMap(map);
-        setApprovalRequests(approvals);
-        if (configs.status?.length) setStatusOptions(configs.status);
-        if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
-        if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
-      }
+      setCustomFieldDefs(schema);
+      setApprovalRequests(approvals);
+      if (configs.status?.length) setStatusOptions(configs.status);
+      if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
+      if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
+      setTypeSubtypeMap(map);
     } catch (err) {
-      console.error('Failed to load agreement:', err);
-      setNotFound(true);
-    } finally {
-      setLoading(false);
+      console.error('Failed to load agreement metadata (non-blocking):', err);
     }
+
+    try {
+      const accs = await listAccounts();
+      setAccounts(accs);
+    } catch (err) {
+      console.error('Failed to load accounts (non-blocking):', err);
+    }
+
+    setLoading(false);
   };
 
   useEffect(() => {

@@ -45,22 +45,22 @@ function AccountDetailScreen() {
   const load = async () => {
     setLoading(true);
     try {
-      const [acc, schema] = await Promise.all([
-        getAccount(accountId),
-        getObjectSchema('account'),
-      ]);
-      if (!acc) {
-        setNotFound(true);
-      } else {
-        setAccount(acc);
-        setCustomFieldDefs(schema);
-      }
+      const acc = await getAccount(accountId);
+      setAccount(acc);
     } catch (err) {
       console.error('Failed to load account:', err);
       setNotFound(true);
-    } finally {
       setLoading(false);
+      return;
     }
+    try {
+      const schema = await getObjectSchema('account');
+      setCustomFieldDefs(schema);
+    } catch (err) {
+      console.error('Failed to load account custom fields (non-blocking):', err);
+      setCustomFieldDefs([]);
+    }
+    setLoading(false);
   };
 
   const loadAgreements = async () => {
