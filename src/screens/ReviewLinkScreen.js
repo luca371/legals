@@ -2,7 +2,51 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getReviewRequestPublic, submitReviewChanges } from '../supabase';
 import { computeRedlineHtml } from '../redlineUtils';
-import './StartScreen.css';
+
+const fontStack = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+const headingFontStack = "'Sora', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+
+function CenteredMessage({ icon, title, subtitle }) {
+  return (
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        background: '#f7f8fc',
+        fontFamily: fontStack,
+        padding: '24px',
+      }}
+    >
+      <div
+        style={{
+          background: '#ffffff',
+          borderRadius: '16px',
+          padding: '40px 36px',
+          maxWidth: '420px',
+          width: '100%',
+          textAlign: 'center',
+          boxShadow: '0 8px 30px rgba(0, 18, 114, 0.08)',
+        }}
+      >
+        <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>{icon}</div>
+        <h2
+          style={{
+            fontFamily: headingFontStack,
+            fontWeight: 700,
+            fontSize: '1.25rem',
+            color: '#001272',
+            margin: '0 0 10px',
+          }}
+        >
+          {title}
+        </h2>
+        <p style={{ fontSize: '0.9rem', color: '#6b6f86', margin: 0, lineHeight: 1.6 }}>{subtitle}</p>
+      </div>
+    </div>
+  );
+}
 
 function ReviewLinkScreen() {
   const { reviewId } = useParams();
@@ -50,46 +94,32 @@ function ReviewLinkScreen() {
   };
 
   if (loading) {
-    return (
-      <div className="start-screen">
-        <div className="start-screen__right" style={{ width: '100%' }}>
-          <div className="start-screen__right-content">
-            <p>Loading…</p>
-          </div>
-        </div>
-      </div>
-    );
+    return <CenteredMessage icon="⏳" title="Loading…" subtitle="Fetching the document for review." />;
   }
 
   if (notFound) {
     return (
-      <div className="start-screen">
-        <div className="start-screen__right" style={{ width: '100%' }}>
-          <div className="start-screen__right-content">
-            <h2 className="login-form__title">Link not found</h2>
-            <p className="login-form__hint">This review link doesn't exist or has been removed.</p>
-          </div>
-        </div>
-      </div>
+      <CenteredMessage
+        icon="🔗"
+        title="Link not found"
+        subtitle="This review link doesn't exist or has been removed."
+      />
     );
   }
 
   if (submitted) {
-    return (
-      <div className="start-screen">
-        <div className="start-screen__right" style={{ width: '100%' }}>
-          <div className="start-screen__right-content">
-            <h2 className="login-form__title">
-              {review.status === 'Pending' ? 'Changes submitted' : 'This link has already been used'}
-            </h2>
-            <p className="login-form__hint">
-              {review.status === 'Pending'
-                ? 'Thank you — your changes have been submitted and the sender has been notified.'
-                : 'This review link is no longer active. If you need to make further changes, ask the sender for a new link.'}
-            </p>
-          </div>
-        </div>
-      </div>
+    return review.status === 'Pending' ? (
+      <CenteredMessage
+        icon="✅"
+        title="Changes submitted"
+        subtitle="Thank you — your changes have been submitted and the sender has been notified."
+      />
+    ) : (
+      <CenteredMessage
+        icon="⚠️"
+        title="This link has already been used"
+        subtitle="This review link is no longer active. If you need to make further changes, ask the sender for a new link."
+      />
     );
   }
 
