@@ -4,7 +4,6 @@ import htmlDocx from 'html-docx-js/dist/html-docx';
 import mammoth from 'mammoth';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
-import { connectMicrosoftGraph } from '../firebase';
 import {
   getAgreement,
   updateAgreement,
@@ -16,8 +15,6 @@ import {
   updateAgreementStatus,
   addAgreementAttachment,
   deleteAgreementAttachment,
-  addReviewSession,
-  updateReviewSession,
   createApprovalRequest,
   listApprovalRequestsForAgreement,
   addDocusignEnvelope,
@@ -25,14 +22,12 @@ import {
   getObjectSchema,
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
+  createReviewRequest,
+  listReviewRequestsForAgreement,
+  acceptReviewChanges,
+  rejectReviewChanges,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
-import {
-  uploadFileToOneDrive,
-  shareFileForReview,
-  downloadFileFromOneDrive,
-  deleteFileFromOneDrive,
-} from '../graphApi';
 import { sendApprovalEmail, sendActivationEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
 import './AgreementDetailScreen.css';
@@ -335,8 +330,9 @@ function AgreementDetailScreen() {
   const [reviewMessage, setReviewMessage] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
   const [reviewError, setReviewError] = useState('');
-  const [fetchingSessionId, setFetchingSessionId] = useState('');
-  const [copiedSessionId, setCopiedSessionId] = useState('');
+  const [reviewRequests, setReviewRequests] = useState([]);
+  const [copiedReviewId, setCopiedReviewId] = useState('');
+  const [processingReviewId, setProcessingReviewId] = useState('');
 
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAttachmentId, setApprovalAttachmentId] = useState('');
@@ -395,14 +391,16 @@ function AgreementDetailScreen() {
     setAgreement(agr);
 
     try {
-      const [schema, configs, map, approvals] = await Promise.all([
+      const [schema, configs, map, approvals, reviews] = await Promise.all([
         getObjectSchema('agreement'),
         getBuiltInFieldConfigs('agreement'),
         getTypeSubtypeMap(),
         listApprovalRequestsForAgreement(agreementId),
+        listReviewRequestsForAgreement(agreementId),
       ]);
       setCustomFieldDefs(schema);
       setApprovalRequests(approvals);
+      setReviewRequests(reviews);
       if (configs.status?.length) setStatusOptions(configs.status);
       if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
       if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
@@ -654,11 +652,6 @@ function AgreementDetailScreen() {
     [agreement]
   );
 
-  const reviewableAttachments = useMemo(
-    () => mergeableAttachments.filter((a) => !a.sourceHtml),
-    [mergeableAttachments]
-  );
-
   const openMergeModal = () => {
     setShowMergeModal(true);
     setMergeError('');
@@ -728,7 +721,7 @@ function AgreementDetailScreen() {
   };
 
   const handleSendToReview = async () => {
-    const attachment = reviewableAttachments.find((a) => a.id === reviewAttachmentId);
+    const attachment = mergeableAttachments.find((a) => a.id === reviewAttachmentId);
     if (!attachment) {
       setReviewError('Select a document to send.');
       return;
@@ -745,23 +738,19 @@ function AgreementDetailScreen() {
     setSendingReview(true);
     setReviewError('');
     try {
-      const { accessToken } = await connectMicrosoftGraph();
+      const originalHtml = await attachmentToMergeHtml(attachment);
 
-      const blob = base64ToBlob(attachment.dataBase64, DOCX_MIME);
-      const uploaded = await uploadFileToOneDrive(accessToken, attachment.name, blob);
-      await shareFileForReview(accessToken, uploaded.id, recipients, reviewMessage);
-
-      await addReviewSession(agreementId, {
-        id: `rev_${Date.now()}`,
-        attachmentId: attachment.id,
-        attachmentName: attachment.name,
-        oneDriveItemId: uploaded.id,
-        webUrl: uploaded.webUrl,
-        sentTo: recipients,
-        message: reviewMessage,
-        sentAt: new Date().toISOString(),
-        status: 'In review',
-      });
+      for (const email of recipients) {
+        await createReviewRequest({
+          agreementId,
+          agreementTitle: agreement.title,
+          attachmentId: attachment.id,
+          attachmentName: attachment.name,
+          originalHtml,
+          reviewerEmail: email,
+          message: reviewMessage,
+        });
+      }
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'In review');
       if (advancedStatus) {
@@ -779,53 +768,68 @@ function AgreementDetailScreen() {
     }
   };
 
-  const handleFetchRedlines = async (session) => {
-    setFetchingSessionId(session.id);
-    setReviewError('');
+  const handleCopyReviewLink = async (reviewRequest) => {
+    const link = `${window.location.origin}/review/${reviewRequest.id}`;
     try {
-      const { accessToken } = await connectMicrosoftGraph();
-      const blob = await downloadFileFromOneDrive(accessToken, session.oneDriveItemId);
-      const dataBase64 = await blobToBase64(blob);
+      await navigator.clipboard.writeText(link);
+      setCopiedReviewId(reviewRequest.id);
+      setTimeout(() => setCopiedReviewId(''), 2000);
+    } catch (err) {
+      console.error('Failed to copy link:', err);
+      window.prompt('Copy this link:', link);
+    }
+  };
 
-      const redlineAttachment = {
+  const handlePreviewSubmittedChanges = (reviewRequest) => {
+    if (!reviewRequest.submittedHtml) return;
+    const blob = new Blob([wrapAsHtmlDocument(reviewRequest.submittedHtml)], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    window.open(url, '_blank');
+  };
+
+  const handleAcceptReviewChanges = async (reviewRequest) => {
+    if (!window.confirm('Accept these changes? A new attachment will be created with the reviewed content.')) return;
+    setProcessingReviewId(reviewRequest.id);
+    try {
+      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(reviewRequest.submittedHtml));
+      const dataBase64 = await blobToBase64(docxBlob);
+      const newAttachment = {
         id: `att_${Date.now()}`,
-        name: buildRedlineFileName(session.attachmentName),
-        size: blob.size,
+        name: buildRedlineFileName(reviewRequest.attachmentName),
+        size: docxBlob.size,
         mimeType: DOCX_MIME,
         dataBase64,
+        sourceHtml: reviewRequest.submittedHtml,
         uploadedAt: new Date().toISOString(),
       };
-      await addAgreementAttachment(agreementId, redlineAttachment);
-      await updateReviewSession(agreementId, session.id, { status: 'Completed' });
+      await addAgreementAttachment(agreementId, newAttachment);
+      await acceptReviewChanges(reviewRequest.id);
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'Reviewed');
       if (advancedStatus) {
         await updateAgreementStatus(agreementId, advancedStatus);
       }
 
-      try {
-        await deleteFileFromOneDrive(accessToken, session.oneDriveItemId);
-      } catch (cleanupErr) {
-        console.warn('Could not delete the OneDrive working copy (non-blocking):', cleanupErr);
-      }
-
       await load();
     } catch (err) {
-      console.error('Failed to fetch the reviewed document:', err);
-      alert('Could not fetch the reviewed document. Please try again.');
+      console.error('Failed to accept review changes:', err);
+      alert('Could not accept the changes. Please try again.');
     } finally {
-      setFetchingSessionId('');
+      setProcessingReviewId('');
     }
   };
 
-  const handleCopyReviewLink = async (session) => {
+  const handleRejectReviewChanges = async (reviewRequest) => {
+    if (!window.confirm('Reject these changes? They will not be applied to the agreement.')) return;
+    setProcessingReviewId(reviewRequest.id);
     try {
-      await navigator.clipboard.writeText(session.webUrl);
-      setCopiedSessionId(session.id);
-      setTimeout(() => setCopiedSessionId(''), 2000);
+      await rejectReviewChanges(reviewRequest.id);
+      await load();
     } catch (err) {
-      console.error('Failed to copy link:', err);
-      window.prompt('Copy this link:', session.webUrl);
+      console.error('Failed to reject review changes:', err);
+      alert('Could not reject the changes. Please try again.');
+    } finally {
+      setProcessingReviewId('');
     }
   };
 
@@ -1393,44 +1397,62 @@ function AgreementDetailScreen() {
                   <h3 className="agrd__content-title">Attachments</h3>
                 </div>
 
-                {(agreement.reviewSessions || []).length > 0 && (
+                {reviewRequests.length > 0 && (
                   <div className="agrd__review-sessions">
-                    <h4 className="agrd__review-sessions-title">In review</h4>
-                    {(agreement.reviewSessions || []).map((session) => (
-                      <div key={session.id} className="agrd__review-session-row">
+                    <h4 className="agrd__review-sessions-title">Sent for review</h4>
+                    {reviewRequests.map((rr) => (
+                      <div key={rr.id} className="agrd__review-session-row">
                         <div className="agrd__review-session-info">
-                          <span className="agrd__review-session-name">{session.attachmentName}</span>
+                          <span className="agrd__review-session-name">
+                            {rr.reviewerName ? `${rr.reviewerName} · ` : ''}{rr.reviewerEmail}
+                          </span>
                           <span className="agrd__review-session-meta">
-                            Sent to {session.sentTo.join(', ')} · {new Date(session.sentAt).toLocaleDateString()}
+                            {rr.attachmentName} · {new Date(rr.createdAt).toLocaleDateString()}
                           </span>
                         </div>
                         <div className="agrd__review-session-actions">
-                          <span className={`agrd__review-session-status agrd__review-session-status--${session.status === 'Completed' ? 'done' : 'pending'}`}>
-                            {session.status}
+                          <span
+                            className={`agrd__review-session-status agrd__review-session-status--${
+                              rr.status === 'Accepted' ? 'done' : rr.status === 'Rejected' ? 'danger' : rr.status === 'Submitted' ? 'pending' : 'pending'
+                            }`}
+                          >
+                            {rr.status}
                           </span>
-                          {session.webUrl && (
+                          {rr.status === 'Pending' && (
+                            <button
+                              type="button"
+                              className="agrd__attachment-btn"
+                              onClick={() => handleCopyReviewLink(rr)}
+                            >
+                              {copiedReviewId === rr.id ? 'Copied!' : 'Copy link'}
+                            </button>
+                          )}
+                          {rr.status === 'Submitted' && (
                             <>
                               <button
                                 type="button"
                                 className="agrd__attachment-btn"
-                                onClick={() => handleCopyReviewLink(session)}
+                                onClick={() => handlePreviewSubmittedChanges(rr)}
                               >
-                                {copiedSessionId === session.id ? 'Copied!' : 'Copy link'}
+                                Preview changes
                               </button>
-                              <a className="agrd__attachment-btn" href={session.webUrl} target="_blank" rel="noreferrer">
-                                Open in Word
-                              </a>
+                              <button
+                                type="button"
+                                className="agrd__attachment-btn"
+                                onClick={() => handleAcceptReviewChanges(rr)}
+                                disabled={processingReviewId === rr.id}
+                              >
+                                {processingReviewId === rr.id ? 'Working…' : 'Accept'}
+                              </button>
+                              <button
+                                type="button"
+                                className="agrd__attachment-btn agrd__attachment-btn--danger"
+                                onClick={() => handleRejectReviewChanges(rr)}
+                                disabled={processingReviewId === rr.id}
+                              >
+                                Reject
+                              </button>
                             </>
-                          )}
-                          {session.status !== 'Completed' && (
-                            <button
-                              type="button"
-                              className="agrd__attachment-btn"
-                              onClick={() => handleFetchRedlines(session)}
-                              disabled={fetchingSessionId === session.id}
-                            >
-                              {fetchingSessionId === session.id ? 'Fetching…' : 'Fetch reviewed version'}
-                            </button>
                           )}
                         </div>
                       </div>
@@ -1790,15 +1812,13 @@ function AgreementDetailScreen() {
               {reviewError && <p className="agrd__error">{reviewError}</p>}
 
               <h4 className="agrd__review-section-title">Attachments</h4>
-              {reviewableAttachments.length === 0 ? (
+              {mergeableAttachments.length === 0 ? (
                 <p className="agrd__modal-hint">
-                  No documents available to send. Word Online can't open documents created with "Generate
-                  agreement" — only imported .docx files (or documents already returned from a previous review)
-                  can be sent.
+                  No documents available to send. Only Word (.docx)-based attachments can be sent for review.
                 </p>
               ) : (
                 <div className="agrd__merge-list">
-                  {reviewableAttachments.map((att) => (
+                  {mergeableAttachments.map((att) => (
                     <label
                       key={att.id}
                       className={`agrd__template-option ${reviewAttachmentId === att.id ? 'agrd__template-option--selected' : ''}`}

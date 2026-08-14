@@ -391,6 +391,98 @@ export const deleteTemplate = async (id) => {
   if (error) throw error;
 };
 
+export const createReviewRequest = async ({ agreementId, agreementTitle, attachmentId, attachmentName, originalHtml, reviewerEmail, reviewerName, message }) => {
+  const tenantId = await getCurrentTenantId();
+  const { data, error } = await supabase
+    .from('review_requests')
+    .insert({
+      tenant_id: tenantId,
+      agreement_id: agreementId,
+      agreement_title: agreementTitle,
+      attachment_id: attachmentId,
+      attachment_name: attachmentName,
+      original_html: originalHtml,
+      reviewer_email: reviewerEmail,
+      reviewer_name: reviewerName || '',
+      message: message || '',
+      status: 'Pending',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data.id;
+};
+
+export const listReviewRequestsForAgreement = async (agreementId) => {
+  const { data, error } = await supabase
+    .from('review_requests')
+    .select('*')
+    .eq('agreement_id', agreementId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((r) => ({
+    id: r.id,
+    agreementId: r.agreement_id,
+    attachmentId: r.attachment_id,
+    attachmentName: r.attachment_name,
+    reviewerEmail: r.reviewer_email,
+    reviewerName: r.reviewer_name,
+    message: r.message,
+    status: r.status,
+    submittedHtml: r.submitted_html,
+    submittedAt: r.submitted_at,
+    createdAt: r.created_at,
+  }));
+};
+
+export const getReviewRequestPublic = async (id) => {
+  const { data, error } = await supabase
+    .from('review_requests')
+    .select('*')
+    .eq('id', id)
+    .single();
+  if (error) throw error;
+  return {
+    id: data.id,
+    agreementTitle: data.agreement_title,
+    attachmentName: data.attachment_name,
+    originalHtml: data.original_html,
+    reviewerEmail: data.reviewer_email,
+    reviewerName: data.reviewer_name,
+    message: data.message,
+    status: data.status,
+  };
+};
+
+export const submitReviewChanges = async (id, submittedHtml) => {
+  const { error } = await supabase
+    .from('review_requests')
+    .update({
+      submitted_html: submittedHtml,
+      status: 'Submitted',
+      submitted_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+  if (error) throw error;
+};
+
+export const acceptReviewChanges = async (id) => {
+  const { error } = await supabase
+    .from('review_requests')
+    .update({ status: 'Accepted', updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+};
+
+export const rejectReviewChanges = async (id) => {
+  const { error } = await supabase
+    .from('review_requests')
+    .update({ status: 'Rejected', updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+};
+
 export const OBJECT_TYPES = ['account', 'agreement', 'template'];
 
 const ensureObjectSchemaRow = async (objectType) => {

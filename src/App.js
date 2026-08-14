@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import StartScreen from './screens/StartScreen';
 import ResetPasswordScreen from './screens/ResetPasswordScreen';
+import ReviewLinkScreen from './screens/ReviewLinkScreen';
 import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { onAuthStateChange, getUserStatus, logout } from './supabase';
@@ -63,6 +64,7 @@ function App() {
         />
 
         <Route path="/reset-password" element={<ResetPasswordScreen />} />
+        <Route path="/review/:reviewId" element={<ReviewLinkScreen />} />
 
         <Route
           path="/dashboard"
