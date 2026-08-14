@@ -110,7 +110,6 @@ function ReviewLinkScreen() {
   if (submitted) {
     return review.status === 'Pending' ? (
       <CenteredMessage
-        icon="✅"
         title="Changes submitted"
         subtitle="Thank you — your changes have been submitted and the sender has been notified."
       />
