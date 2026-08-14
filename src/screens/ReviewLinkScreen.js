@@ -115,7 +115,6 @@ function ReviewLinkScreen() {
       />
     ) : (
       <CenteredMessage
-        icon="⚠️"
         title="This link has already been used"
         subtitle="This review link is no longer active. If you need to make further changes, ask the sender for a new link."
       />
