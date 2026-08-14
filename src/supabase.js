@@ -354,12 +354,41 @@ export const listTemplates = async () => {
   if (error) throw error;
   return data.map((t) => ({
     id: t.id,
-    title: t.title,
+    name: t.title,
+    agreementType: t.agreement_type,
+    agreementSubtype: t.agreement_subtype,
+    language: t.language,
     contentHtml: t.content_html,
-    fields: t.fields || [],
+    fieldsUsed: t.fields || [],
     createdBy: t.created_by,
     createdAt: t.created_at,
   }));
+};
+
+export const saveTemplate = async (template) => {
+  const tenantId = await getCurrentTenantId();
+  const user = await getCurrentUser();
+  const { data, error } = await supabase
+    .from('templates')
+    .insert({
+      tenant_id: tenantId,
+      title: template.name,
+      agreement_type: template.agreementType,
+      agreement_subtype: template.agreementSubtype,
+      language: template.language || 'English',
+      content_html: template.contentHtml || '',
+      fields: template.fieldsUsed || [],
+      created_by: user?.email || '',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const deleteTemplate = async (id) => {
+  const { error } = await supabase.from('templates').delete().eq('id', id);
+  if (error) throw error;
 };
 
 export const OBJECT_TYPES = ['account', 'agreement', 'template'];

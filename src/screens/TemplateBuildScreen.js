@@ -5,12 +5,9 @@ import {
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
   saveTemplate,
-  updateTemplate,
   listTemplates,
   deleteTemplate,
-} from '../firebase';
-import { analyzeTemplateWithAI } from '../aiApi';
-import './AIBuilderModal.css';
+} from '../supabase';
 import './TemplateBuildScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
@@ -56,94 +53,10 @@ function extractPlaceholders(html) {
   return [...new Set(matches.map((m) => m.replace(/[{}]/g, '').trim()))];
 }
 
-function getPlainTextNodes(root) {
-  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-  const nodes = [];
-  let fullText = '';
-  let node;
-  while ((node = walker.nextNode())) {
-    nodes.push({ node, start: fullText.length, end: fullText.length + node.textContent.length });
-    fullText += node.textContent;
-  }
-  return { nodes, fullText };
-}
-
-function findAnchoredIndex(fullText, contextText, matchText, maxGap = 12) {
-  if (!contextText) {
-    const idx = fullText.indexOf(matchText);
-    return idx === -1 ? null : idx;
-  }
-  const contextIndex = fullText.indexOf(contextText);
-  if (contextIndex === -1) return null;
-  const searchStart = contextIndex + contextText.length;
-  const window = fullText.slice(searchStart, searchStart + matchText.length + maxGap);
-  const offset = window.indexOf(matchText);
-  return offset === -1 ? null : searchStart + offset;
-}
-
-const DOCUSIGN_AI_FIELDS = [1, 2].flatMap((n) => [
-  { label: `Signature (Signer ${n})`, placeholder: `docusign.sig${n}` },
-  { label: `Printed Name (Signer ${n})`, placeholder: `docusign.name${n}` },
-  { label: `Title (Signer ${n})`, placeholder: `docusign.title${n}` },
-  { label: `Date Signed (Signer ${n})`, placeholder: `docusign.date${n}` },
-]);
-
-function docusignAnchorTag(placeholder) {
-  return `/${placeholder.replace('docusign.', '')}/`;
-}
-
-function replaceTextWithPlaceholder(root, matchText, field, contextText) {
-  if (!root || !matchText) return false;
-
-  const { nodes, fullText } = getPlainTextNodes(root);
-
-  const matchIndex = findAnchoredIndex(fullText, contextText, matchText);
-  if (matchIndex === null) return false;
-  const matchEnd = matchIndex + matchText.length;
-
-  const startEntry = nodes.find((n) => matchIndex >= n.start && matchIndex < n.end);
-  const endEntry = nodes.find((n) => matchEnd > n.start && matchEnd <= n.end);
-  if (!startEntry || !endEntry) return false;
-
-  const range = document.createRange();
-  range.setStart(startEntry.node, matchIndex - startEntry.start);
-  range.setEnd(endEntry.node, matchEnd - endEntry.start);
-  range.deleteContents();
-
-  const isDocusignTag = field.placeholder.startsWith('docusign.');
-  const span = document.createElement('span');
-
-  if (isDocusignTag) {
-    span.className = 'tpl-docusign-tag';
-    span.setAttribute('contenteditable', 'false');
-    span.setAttribute('data-docusign-field', field.placeholder);
-    span.textContent = docusignAnchorTag(field.placeholder);
-    span.style.cssText =
-      'background:#f4ecff; color:#7c3aed; border-radius:4px; padding:1px 5px; font-size:0.85em; font-weight:600;';
-  } else {
-    span.className = 'tpl-placeholder';
-    span.setAttribute('contenteditable', 'false');
-    span.setAttribute('data-field', field.placeholder);
-    span.textContent = `{{${field.label}}}`;
-  }
-
-  range.insertNode(span);
-  return true;
-}
-
 function BackIcon() {
   return (
     <svg className="tpl__back-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M15 18l-6-6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function SparkleIcon() {
-  return (
-    <svg className="aib__ai-icon" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z" fill="currentColor" />
-      <path d="M19 15l0.8 2.2L22 18l-2.2 0.8L19 21l-0.8-2.2L16 18l2.2-0.8L19 15z" fill="currentColor" />
     </svg>
   );
 }
@@ -198,7 +111,6 @@ function TemplateBuildScreen() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
 
   const [meta, setMeta] = useState({ name: '', agreementType: '', agreementSubtype: '', language: 'English' });
-  const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [directFields, setDirectFields] = useState([]);
   const [lookupGroups, setLookupGroups] = useState([]);
   const [expandedLookups, setExpandedLookups] = useState({});
@@ -208,12 +120,6 @@ function TemplateBuildScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [dragOverField, setDragOverField] = useState(false);
-
-  const [showAIModal, setShowAIModal] = useState(false);
-  const [aiAnalyzing, setAiAnalyzing] = useState(false);
-  const [aiSuggestions, setAiSuggestions] = useState([]);
-  const [selectedSuggestions, setSelectedSuggestions] = useState({});
-  const [aiError, setAiError] = useState('');
 
   const [typeOptions, setTypeOptions] = useState([]);
   const [subtypeOptions, setSubtypeOptions] = useState([]);
@@ -247,11 +153,10 @@ function TemplateBuildScreen() {
       editableRef.current.innerHTML = htmlContent;
       editableRef.current.dataset.loaded = 'true';
     }
-  }, [htmlContent, view]);
+  }, [htmlContent]);
 
   const handleMetaChange = (e) => {
     const { name, value } = e.target;
-    // Reset subtype when type changes
     if (name === 'agreementType') {
       setMeta((prev) => ({ ...prev, agreementType: value, agreementSubtype: '' }));
     } else {
@@ -261,40 +166,10 @@ function TemplateBuildScreen() {
 
   const handleStartNew = () => {
     setMeta({ name: '', agreementType: '', agreementSubtype: '', language: 'English' });
-    setEditingTemplateId(null);
     setHtmlContent('');
     setFileName('');
     setError('');
     setView('setup');
-  };
-
-  const handleEditTemplate = async (template) => {
-    setError('');
-    setMeta({
-      name: template.name || '',
-      agreementType: template.agreementType || '',
-      agreementSubtype: template.agreementSubtype || '',
-      language: template.language || 'English',
-    });
-    setEditingTemplateId(template.id);
-    setFileName(template.name ? `${template.name}.docx` : '');
-    if (editableRef.current) delete editableRef.current.dataset.loaded;
-    setHtmlContent(template.contentHtml || '');
-    setView('builder');
-    try {
-      const [configs, map] = await Promise.all([
-        getBuiltInFieldConfigs('agreement'),
-        getTypeSubtypeMap(),
-      ]);
-      const { directFields: df, lookupGroups: lg } = await buildFieldGroups();
-      setDirectFields(df);
-      setLookupGroups(lg);
-      if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
-      if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
-      setTypeSubtypeMap(map);
-    } catch (err) {
-      console.error('Failed to load agreement fields:', err);
-    }
   };
 
   const handleContinueToUpload = async (e) => {
@@ -305,7 +180,7 @@ function TemplateBuildScreen() {
     }
     setError('');
     try {
-      const [, configs, map] = await Promise.all([
+      const [fields, configs, map] = await Promise.all([
         getObjectSchema('agreement'),
         getBuiltInFieldConfigs('agreement'),
         getTypeSubtypeMap(),
@@ -322,7 +197,6 @@ function TemplateBuildScreen() {
     setView('builder');
   };
 
-  // Load configs on setup view mount
   useEffect(() => {
     if (view === 'setup') {
       Promise.all([
@@ -412,101 +286,13 @@ function TemplateBuildScreen() {
     draggedFieldRef.current = null;
   };
 
-  const handleOpenAIBuilder = async () => {
-    setShowAIModal(true);
-    setAiAnalyzing(true);
-    setAiError('');
-    setAiSuggestions([]);
-    setSelectedSuggestions({});
-    try {
-      const documentText = editableRef.current ? getPlainTextNodes(editableRef.current).fullText.trim() : '';
-      if (!documentText) {
-        setAiError('The document looks empty — nothing to analyze.');
-        return;
-      }
-      const fields = [...directFields, ...lookupGroups.flatMap((g) => g.fields), ...DOCUSIGN_AI_FIELDS];
-      const rawSuggestions = await analyzeTemplateWithAI(documentText, fields);
-      console.log('AI Builder — raw suggestions from Claude:', rawSuggestions);
-
-      const fieldByPlaceholder = new Map(fields.map((f) => [f.placeholder, f]));
-      const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
-      const seenSearchKey = new Set();
-      const candidates = rawSuggestions.filter((s) => {
-        if (!s || !s.matchText || !fieldByPlaceholder.has(s.placeholder)) return false;
-        if (findAnchoredIndex(documentText, s.contextText, s.matchText) === null) return false;
-        const key = searchKeyOf(s);
-        if (seenSearchKey.has(key)) return false;
-        seenSearchKey.add(key);
-        return true;
-      });
-
-      const valid = candidates.filter(
-        (s) => !candidates.some((other) => other !== s && searchKeyOf(s).includes(searchKeyOf(other)))
-      );
-
-      console.log(
-        `AI Builder — raw: ${rawSuggestions.length}, passed validation: ${candidates.length}, after overlap filter: ${valid.length}`,
-        { candidates, valid }
-      );
-      setAiSuggestions(valid);
-      setSelectedSuggestions(Object.fromEntries(valid.map((_, i) => [i, true])));
-      if (valid.length === 0) setAiError('No confident field matches found in this document.');
-    } catch (err) {
-      console.error('AI Builder failed:', err);
-      setAiError(err.message || 'Something went wrong while analyzing the document.');
-    } finally {
-      setAiAnalyzing(false);
-    }
-  };
-
-  const closeAIModal = () => {
-    if (aiAnalyzing) return;
-    setShowAIModal(false);
-  };
-
-  const toggleAISuggestion = (index) => {
-    setSelectedSuggestions((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
-
-  const handleApplyAISuggestions = () => {
-    const editable = editableRef.current;
-    if (!editable) return;
-
-    const searchKeyOf = (s) => (s.contextText || '') + s.matchText;
-
-    const selected = aiSuggestions
-      .map((s, index) => ({ s, index }))
-      .filter(({ index }) => selectedSuggestions[index])
-      .sort((a, b) => searchKeyOf(b.s).length - searchKeyOf(a.s).length);
-
-    const failedLabels = [];
-    selected.forEach(({ s }) => {
-      const ok = replaceTextWithPlaceholder(editable, s.matchText, { placeholder: s.placeholder, label: s.label }, s.contextText);
-      if (!ok) failedLabels.push(s.label);
-    });
-
-    setShowAIModal(false);
-    if (failedLabels.length > 0) {
-      alert(
-        `Applied ${selected.length - failedLabels.length} of ${selected.length} selected suggestions.\n\n` +
-        `Couldn't apply: ${failedLabels.join(', ')}.\n` +
-        `This usually means that text was already used by another suggestion, or the document changed since analysis.`
-      );
-    }
-  };
-
   const handleSave = async () => {
     setSaving(true);
     setError('');
     try {
       const finalHtml = editableRef.current?.innerHTML || '';
       const fieldsUsed = extractPlaceholders(finalHtml);
-      if (editingTemplateId) {
-        await updateTemplate(editingTemplateId, { ...meta, contentHtml: finalHtml, fieldsUsed });
-      } else {
-        await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
-      }
-      setEditingTemplateId(null);
+      await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
       setView('list');
     } catch (err) {
       console.error('Failed to save template:', err);
@@ -546,22 +332,10 @@ function TemplateBuildScreen() {
         ) : (
           <div className="tpl__grid">
             {templates.map((t) => (
-              <div
-                key={t.id}
-                className="tpl__card"
-                style={{ cursor: 'pointer' }}
-                onClick={() => handleEditTemplate(t)}
-                title="Click to edit this template"
-              >
+              <div key={t.id} className="tpl__card">
                 <div className="tpl__card-header">
                   <span className="tpl__card-name">{t.name}</span>
-                  <button
-                    className="tpl__card-delete"
-                    onClick={(e) => { e.stopPropagation(); handleDelete(t); }}
-                    aria-label="Delete template"
-                  >
-                    ✕
-                  </button>
+                  <button className="tpl__card-delete" onClick={() => handleDelete(t)} aria-label="Delete template">✕</button>
                 </div>
                 <div className="tpl__card-meta">
                   <span className="tpl__tag">{t.agreementType}</span>
@@ -585,7 +359,7 @@ function TemplateBuildScreen() {
         </button>
 
         <div className="tpl__setup-card">
-          <h2 className="tpl__title">{editingTemplateId ? 'Edit template' : 'New template'}</h2>
+          <h2 className="tpl__title">New template</h2>
           <p className="tpl__subtitle">This information is used later to find the right template when generating an agreement.</p>
 
           {error && <p className="tpl__error">{error}</p>}
@@ -648,9 +422,7 @@ function TemplateBuildScreen() {
               </div>
             </div>
 
-            <button type="submit" className="tpl__btn-primary tpl__btn-full">
-              {editingTemplateId ? 'Continue to editor' : 'Continue to upload'}
-            </button>
+            <button type="submit" className="tpl__btn-primary tpl__btn-full">Continue to upload</button>
           </form>
         </div>
       </div>
@@ -669,13 +441,8 @@ function TemplateBuildScreen() {
           <span className="tpl__tag">{meta.agreementSubtype}</span>
           <span className="tpl__tag tpl__tag--lang">{meta.language}</span>
         </div>
-        {htmlContent && (
-          <button className="aib__ai-btn" onClick={handleOpenAIBuilder}>
-            <SparkleIcon /> AI Builder
-          </button>
-        )}
         <button className="tpl__btn-primary" onClick={handleSave} disabled={saving || !htmlContent}>
-          {saving ? 'Saving…' : editingTemplateId ? 'Save changes' : 'Save template'}
+          {saving ? 'Saving…' : 'Save template'}
         </button>
       </div>
 
@@ -766,73 +533,6 @@ function TemplateBuildScreen() {
               onDragLeave={() => setDragOverField(false)}
               onDrop={handleDocDrop}
             />
-          </div>
-        </div>
-      )}
-
-      {showAIModal && (
-        <div className="aib__backdrop" onClick={closeAIModal}>
-          <div className="aib__modal" onClick={(e) => e.stopPropagation()}>
-            <div className="aib__header">
-              <h3 className="aib__title"><SparkleIcon /> AI Builder</h3>
-              <p className="aib__subtitle">
-                Claude scanned the document for phrases that look like they should be dynamic fields, matched
-                against your Agreement and Account fields.
-              </p>
-            </div>
-
-            <div className="aib__body">
-              {aiAnalyzing ? (
-                <div className="aib__loading">
-                  <div className="aib__spinner" />
-                  <span>Analyzing document…</span>
-                </div>
-              ) : (
-                <>
-                  {aiError && <p className="aib__error">{aiError}</p>}
-                  {aiSuggestions.length === 0 && !aiError ? (
-                    <p className="aib__empty">No suggestions.</p>
-                  ) : (
-                    aiSuggestions.map((s, index) => (
-                      <div
-                        key={`${s.placeholder}-${index}`}
-                        className={`aib__suggestion ${selectedSuggestions[index] ? 'aib__suggestion--selected' : ''}`}
-                        onClick={() => toggleAISuggestion(index)}
-                      >
-                        <input
-                          type="checkbox"
-                          className="aib__suggestion-checkbox"
-                          checked={!!selectedSuggestions[index]}
-                          onChange={() => toggleAISuggestion(index)}
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                        <div className="aib__suggestion-body">
-                          <span className="aib__suggestion-match">“{s.contextText ? `${s.contextText} ` : ''}{s.matchText}”</span>
-                          <div className="aib__suggestion-arrow">
-                            → <span className="aib__suggestion-field">{s.label}</span>
-                          </div>
-                          {s.reason && <span className="aib__suggestion-reason">{s.reason}</span>}
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </>
-              )}
-            </div>
-
-            <div className="aib__footer">
-              <button type="button" className="aib__btn-secondary" onClick={closeAIModal} disabled={aiAnalyzing}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="aib__btn-primary"
-                onClick={handleApplyAISuggestions}
-                disabled={aiAnalyzing || aiSuggestions.length === 0}
-              >
-                Apply selected ({Object.values(selectedSuggestions).filter(Boolean).length})
-              </button>
-            </div>
           </div>
         </div>
       )}
