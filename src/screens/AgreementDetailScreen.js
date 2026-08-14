@@ -810,16 +810,48 @@ function AgreementDetailScreen() {
     }
   }, [showChangesModal, activeReviewRequest]);
 
+  const applyDecisionStyle = (wrapper, decision) => {
+    const type = wrapper.getAttribute('data-type');
+    const innerEl = wrapper.querySelector('ins, del');
+    const acceptBtn = wrapper.querySelector('.redline-accept');
+    const rejectBtn = wrapper.querySelector('.redline-reject');
+
+    wrapper.setAttribute('data-decision', decision);
+
+    if (innerEl) {
+      if (type === 'ins') {
+        innerEl.style.background = decision === 'accepted' ? '#c9f0d6' : 'transparent';
+        innerEl.style.textDecoration = decision === 'accepted' ? 'underline' : 'line-through';
+        innerEl.style.opacity = decision === 'accepted' ? '1' : '0.4';
+      } else {
+        innerEl.style.background = decision === 'accepted' ? '#fbd0cd' : 'transparent';
+        innerEl.style.textDecoration = decision === 'accepted' ? 'line-through' : 'none';
+        innerEl.style.opacity = '1';
+      }
+    }
+
+    if (acceptBtn && rejectBtn) {
+      if (decision === 'accepted') {
+        acceptBtn.style.background = '#1a7a41';
+        acceptBtn.style.color = '#fff';
+        rejectBtn.style.background = '#fff';
+        rejectBtn.style.color = '#b42318';
+      } else {
+        rejectBtn.style.background = '#b42318';
+        rejectBtn.style.color = '#fff';
+        acceptBtn.style.background = '#fff';
+        acceptBtn.style.color = '#1a7a41';
+      }
+    }
+  };
+
   const handleRedlineClick = (e) => {
     const btn = e.target.closest('.redline-btn');
     if (!btn) return;
-    const changeId = btn.getAttribute('data-change-id');
-    const wrapper = redlineContainerRef.current?.querySelector(`[data-change-id="${changeId}"]`);
+    const wrapper = btn.closest('.redline-change');
     if (!wrapper) return;
     const decision = btn.classList.contains('redline-accept') ? 'accepted' : 'rejected';
-    wrapper.setAttribute('data-decision', decision);
-    wrapper.style.outline = decision === 'accepted' ? '2px solid #1a7a41' : '2px solid #b42318';
-    wrapper.style.opacity = decision === 'rejected' ? '0.55' : '1';
+    applyDecisionStyle(wrapper, decision);
     setPendingChangeCount(countPendingChanges(redlineContainerRef.current));
   };
 
@@ -827,8 +859,7 @@ function AgreementDetailScreen() {
     if (!redlineContainerRef.current) return;
     redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
       if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
-        el.setAttribute('data-decision', 'accepted');
-        el.style.outline = '2px solid #1a7a41';
+        applyDecisionStyle(el, 'accepted');
       }
     });
     setPendingChangeCount(0);
@@ -838,9 +869,7 @@ function AgreementDetailScreen() {
     if (!redlineContainerRef.current) return;
     redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
       if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
-        el.setAttribute('data-decision', 'rejected');
-        el.style.outline = '2px solid #b42318';
-        el.style.opacity = '0.55';
+        applyDecisionStyle(el, 'rejected');
       }
     });
     setPendingChangeCount(0);
