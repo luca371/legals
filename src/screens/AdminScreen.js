@@ -265,7 +265,7 @@ function AdminScreen() {
     }
   };
 
-  // ---------- Objects (still on Firebase — scheduled for a later migration step) ----------
+  // ---------- Objects ----------
   const loadFields = async (type) => {
     setLoadingFields(true);
     try {

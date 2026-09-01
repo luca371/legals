@@ -1,3 +1,5 @@
+import { supabase } from './supabase';
+
 export async function sendForSignature({
   documentBase64,
   documentName,
@@ -6,53 +8,28 @@ export async function sendForSignature({
   emailSubject,
   emailMessage,
 }) {
-  const response = await fetch('/api/docusign-send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      documentBase64,
-      documentName,
-      fileExtension,
-      signers,
-      emailSubject,
-      emailMessage,
-    }),
+  const { data, error } = await supabase.functions.invoke('docusign-send', {
+    body: { documentBase64, documentName, fileExtension, signers, emailSubject, emailMessage },
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `DocuSign send failed (${response.status}).`);
-  }
-
-  return response.json();
+  if (error) throw new Error(error.message || 'DocuSign send failed.');
+  return data;
 }
 
 export async function getSignatureStatus(envelopeId) {
-  const response = await fetch('/api/docusign-status', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ envelopeId }),
+  const { data, error } = await supabase.functions.invoke('docusign-status', {
+    body: { envelopeId },
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `DocuSign status check failed (${response.status}).`);
-  }
-
-  return response.json();
+  if (error) throw new Error(error.message || 'DocuSign status check failed.');
+  return data;
 }
 
 export async function getSignedDocument(envelopeId, documentId) {
-  const response = await fetch('/api/docusign-document', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ envelopeId, documentId }),
+  const { data, error } = await supabase.functions.invoke('docusign-document', {
+    body: { envelopeId, documentId },
   });
 
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.error || `DocuSign document fetch failed (${response.status}).`);
-  }
-
-  return response.json();
+  if (error) throw new Error(error.message || 'DocuSign document fetch failed.');
+  return data;
 }

@@ -1,5 +1,5 @@
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
-const ANTHROPIC_VERSION = '2023-06-01';
+import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 
 const SYSTEM_PROMPT = `You are a contract-quality reviewer embedded in "Legal Space", a contract lifecycle management tool. You are given an agreement's metadata and the text of its attached document(s). Review it the way an experienced contract manager (not a lawyer) would when sanity-checking a contract before it goes out — completeness, clarity, internal consistency, and whether it covers the clauses you'd normally expect for this type of agreement.
 
@@ -12,58 +12,21 @@ The JSON object must have exactly these fields:
 
 Keep each array to at most 5 items, each a single short sentence. Base everything only on the actual text provided — never invent clauses or facts that aren't there.`;
 
-async function reviewAgreement({ documentText, metadata, apiKey }) {
-  if (!apiKey) {
-    throw new Error('Missing ANTHROPIC_API_KEY on the server.');
-  }
-  if (!documentText || !documentText.trim()) {
-    throw new Error('documentText is required.');
-  }
-
-  const userMessage = `Agreement metadata (JSON):\n${JSON.stringify(metadata || {})}\n\nDocument text:\n"""\n${documentText}\n"""`;
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 4096,
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Anthropic API error (${response.status}): ${text.slice(0, 300)}`);
-  }
-
-  const data = await response.json();
-  const textBlock = (data.content || []).find((c) => c.type === 'text');
-  if (!textBlock) throw new Error('No text response from Claude.');
-
-  return parseReview(textBlock.text);
-}
-
-function parseReview(rawText) {
+function parseReview(rawText: string) {
   const answerMatch = rawText.match(/<answer>([\s\S]*?)<\/answer>/);
   const jsonText = answerMatch ? answerMatch[1] : rawText;
   const cleaned = jsonText.replace(/```json|```/g, '').trim();
 
-  let review;
+  // deno-lint-ignore no-explicit-any
+  let review: any;
   try {
     review = JSON.parse(cleaned);
-  } catch (err) {
+  } catch {
     const match = cleaned.match(/\{[\s\S]*\}/);
     if (match) {
       try {
         review = JSON.parse(match[0]);
-      } catch (err2) {
+      } catch {
         // fall through
       }
     }
@@ -82,4 +45,33 @@ function parseReview(rawText) {
   };
 }
 
-module.exports = { reviewAgreement };
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { documentText, metadata } = await req.json();
+    if (!documentText || !String(documentText).trim()) {
+      return jsonResponse({ error: 'documentText is required.' }, 400);
+    }
+
+    const userMessage = `Agreement metadata (JSON):\n${JSON.stringify(metadata || {})}\n\nDocument text:\n"""\n${documentText}\n"""`;
+
+    const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 4096,
+      temperature: 0,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
+    if (!textBlock) throw new Error('No text response from Claude.');
+
+    return jsonResponse(parseReview(textBlock.text));
+  } catch (err) {
+    console.error('Review AI error:', err);
+    return jsonResponse({ error: err instanceof Error ? err.message : 'Review failed.' }, 500);
+  }
+});

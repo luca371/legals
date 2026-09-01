@@ -1,5 +1,5 @@
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6'; // best speed/intelligence balance for this task
-const ANTHROPIC_VERSION = '2023-06-01';
+import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 
 const SYSTEM_PROMPT = `You are embedded in "Legal Space", a contract lifecycle management tool. You are given the plain text of a contract template and a list of available data fields (each with a human label and a placeholder code).
 
@@ -33,58 +33,20 @@ If the document has two separate signature blocks (e.g. one per party), use sign
 
 If nothing in the document warrants a match, the final answer is <answer>[]</answer>.`;
 
-async function callClaude({ documentText, fields, apiKey }) {
-  if (!apiKey) {
-    throw new Error('Missing ANTHROPIC_API_KEY on the server.');
-  }
-
-  const userMessage = `Available fields (JSON array of {label, placeholder}):\n${JSON.stringify(fields)}\n\nDocument text:\n"""\n${documentText}\n"""`;
-
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
-      model: ANTHROPIC_MODEL,
-      max_tokens: 8192,
-      temperature: 0,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Anthropic API error (${response.status}): ${text.slice(0, 300)}`);
-  }
-
-  const data = await response.json();
-  const textBlock = (data.content || []).find((c) => c.type === 'text');
-  if (!textBlock) throw new Error('No text response from Claude.');
-
-  const suggestions = parseSuggestions(textBlock.text);
-  if (!Array.isArray(suggestions)) {
-    throw new Error('Unexpected AI response shape (expected a JSON array).');
-  }
-  return suggestions;
-}
-
-function parseSuggestions(rawText) {
+function parseSuggestions(rawText: string) {
   const answerMatch = rawText.match(/<answer>([\s\S]*?)<\/answer>/);
   const jsonText = answerMatch ? answerMatch[1] : rawText;
   const cleaned = jsonText.replace(/```json|```/g, '').trim();
 
   try {
     return JSON.parse(cleaned);
-  } catch (err) {
+  } catch {
     const match = cleaned.match(/\[[\s\S]*\]/);
     if (match) {
       try {
         return JSON.parse(match[0]);
-      } catch (err2) {
+      } catch {
+        // fall through
       }
     }
     console.error('AI Builder: could not parse Claude response as JSON. Raw text was:\n', rawText);
@@ -92,4 +54,38 @@ function parseSuggestions(rawText) {
   }
 }
 
-module.exports = { callClaude };
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { documentText, fields } = await req.json();
+    if (!documentText || !Array.isArray(fields)) {
+      return jsonResponse({ error: 'documentText and fields are required.' }, 400);
+    }
+
+    const userMessage = `Available fields (JSON array of {label, placeholder}):\n${JSON.stringify(fields)}\n\nDocument text:\n"""\n${documentText}\n"""`;
+
+    const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 8192,
+      temperature: 0,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
+    if (!textBlock) throw new Error('No text response from Claude.');
+
+    const suggestions = parseSuggestions(textBlock.text);
+    if (!Array.isArray(suggestions)) {
+      throw new Error('Unexpected AI response shape (expected a JSON array).');
+    }
+
+    return jsonResponse({ suggestions });
+  } catch (err) {
+    console.error('AI Builder error:', err);
+    return jsonResponse({ error: err instanceof Error ? err.message : 'AI Builder failed.' }, 500);
+  }
+});

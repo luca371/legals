@@ -6,7 +6,7 @@ import {
   listAgreementsByAccount,
   getAgreement,
   getAccount,
-} from '../firebase';
+} from '../supabase';
 import { sendToClaudeWithTools } from '../askAiApi';
 import './AskAIScreen.css';
 

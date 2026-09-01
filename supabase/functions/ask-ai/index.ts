@@ -1,5 +1,5 @@
-const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
-const ANTHROPIC_VERSION = '2023-06-01';
+import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 
 const SYSTEM_PROMPT = `You are the AI assistant embedded in "Legal Space", a contract lifecycle management platform. You help the user answer questions about their organization's accounts and agreements (contracts) — things like "how many agreements does account X have", "what clauses are in contract Y", "which agreements are expiring soon", "list all NDAs with account Z", etc.
 
@@ -14,12 +14,14 @@ Answer conversationally and concisely, in the same language the user asked in. W
 const TOOLS = [
   {
     name: 'list_accounts',
-    description: 'Lists all accounts (companies/clients) in the organization with basic info (name, type, country). Use to browse accounts or resolve a company name to an account id.',
+    description:
+      'Lists all accounts (companies/clients) in the organization with basic info (name, type, country). Use to browse accounts or resolve a company name to an account id.',
     input_schema: { type: 'object', properties: {}, required: [] },
   },
   {
     name: 'list_agreements',
-    description: "Lists agreements (contracts) with compact summaries (title, account, type, status, dates) — no document text included. Use get_agreement_details afterwards to read a specific contract's full content.",
+    description:
+      "Lists agreements (contracts) with compact summaries (title, account, type, status, dates) — no document text included. Use get_agreement_details afterwards to read a specific contract's full content.",
     input_schema: {
       type: 'object',
       properties: {
@@ -33,7 +35,8 @@ const TOOLS = [
   },
   {
     name: 'get_agreement_details',
-    description: 'Gets full details of ONE agreement by id, including the extracted text of its attached document(s). Use this whenever the user asks about clauses, terms, obligations, or any specific content inside a contract.',
+    description:
+      'Gets full details of ONE agreement by id, including the extracted text of its attached document(s). Use this whenever the user asks about clauses, terms, obligations, or any specific content inside a contract.',
     input_schema: {
       type: 'object',
       properties: { agreementId: { type: 'string' } },
@@ -51,36 +54,28 @@ const TOOLS = [
   },
 ];
 
-async function askClaude({ messages, apiKey }) {
-  if (!apiKey) {
-    throw new Error('Missing ANTHROPIC_API_KEY on the server.');
-  }
-  if (!Array.isArray(messages) || messages.length === 0) {
-    throw new Error('messages must be a non-empty array.');
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
   }
 
-  const response = await fetch('https://api.anthropic.com/v1/messages', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-api-key': apiKey,
-      'anthropic-version': ANTHROPIC_VERSION,
-    },
-    body: JSON.stringify({
+  try {
+    const { messages } = await req.json();
+    if (!Array.isArray(messages) || messages.length === 0) {
+      return jsonResponse({ error: 'messages must be a non-empty array.' }, 400);
+    }
+
+    const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
       model: ANTHROPIC_MODEL,
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools: TOOLS,
       messages,
-    }),
-  });
+    });
 
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw new Error(`Anthropic API error (${response.status}): ${text.slice(0, 300)}`);
+    return jsonResponse(data);
+  } catch (err) {
+    console.error('Ask AI error:', err);
+    return jsonResponse({ error: err instanceof Error ? err.message : 'Ask AI failed.' }, 500);
   }
-
-  return response.json();
-}
-
-module.exports = { askClaude, TOOLS };
+});

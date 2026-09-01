@@ -1,9 +1,15 @@
-const jwt = require('jsonwebtoken');
+import jwt from 'npm:jsonwebtoken@9.0.3';
 
-const DOCUSIGN_AUTH_SERVER = 'account-d.docusign.com'; 
-const DOCUSIGN_BASE_PATH = 'https://demo.docusign.net/restapi'; 
+const DOCUSIGN_AUTH_SERVER = 'account-d.docusign.com';
+const DOCUSIGN_BASE_PATH = 'https://demo.docusign.net/restapi';
 
-async function getAccessToken({ integrationKey, userId, privateKey }) {
+export interface DocusignCreds {
+  integrationKey?: string;
+  userId?: string;
+  privateKey?: string;
+}
+
+export async function getAccessToken({ integrationKey, userId, privateKey }: DocusignCreds) {
   if (!integrationKey || !userId || !privateKey) {
     throw new Error('Missing DocuSign credentials on the server (integration key, user id, or private key).');
   }
@@ -37,18 +43,27 @@ async function getAccessToken({ integrationKey, userId, privateKey }) {
   }
 
   const data = await response.json();
-  return data.access_token;
+  return data.access_token as string;
 }
 
-async function sendEnvelopeForSignature({
+export async function sendEnvelopeForSignature({
   accountId,
   accessToken,
   documentBase64,
   documentName,
   fileExtension,
-  signers, 
+  signers,
   emailSubject,
   emailMessage,
+}: {
+  accountId?: string;
+  accessToken: string;
+  documentBase64: string;
+  documentName?: string;
+  fileExtension?: string;
+  signers: Array<{ email: string; name: string }>;
+  emailSubject?: string;
+  emailMessage?: string;
 }) {
   if (!Array.isArray(signers) || signers.length === 0) {
     throw new Error('At least one signer is required.');
@@ -63,12 +78,7 @@ async function sendEnvelopeForSignature({
       routingOrder: String(n),
       tabs: {
         signHereTabs: [
-          {
-            anchorString: `/sig${n}/`,
-            anchorUnits: 'pixels',
-            anchorXOffset: '0',
-            anchorYOffset: '-10',
-          },
+          { anchorString: `/sig${n}/`, anchorUnits: 'pixels', anchorXOffset: '0', anchorYOffset: '-10' },
         ],
         fullNameTabs: [
           {
@@ -112,9 +122,7 @@ async function sendEnvelopeForSignature({
         documentId: '1',
       },
     ],
-    recipients: {
-      signers: signerRecipients,
-    },
+    recipients: { signers: signerRecipients },
     status: 'sent',
   };
 
@@ -132,10 +140,18 @@ async function sendEnvelopeForSignature({
     throw new Error(`DocuSign envelope creation failed (${response.status}): ${text.slice(0, 500)}`);
   }
 
-  return response.json(); // { envelopeId, status, statusDateTime, uri }
+  return response.json();
 }
 
-async function getEnvelopeStatus({ accountId, accessToken, envelopeId }) {
+export async function getEnvelopeStatus({
+  accountId,
+  accessToken,
+  envelopeId,
+}: {
+  accountId?: string;
+  accessToken: string;
+  envelopeId: string;
+}) {
   const response = await fetch(`${DOCUSIGN_BASE_PATH}/v2.1/accounts/${accountId}/envelopes/${envelopeId}`, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
@@ -145,10 +161,20 @@ async function getEnvelopeStatus({ accountId, accessToken, envelopeId }) {
     throw new Error(`DocuSign status check failed (${response.status}): ${text.slice(0, 300)}`);
   }
 
-  return response.json(); // { status, statusDateTime, ... }
+  return response.json();
 }
 
-async function getEnvelopeDocument({ accountId, accessToken, envelopeId, documentId = '1' }) {
+export async function getEnvelopeDocument({
+  accountId,
+  accessToken,
+  envelopeId,
+  documentId = '1',
+}: {
+  accountId?: string;
+  accessToken: string;
+  envelopeId: string;
+  documentId?: string;
+}) {
   const response = await fetch(
     `${DOCUSIGN_BASE_PATH}/v2.1/accounts/${accountId}/envelopes/${envelopeId}/documents/${documentId}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -160,8 +186,12 @@ async function getEnvelopeDocument({ accountId, accessToken, envelopeId, documen
   }
 
   const arrayBuffer = await response.arrayBuffer();
-  const dataBase64 = Buffer.from(arrayBuffer).toString('base64');
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  const dataBase64 = btoa(binary);
   return { dataBase64, mimeType: 'application/pdf' };
 }
-
-module.exports = { getAccessToken, sendEnvelopeForSignature, getEnvelopeStatus, getEnvelopeDocument };

@@ -14,7 +14,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { listAgreements, listAllApprovalRequests, getBuiltInFieldConfigs } from '../firebase';
+import { listAgreements, listAllApprovalRequests, getBuiltInFieldConfigs } from '../supabase';
 import './DashboardsScreen.css';
 
 const DEFAULT_STATUS_ORDER = [

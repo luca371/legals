@@ -88,20 +88,12 @@ export const listUsers = async () => {
 };
 
 export const createUserAsAdmin = async (userData) => {
-  const tenantId = await getCurrentTenantId();
-  if (!tenantId) throw new Error('Could not determine your tenant.');
-
-  const response = await fetch('/api/admin-create-user', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ ...userData, tenantId }),
+  const { data, error } = await supabase.functions.invoke('admin-create-user', {
+    body: userData,
   });
 
-  const result = await response.json();
-  if (!response.ok) {
-    throw new Error(result.error || 'Failed to create user.');
-  }
-  return result.userId;
+  if (error) throw new Error(error.message || 'Failed to create user.');
+  return data.userId;
 };
 
 export const updateUserProfile = (uid, updates) =>
@@ -653,6 +645,26 @@ export const listApprovalRequestsForAgreement = async (agreementId) => {
     .from('approval_requests')
     .select('*')
     .eq('agreement_id', agreementId)
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((r) => ({
+    id: r.id,
+    agreementId: r.agreement_id,
+    agreementTitle: r.agreement_title,
+    attachmentName: r.attachment?.name,
+    approverEmail: r.approver_email,
+    approverName: r.approver_name,
+    message: r.message,
+    status: r.status,
+    comment: r.comment,
+    createdAt: r.created_at ? { seconds: Math.floor(new Date(r.created_at).getTime() / 1000) } : null,
+  }));
+};
+
+export const listAllApprovalRequests = async () => {
+  const { data, error } = await supabase
+    .from('approval_requests')
+    .select('*')
     .order('created_at', { ascending: false });
   if (error) throw error;
   return data.map((r) => ({
