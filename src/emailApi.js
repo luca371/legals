@@ -1,14 +1,10 @@
 import emailjs from '@emailjs/browser';
 
 const EMAILJS_SERVICE_ID = 'service_vnyvtke';
-const EMAILJS_TEMPLATE_ID = 'template_c0tjshe';
+const EMAILJS_TEMPLATE_ID = 'template_rk4qeo4';
 const EMAILJS_PUBLIC_KEY = 'XxhyAZmbDbStZ2m4E';
 const ACTIVATION_TEMPLATE_ID = 'template_mh5uqob';
-// Create this template in the EmailJS dashboard (same shape as the approval
-// template — to_email, to_name, from_name, agreement_title, message,
-// review_link, cc_email — with the template's "CC" field set to {{cc_email}})
-// and paste its id here.
-const REVIEW_TEMPLATE_ID = 'YOUR_REVIEW_TEMPLATE_ID';
+const REVIEW_TEMPLATE_ID = 'template_wxn3x0l';
 
 export const sendApprovalEmail = async ({
   toEmail,
