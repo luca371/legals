@@ -1,0 +1,52 @@
+:root {
+  /* Typography — native system font, no external font loading */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text',
+    'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+
+  /* Neutrals */
+  --color-bg: #f5f5f7;
+  --color-surface: #ffffff;
+  --color-surface-raised: #ffffff;
+  --color-border: rgba(0, 0, 0, 0.08);
+  --color-border-strong: rgba(0, 0, 0, 0.12);
+
+  --color-text: #1d1d1f;
+  --color-text-secondary: #6e6e73;
+  --color-text-tertiary: #86868b;
+  --color-text-on-dark: #f5f5f7;
+  --color-text-on-dark-secondary: rgba(245, 245, 247, 0.72);
+
+  /* Accent */
+  --color-accent: #0071e3;
+  --color-accent-hover: #0077ed;
+  --color-accent-soft: rgba(0, 113, 227, 0.1);
+
+  /* Dark surface (sidebar) */
+  --color-dark-surface: #1d1d1f;
+  --color-dark-surface-raised: #2c2c2e;
+
+  /* Status */
+  --color-success: #1a9e5c;
+  --color-warning: #c9820a;
+  --color-danger: #d92d20;
+
+  /* Radius */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 20px;
+
+  /* Shadow */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 16px 48px rgba(0, 0, 0, 0.12);
+
+  /* Motion */
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /* Compatibility bridge for screens not yet migrated off the old navy theme */
+  --navy: var(--color-accent);
+  --navy-soft: var(--color-accent-hover);
+  --navy-hover: #005bb8;
+}
