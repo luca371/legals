@@ -383,7 +383,19 @@ export const deleteTemplate = async (id) => {
   if (error) throw error;
 };
 
-export const createReviewRequest = async ({ agreementId, agreementTitle, attachmentId, attachmentName, originalHtml, reviewerEmail, reviewerName, message }) => {
+export const createReviewRequest = async ({
+  agreementId,
+  agreementTitle,
+  attachmentId,
+  attachmentName,
+  originalHtml,
+  reviewerEmail,
+  reviewerName,
+  message,
+  sequence,
+  batchId,
+  requestedBy,
+}) => {
   const tenantId = await getCurrentTenantId();
   const { data, error } = await supabase
     .from('review_requests')
@@ -398,12 +410,35 @@ export const createReviewRequest = async ({ agreementId, agreementTitle, attachm
       reviewer_name: reviewerName || '',
       message: message || '',
       status: 'Pending',
+      sequence: sequence || 1,
+      batch_id: batchId,
+      requested_by: requestedBy || '',
     })
     .select()
     .single();
   if (error) throw error;
   return data.id;
 };
+
+const mapReviewRequest = (r) => ({
+  id: r.id,
+  agreementId: r.agreement_id,
+  agreementTitle: r.agreement_title,
+  attachmentId: r.attachment_id,
+  attachmentName: r.attachment_name,
+  originalHtml: r.original_html,
+  reviewerEmail: r.reviewer_email,
+  reviewerName: r.reviewer_name,
+  message: r.message,
+  status: r.status,
+  submittedHtml: r.submitted_html,
+  redlineHtml: r.redline_html,
+  submittedAt: r.submitted_at,
+  sequence: r.sequence || 1,
+  batchId: r.batch_id,
+  requestedBy: r.requested_by,
+  createdAt: r.created_at,
+});
 
 export const listReviewRequestsForAgreement = async (agreementId) => {
   const { data, error } = await supabase
@@ -412,20 +447,7 @@ export const listReviewRequestsForAgreement = async (agreementId) => {
     .eq('agreement_id', agreementId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data.map((r) => ({
-    id: r.id,
-    agreementId: r.agreement_id,
-    attachmentId: r.attachment_id,
-    attachmentName: r.attachment_name,
-    reviewerEmail: r.reviewer_email,
-    reviewerName: r.reviewer_name,
-    message: r.message,
-    status: r.status,
-    submittedHtml: r.submitted_html,
-    redlineHtml: r.redline_html,
-    submittedAt: r.submitted_at,
-    createdAt: r.created_at,
-  }));
+  return data.map(mapReviewRequest);
 };
 
 export const getReviewRequestPublic = async (id) => {
@@ -435,16 +457,19 @@ export const getReviewRequestPublic = async (id) => {
     .eq('id', id)
     .single();
   if (error) throw error;
-  return {
-    id: data.id,
-    agreementTitle: data.agreement_title,
-    attachmentName: data.attachment_name,
-    originalHtml: data.original_html,
-    reviewerEmail: data.reviewer_email,
-    reviewerName: data.reviewer_name,
-    message: data.message,
-    status: data.status,
-  };
+  return mapReviewRequest(data);
+};
+
+export const getNextReviewInBatch = async (batchId, sequence) => {
+  if (!batchId) return null;
+  const { data, error } = await supabase
+    .from('review_requests')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('sequence', sequence + 1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapReviewRequest(data) : null;
 };
 
 export const submitReviewChanges = async (id, submittedHtml, redlineHtml) => {

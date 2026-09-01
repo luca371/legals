@@ -328,7 +328,7 @@ function AgreementDetailScreen() {
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewAttachmentId, setReviewAttachmentId] = useState('');
-  const [reviewRecipients, setReviewRecipients] = useState('');
+  const [reviewersList, setReviewersList] = useState([{ name: '', email: '' }]);
   const [reviewCc, setReviewCc] = useState('');
   const [reviewMessage, setReviewMessage] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
@@ -358,6 +358,7 @@ function AgreementDetailScreen() {
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
+  const [dragIndex, setDragIndex] = useState(null);
   const [signersList, setSignersList] = useState([{ name: '', email: '' }]);
   const [ccList, setCcList] = useState([]);
   const [signatureMessage, setSignatureMessage] = useState('');
@@ -716,7 +717,7 @@ function AgreementDetailScreen() {
     setShowReviewModal(true);
     setReviewError('');
     setReviewAttachmentId('');
-    setReviewRecipients('');
+    setReviewersList([{ name: '', email: '' }]);
     setReviewCc('');
     setReviewMessage('');
   };
@@ -726,18 +727,28 @@ function AgreementDetailScreen() {
     setShowReviewModal(false);
   };
 
+  const updateReviewerAt = (index, field, value) => {
+    setReviewersList((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const addReviewerRow = () => {
+    if (reviewersList.length >= 10) return;
+    setReviewersList((prev) => [...prev, { name: '', email: '' }]);
+  };
+
+  const removeReviewerAt = (index) => {
+    setReviewersList((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  };
+
   const handleSendToReview = async () => {
     const attachment = mergeableAttachments.find((a) => a.id === reviewAttachmentId);
     if (!attachment) {
       setReviewError('Select a document to send.');
       return;
     }
-    const recipients = reviewRecipients
-      .split(/[,;]/)
-      .map((email) => email.trim())
-      .filter(Boolean);
-    if (recipients.length === 0) {
-      setReviewError('Enter at least one recipient email.');
+    const isValidEmail = (email) => /^\S+@\S+\.\S+$/.test(email.trim());
+    if (reviewersList.length === 0 || !reviewersList.every((r) => isValidEmail(r.email))) {
+      setReviewError('Enter a valid email for every reviewer.');
       return;
     }
 
@@ -747,31 +758,45 @@ function AgreementDetailScreen() {
     try {
       const originalHtml = await attachmentToMergeHtml(attachment);
       const ccEmail = reviewCc.trim();
+      const currentUser = agreement.createdBy || 'Legal Space';
+      const batchId = crypto.randomUUID();
 
-      for (const email of recipients) {
+      // Sequential chain: create a Pending row for every reviewer up front,
+      // but only email the first one — submitting on the public review page
+      // emails the next reviewer in the batch.
+      let firstReviewId = '';
+      for (let i = 0; i < reviewersList.length; i += 1) {
+        const reviewer = reviewersList[i];
         const reviewId = await createReviewRequest({
           agreementId,
           agreementTitle: agreement.title,
           attachmentId: attachment.id,
           attachmentName: attachment.name,
           originalHtml,
-          reviewerEmail: email,
+          reviewerEmail: reviewer.email.trim(),
+          reviewerName: reviewer.name.trim(),
           message: reviewMessage,
+          sequence: i + 1,
+          batchId,
+          requestedBy: currentUser,
         });
+        if (i === 0) firstReviewId = reviewId;
+      }
 
-        try {
-          await sendReviewEmail({
-            toEmail: email,
-            fromName: agreement.createdBy,
-            agreementTitle: agreement.title,
-            message: reviewMessage,
-            reviewLink: `${window.location.origin}/review/${reviewId}`,
-            ccEmail,
-          });
-        } catch (emailErr) {
-          console.error('Failed to send the review email:', emailErr);
-          emailWarning = `Review link${recipients.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) — copy the link manually below.`;
-        }
+      const first = reviewersList[0];
+      try {
+        await sendReviewEmail({
+          toEmail: first.email.trim(),
+          toName: first.name.trim(),
+          fromName: currentUser,
+          agreementTitle: agreement.title,
+          message: reviewMessage,
+          reviewLink: `${window.location.origin}/review/${firstReviewId}`,
+          ccEmail,
+        });
+      } catch (emailErr) {
+        console.error('Failed to send the review email:', emailErr);
+        emailWarning = `Review link${reviewersList.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) — copy the link manually below.`;
       }
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'In review');
@@ -1092,6 +1117,33 @@ function AgreementDetailScreen() {
     if (sendingSignature || markingManualSignature) return;
     setShowSignatureModal(false);
   };
+
+  // Generic drag-to-reorder for the signer/approver/reviewer lists — only
+  // one of those modals is ever open at once, so a single piece of drag
+  // state is safe to share across all three.
+  const handleDragStart = (index) => (e) => {
+    setDragIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOverRow = (e) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropReorder = (setter, targetIndex) => (e) => {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === targetIndex) return;
+    setter((prev) => {
+      const updated = [...prev];
+      const [moved] = updated.splice(dragIndex, 1);
+      updated.splice(targetIndex, 0, moved);
+      return updated;
+    });
+    setDragIndex(null);
+  };
+
+  const handleDragEnd = () => setDragIndex(null);
 
   const updateSignerAt = (index, field, value) => {
     setSignersList((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
@@ -1611,10 +1663,19 @@ function AgreementDetailScreen() {
                 {reviewRequests.length > 0 && (
                   <div className="agrd__review-sessions">
                     <h4 className="agrd__review-sessions-title">Sent for review</h4>
-                    {reviewRequests.map((rr) => (
+                    {reviewRequests.map((rr) => {
+                      const batchMates = rr.batchId ? reviewRequests.filter((r) => r.batchId === rr.batchId) : [rr];
+                      const isChain = batchMates.length > 1;
+                      const isWaitingTurn =
+                        rr.status === 'Pending' &&
+                        isChain &&
+                        batchMates.some((r) => r.sequence < rr.sequence && r.status === 'Pending');
+
+                      return (
                       <div key={rr.id} className="agrd__review-session-row">
                         <div className="agrd__review-session-info">
                           <span className="agrd__review-session-name">
+                            {isChain && `#${rr.sequence} · `}
                             {rr.reviewerName ? `${rr.reviewerName} · ` : ''}{rr.reviewerEmail}
                           </span>
                           <span className="agrd__review-session-meta">
@@ -1627,9 +1688,9 @@ function AgreementDetailScreen() {
                               rr.status === 'Accepted' ? 'done' : rr.status === 'Rejected' ? 'danger' : rr.status === 'Submitted' ? 'pending' : 'pending'
                             }`}
                           >
-                            {rr.status}
+                            {isWaitingTurn ? 'Waiting its turn' : rr.status}
                           </span>
-                          {rr.status === 'Pending' && (
+                          {rr.status === 'Pending' && !isWaitingTurn && (
                             <button
                               type="button"
                               className="agrd__attachment-btn"
@@ -1666,7 +1727,8 @@ function AgreementDetailScreen() {
                           )}
                         </div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {approvalRequests.length > 0 && (
@@ -2066,14 +2128,70 @@ function AgreementDetailScreen() {
                 </div>
               )}
 
-              <h4 className="agrd__review-section-title">Send to</h4>
-              <input
-                type="text"
-                className="agrd__input"
-                placeholder="reviewer@company.com, another@company.com"
-                value={reviewRecipients}
-                onChange={(e) => setReviewRecipients(e.target.value)}
-              />
+              {reviewersList.map((reviewer, index) => (
+                <div
+                  key={index}
+                  className={`agrd__recipient-row ${dragIndex === index ? 'agrd__recipient-row--dragging' : ''}`}
+                  onDragOver={handleDragOverRow}
+                  onDrop={handleDropReorder(setReviewersList, index)}
+                >
+                  <h4 className="agrd__review-section-title">
+                    Reviewer {reviewersList.length > 1 ? index + 1 : ''}
+                    {reviewersList.length > 1 && index > 0 && (
+                      <span className="agrd__modal-hint"> (reviews after Reviewer {index})</span>
+                    )}
+                  </h4>
+                  <div className="agrd__recipient-fields">
+                    {reviewersList.length > 1 && (
+                      <span
+                        className="agrd__drag-handle"
+                        draggable
+                        onDragStart={handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        aria-label={`Drag to reorder reviewer ${index + 1}`}
+                        title="Drag to reorder"
+                      >
+                        ⠿
+                      </span>
+                    )}
+                    <input
+                      type="text"
+                      className="agrd__input"
+                      placeholder="Name (optional)"
+                      value={reviewer.name}
+                      onChange={(e) => updateReviewerAt(index, 'name', e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      className="agrd__input"
+                      placeholder="reviewer@company.com"
+                      value={reviewer.email}
+                      onChange={(e) => updateReviewerAt(index, 'email', e.target.value)}
+                    />
+                    {reviewersList.length > 1 && (
+                      <button
+                        type="button"
+                        className="agrd__recipient-remove"
+                        onClick={() => removeReviewerAt(index)}
+                        aria-label={`Remove reviewer ${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {reviewersList.length < 10 && (
+                <button type="button" className="agrd__attachment-btn" onClick={addReviewerRow}>
+                  + Add another reviewer
+                </button>
+              )}
+              {reviewersList.length > 1 && (
+                <p className="agrd__modal-hint agrd__modal-hint--top">
+                  Sequential — each reviewer is only notified after the previous one submits their changes.
+                </p>
+              )}
+
               <h4 className="agrd__review-section-title">
                 CC <span className="agrd__modal-hint">(optional)</span>
               </h4>
@@ -2150,7 +2268,12 @@ function AgreementDetailScreen() {
               )}
 
               {approversList.map((approver, index) => (
-                <div key={index} className="agrd__recipient-row">
+                <div
+                  key={index}
+                  className={`agrd__recipient-row ${dragIndex === index ? 'agrd__recipient-row--dragging' : ''}`}
+                  onDragOver={handleDragOverRow}
+                  onDrop={handleDropReorder(setApproversList, index)}
+                >
                   <h4 className="agrd__review-section-title">
                     Approver {approversList.length > 1 ? index + 1 : ''}
                     {approversList.length > 1 && index > 0 && (
@@ -2158,6 +2281,18 @@ function AgreementDetailScreen() {
                     )}
                   </h4>
                   <div className="agrd__recipient-fields">
+                    {approversList.length > 1 && (
+                      <span
+                        className="agrd__drag-handle"
+                        draggable
+                        onDragStart={handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        aria-label={`Drag to reorder approver ${index + 1}`}
+                        title="Drag to reorder"
+                      >
+                        ⠿
+                      </span>
+                    )}
                     <input
                       type="text"
                       className="agrd__input"

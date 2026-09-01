@@ -305,6 +305,30 @@
 
 .agrd__recipient-row {
   margin-bottom: 6px;
+  border-radius: var(--radius-md);
+  transition: background 0.12s var(--ease);
+}
+
+.agrd__recipient-row--dragging {
+  opacity: 0.4;
+}
+
+.agrd__drag-handle {
+  flex-shrink: 0;
+  width: 22px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-tertiary);
+  font-size: 1.1rem;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.agrd__drag-handle:active {
+  cursor: grabbing;
 }
 
 .agrd__recipient-fields {

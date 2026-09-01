@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getReviewRequestPublic, submitReviewChanges } from '../supabase';
+import { getReviewRequestPublic, submitReviewChanges, getNextReviewInBatch } from '../supabase';
+import { sendReviewEmail } from '../emailApi';
 import { computeRedlineHtml } from '../redlineUtils';
 
 const fontStack = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
@@ -84,6 +85,23 @@ function ReviewLinkScreen() {
       const finalHtml = editableRef.current.innerHTML || '';
       const redlineHtml = computeRedlineHtml(review.originalHtml, finalHtml);
       await submitReviewChanges(reviewId, finalHtml, redlineHtml);
+
+      try {
+        const next = await getNextReviewInBatch(review.batchId, review.sequence);
+        if (next) {
+          await sendReviewEmail({
+            toEmail: next.reviewerEmail,
+            toName: next.reviewerName,
+            fromName: review.requestedBy,
+            agreementTitle: review.agreementTitle,
+            message: review.message,
+            reviewLink: `${window.location.origin}/review/${next.id}`,
+          });
+        }
+      } catch (chainErr) {
+        console.error('Could not advance the review chain:', chainErr);
+      }
+
       setSubmitted(true);
     } catch (err) {
       console.error('Failed to submit review changes:', err);
@@ -129,6 +147,7 @@ function ReviewLinkScreen() {
           <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#6e6e73' }}>
             Reviewing: {review.attachmentName}
             {review.message && <> — "{review.message}"</>}
+            {review.sequence > 1 && <> · You are the next reviewer in this chain.</>}
           </p>
         </div>
         <button
