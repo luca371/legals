@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mammoth from 'mammoth';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import {
   listAccounts,
   listAgreements,
@@ -19,6 +21,14 @@ const STARTER_PROMPTS = [
   'Which agreements are expiring in the next 90 days?',
   'List all NDAs that are still in Draft status.',
 ];
+
+const MARKDOWN_COMPONENTS = {
+  table: ({ children }) => (
+    <div className="ask__markdown-table-wrap">
+      <table>{children}</table>
+    </div>
+  ),
+};
 
 function uid() {
   return Math.random().toString(36).slice(2);
@@ -242,7 +252,17 @@ function AskAIScreen() {
         ) : (
           chatLog.map((msg) => (
             <div key={msg.id} className={`ask__bubble-row ask__bubble-row--${msg.role}`}>
-              <div className={`ask__bubble ask__bubble--${msg.role}`}>{msg.text}</div>
+              <div className={`ask__bubble ask__bubble--${msg.role}`}>
+                {msg.role === 'assistant' ? (
+                  <div className="ask__markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
+                      {msg.text}
+                    </ReactMarkdown>
+                  </div>
+                ) : (
+                  msg.text
+                )}
+              </div>
             </div>
           ))
         )}
