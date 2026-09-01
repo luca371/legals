@@ -343,8 +343,7 @@ function AgreementDetailScreen() {
 
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAttachmentId, setApprovalAttachmentId] = useState('');
-  const [approverEmail, setApproverEmail] = useState('');
-  const [approverName, setApproverName] = useState('');
+  const [approversList, setApproversList] = useState([{ name: '', email: '' }]);
   const [approvalMessage, setApprovalMessage] = useState('');
   const [sendingApproval, setSendingApproval] = useState(false);
   const [approvalError, setApprovalError] = useState('');
@@ -954,8 +953,7 @@ function AgreementDetailScreen() {
     setShowApprovalModal(true);
     setApprovalError('');
     setApprovalAttachmentId('');
-    setApproverEmail('');
-    setApproverName('');
+    setApproversList([{ name: '', email: '' }]);
     setApprovalMessage('');
   };
 
@@ -964,33 +962,60 @@ function AgreementDetailScreen() {
     setShowApprovalModal(false);
   };
 
+  const updateApproverAt = (index, field, value) => {
+    setApproversList((prev) => prev.map((a, i) => (i === index ? { ...a, [field]: value } : a)));
+  };
+
+  const addApproverRow = () => {
+    if (approversList.length >= 10) return;
+    setApproversList((prev) => [...prev, { name: '', email: '' }]);
+  };
+
+  const removeApproverAt = (index) => {
+    setApproversList((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  };
+
   const handleSendForApproval = async () => {
-    const email = approverEmail.trim();
-    if (!email || !/^\S+@\S+\.\S+$/.test(email)) {
-      setApprovalError('Enter a valid approver email.');
+    const isValidEmail = (email) => /^\S+@\S+\.\S+$/.test(email.trim());
+    if (approversList.length === 0 || !approversList.every((a) => isValidEmail(a.email))) {
+      setApprovalError('Enter a valid email for every approver.');
       return;
     }
     const attachment = (agreement.attachments || []).find((a) => a.id === approvalAttachmentId) || null;
+    const currentUser = agreement.createdBy || 'Legal Space';
+    const batchId = crypto.randomUUID();
 
     setSendingApproval(true);
     setApprovalError('');
     try {
-      const approvalId = await createApprovalRequest({
-        agreementId,
-        agreementTitle: agreement.title,
-        attachment,
-        approverEmail: email,
-        approverName,
-        message: approvalMessage,
-      });
+      // Sequential chain: create a Pending row for every approver up front
+      // (so the internal view shows the whole queue), but only email the
+      // first one now — decideApprovalRequest on the public page emails the
+      // next approver in the batch once each one approves.
+      let firstApprovalId = '';
+      for (let i = 0; i < approversList.length; i += 1) {
+        const approver = approversList[i];
+        const approvalId = await createApprovalRequest({
+          agreementId,
+          agreementTitle: agreement.title,
+          attachment,
+          approverEmail: approver.email.trim(),
+          approverName: approver.name.trim(),
+          message: approvalMessage,
+          sequence: i + 1,
+          batchId,
+          requestedBy: currentUser,
+        });
+        if (i === 0) firstApprovalId = approvalId;
+      }
 
-      const approvalLink = `${window.location.origin}/approve/${approvalId}`;
-      const currentUser = agreement.createdBy || 'Legal Space';
+      const approvalLink = `${window.location.origin}/approve/${firstApprovalId}`;
+      const first = approversList[0];
 
       try {
         await sendApprovalEmail({
-          toEmail: email,
-          toName: approverName,
+          toEmail: first.email.trim(),
+          toName: first.name.trim(),
           fromName: currentUser,
           agreementTitle: agreement.title,
           message: approvalMessage,
@@ -999,7 +1024,7 @@ function AgreementDetailScreen() {
       } catch (emailErr) {
         console.error('Failed to send the approval email:', emailErr);
         setApprovalError(
-          `The approval request was created, but the email could not be sent. Share this link manually: ${approvalLink}`
+          `The approval request${approversList.length > 1 ? 's were' : ' was'} created, but the email could not be sent. Share this link manually: ${approvalLink}`
         );
         await load();
         return;
@@ -1647,42 +1672,54 @@ function AgreementDetailScreen() {
                 {approvalRequests.length > 0 && (
                   <div className="agrd__review-sessions">
                     <h4 className="agrd__review-sessions-title">Sent for approval</h4>
-                    {approvalRequests.map((request) => (
-                      <div key={request.id} className="agrd__review-session-row">
-                        <div className="agrd__review-session-info">
-                          <span className="agrd__review-session-name">
-                            {request.approverName ? `${request.approverName} · ` : ''}{request.approverEmail}
-                          </span>
-                          <span className="agrd__review-session-meta">
-                            {request.attachmentName || 'No document attached'} ·{' '}
-                            {request.createdAt?.seconds
-                              ? new Date(request.createdAt.seconds * 1000).toLocaleDateString()
-                              : 'just now'}
-                          </span>
-                          {request.status !== 'Pending' && request.comment && (
-                            <span className="agrd__review-session-meta">"{request.comment}"</span>
-                          )}
-                        </div>
-                        <div className="agrd__review-session-actions">
-                          <span
-                            className={`agrd__review-session-status agrd__review-session-status--${
-                              request.status === 'Approved' ? 'done' : request.status === 'Rejected' ? 'danger' : 'pending'
-                            }`}
-                          >
-                            {request.status}
-                          </span>
-                          {request.status === 'Pending' && (
-                            <button
-                              type="button"
-                              className="agrd__attachment-btn"
-                              onClick={() => handleCopyApprovalLink(request)}
+                    {approvalRequests.map((request) => {
+                      const batchMates = request.batchId
+                        ? approvalRequests.filter((r) => r.batchId === request.batchId)
+                        : [request];
+                      const isChain = batchMates.length > 1;
+                      const isWaitingTurn =
+                        request.status === 'Pending' &&
+                        isChain &&
+                        batchMates.some((r) => r.sequence < request.sequence && r.status !== 'Approved');
+
+                      return (
+                        <div key={request.id} className="agrd__review-session-row">
+                          <div className="agrd__review-session-info">
+                            <span className="agrd__review-session-name">
+                              {isChain && `#${request.sequence} · `}
+                              {request.approverName ? `${request.approverName} · ` : ''}{request.approverEmail}
+                            </span>
+                            <span className="agrd__review-session-meta">
+                              {request.attachmentName || 'No document attached'} ·{' '}
+                              {request.createdAt?.seconds
+                                ? new Date(request.createdAt.seconds * 1000).toLocaleDateString()
+                                : 'just now'}
+                            </span>
+                            {request.status !== 'Pending' && request.comment && (
+                              <span className="agrd__review-session-meta">"{request.comment}"</span>
+                            )}
+                          </div>
+                          <div className="agrd__review-session-actions">
+                            <span
+                              className={`agrd__review-session-status agrd__review-session-status--${
+                                request.status === 'Approved' ? 'done' : request.status === 'Rejected' ? 'danger' : 'pending'
+                              }`}
                             >
-                              {copiedApprovalId === request.id ? 'Copied!' : 'Copy link'}
-                            </button>
-                          )}
+                              {isWaitingTurn ? 'Waiting its turn' : request.status}
+                            </span>
+                            {request.status === 'Pending' && !isWaitingTurn && (
+                              <button
+                                type="button"
+                                className="agrd__attachment-btn"
+                                onClick={() => handleCopyApprovalLink(request)}
+                              >
+                                {copiedApprovalId === request.id ? 'Copied!' : 'Copy link'}
+                              </button>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
                 {(agreement.docusignEnvelopes || []).length > 0 && (
@@ -2112,23 +2149,54 @@ function AgreementDetailScreen() {
                 </div>
               )}
 
-              <h4 className="agrd__review-section-title">Approver</h4>
-              <div className="agrd__field-row">
-                <input
-                  type="text"
-                  className="agrd__input"
-                  placeholder="Name (optional)"
-                  value={approverName}
-                  onChange={(e) => setApproverName(e.target.value)}
-                />
-                <input
-                  type="email"
-                  className="agrd__input"
-                  placeholder="approver@company.com"
-                  value={approverEmail}
-                  onChange={(e) => setApproverEmail(e.target.value)}
-                />
-              </div>
+              {approversList.map((approver, index) => (
+                <div key={index} className="agrd__recipient-row">
+                  <h4 className="agrd__review-section-title">
+                    Approver {approversList.length > 1 ? index + 1 : ''}
+                    {approversList.length > 1 && index > 0 && (
+                      <span className="agrd__modal-hint"> (approves after Approver {index})</span>
+                    )}
+                  </h4>
+                  <div className="agrd__recipient-fields">
+                    <input
+                      type="text"
+                      className="agrd__input"
+                      placeholder="Name (optional)"
+                      value={approver.name}
+                      onChange={(e) => updateApproverAt(index, 'name', e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      className="agrd__input"
+                      placeholder="approver@company.com"
+                      value={approver.email}
+                      onChange={(e) => updateApproverAt(index, 'email', e.target.value)}
+                    />
+                    {approversList.length > 1 && (
+                      <button
+                        type="button"
+                        className="agrd__recipient-remove"
+                        onClick={() => removeApproverAt(index)}
+                        aria-label={`Remove approver ${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {approversList.length < 10 && (
+                <button type="button" className="agrd__attachment-btn" onClick={addApproverRow}>
+                  + Add another approver
+                </button>
+              )}
+              {approversList.length > 1 && (
+                <p className="agrd__modal-hint agrd__modal-hint--top">
+                  Sequential — each approver is only notified after the previous one approves. If anyone rejects, the chain stops.
+                </p>
+              )}
+
+              <h4 className="agrd__review-section-title">Message</h4>
               <textarea
                 className="agrd__input agrd__textarea"
                 placeholder="Optional message for the approver"
@@ -2146,7 +2214,7 @@ function AgreementDetailScreen() {
                 type="button"
                 className="agrd__btn-primary"
                 onClick={handleSendForApproval}
-                disabled={!approverEmail.trim() || sendingApproval}
+                disabled={!approversList[0]?.email.trim() || sendingApproval}
               >
                 {sendingApproval ? 'Sending…' : 'Send for approval'}
               </button>

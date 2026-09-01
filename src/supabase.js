@@ -620,7 +620,17 @@ export const updateReviewSession = async (agreementId, sessionId, patch) => {
   if (error) throw error;
 };
 
-export const createApprovalRequest = async ({ agreementId, agreementTitle, attachment, approverEmail, approverName, message }) => {
+export const createApprovalRequest = async ({
+  agreementId,
+  agreementTitle,
+  attachment,
+  approverEmail,
+  approverName,
+  message,
+  sequence,
+  batchId,
+  requestedBy,
+}) => {
   const tenantId = await getCurrentTenantId();
   const { data, error } = await supabase
     .from('approval_requests')
@@ -633,12 +643,32 @@ export const createApprovalRequest = async ({ agreementId, agreementTitle, attac
       approver_name: approverName || '',
       message: message || '',
       status: 'Pending',
+      sequence: sequence || 1,
+      batch_id: batchId,
+      requested_by: requestedBy || '',
     })
     .select()
     .single();
   if (error) throw error;
   return data.id;
 };
+
+const mapApprovalRequest = (r) => ({
+  id: r.id,
+  agreementId: r.agreement_id,
+  agreementTitle: r.agreement_title,
+  attachmentName: r.attachment?.name,
+  attachment: r.attachment,
+  approverEmail: r.approver_email,
+  approverName: r.approver_name,
+  message: r.message,
+  status: r.status,
+  comment: r.comment,
+  sequence: r.sequence || 1,
+  batchId: r.batch_id,
+  requestedBy: r.requested_by,
+  createdAt: r.created_at ? { seconds: Math.floor(new Date(r.created_at).getTime() / 1000) } : null,
+});
 
 export const listApprovalRequestsForAgreement = async (agreementId) => {
   const { data, error } = await supabase
@@ -647,18 +677,37 @@ export const listApprovalRequestsForAgreement = async (agreementId) => {
     .eq('agreement_id', agreementId)
     .order('created_at', { ascending: false });
   if (error) throw error;
-  return data.map((r) => ({
-    id: r.id,
-    agreementId: r.agreement_id,
-    agreementTitle: r.agreement_title,
-    attachmentName: r.attachment?.name,
-    approverEmail: r.approver_email,
-    approverName: r.approver_name,
-    message: r.message,
-    status: r.status,
-    comment: r.comment,
-    createdAt: r.created_at ? { seconds: Math.floor(new Date(r.created_at).getTime() / 1000) } : null,
-  }));
+  return data.map(mapApprovalRequest);
+};
+
+export const getApprovalRequest = async (id) => {
+  const { data, error } = await supabase.from('approval_requests').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? mapApprovalRequest(data) : null;
+};
+
+export const getNextApprovalInBatch = async (batchId, sequence) => {
+  if (!batchId) return null;
+  const { data, error } = await supabase
+    .from('approval_requests')
+    .select('*')
+    .eq('batch_id', batchId)
+    .eq('sequence', sequence + 1)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? mapApprovalRequest(data) : null;
+};
+
+// Only persists this approver's decision — does not touch the agreement's
+// status. Advancing the agreement (and notifying the next approver in a
+// sequential chain) is the caller's job, since only the caller knows
+// whether this was the last approver in the batch.
+export const decideApprovalRequest = async (id, decision, comment) => {
+  const { error } = await supabase
+    .from('approval_requests')
+    .update({ status: decision, comment: (comment || '').trim(), updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
 };
 
 export const listAllApprovalRequests = async () => {
