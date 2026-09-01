@@ -13,7 +13,6 @@ import {
 import './AgreementsScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
-const DEFAULT_STATUSES = ['Draft', 'Generated', 'Import offline', 'In review', 'Reviewed', 'In approval', 'Approved', 'Pending signatures', 'Signed', 'Activated'];
 
 const EMPTY_FORM = {
   title: '',
@@ -80,7 +79,6 @@ function AgreementsScreen() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
-  const [statusOptions, setStatusOptions] = useState(DEFAULT_STATUSES);
   const [typeOptions, setTypeOptions] = useState([]);
   const [subtypeOptions, setSubtypeOptions] = useState([]);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
@@ -118,7 +116,6 @@ function AgreementsScreen() {
       getBuiltInFieldConfigs('agreement'),
       getTypeSubtypeMap(),
     ]).then(([configs, map]) => {
-      if (configs.status?.length) setStatusOptions(configs.status);
       if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
       if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
       setTypeSubtypeMap(map);
@@ -424,15 +421,6 @@ function AgreementsScreen() {
                         {LANGUAGES.map((l) => <option key={l} value={l}>{l}</option>)}
                       </select>
                     </div>
-
-                    {createFlow !== 'signed' && (
-                      <div className="agr__field">
-                        <label className="agr__label" htmlFor="status">Status</label>
-                        <select id="status" name="status" className="agr__input" value={form.status} onChange={handleFormChange}>
-                          {statusOptions.map((s) => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                      </div>
-                    )}
 
                     <div className="agr__field">
                       <label className="agr__label" htmlFor="effectiveDate">Start date</label>

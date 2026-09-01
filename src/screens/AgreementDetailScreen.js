@@ -2021,7 +2021,7 @@ function AgreementDetailScreen() {
                         onChange={() => setReviewAttachmentId(att.id)}
                       />
                       <div className="agrd__template-option-info">
-                        <span className="agrd__template-option-name">{att.name}</span>
+                        <span className="agrd__template-option-name">{att.name}{att.version && <span className="agrd__version-badge">v{att.version}</span>}</span>
                         <span className="agrd__template-option-lang">{formatFileSize(att.size)}</span>
                       </div>
                     </label>
@@ -2102,8 +2102,9 @@ function AgreementDetailScreen() {
                         checked={approvalAttachmentId === att.id}
                         onChange={() => setApprovalAttachmentId(att.id)}
                       />
+                      <FileIcon />
                       <div className="agrd__template-option-info">
-                        <span className="agrd__template-option-name">{att.name}</span>
+                        <span className="agrd__template-option-name">{att.name}{att.version && <span className="agrd__version-badge">v{att.version}</span>}</span>
                         <span className="agrd__template-option-lang">{formatFileSize(att.size)}</span>
                       </div>
                     </label>
@@ -2112,20 +2113,22 @@ function AgreementDetailScreen() {
               )}
 
               <h4 className="agrd__review-section-title">Approver</h4>
-              <input
-                type="text"
-                className="agrd__input"
-                placeholder="Approver name (optional)"
-                value={approverName}
-                onChange={(e) => setApproverName(e.target.value)}
-              />
-              <input
-                type="email"
-                className="agrd__input"
-                placeholder="approver@company.com"
-                value={approverEmail}
-                onChange={(e) => setApproverEmail(e.target.value)}
-              />
+              <div className="agrd__field-row">
+                <input
+                  type="text"
+                  className="agrd__input"
+                  placeholder="Name (optional)"
+                  value={approverName}
+                  onChange={(e) => setApproverName(e.target.value)}
+                />
+                <input
+                  type="email"
+                  className="agrd__input"
+                  placeholder="approver@company.com"
+                  value={approverEmail}
+                  onChange={(e) => setApproverEmail(e.target.value)}
+                />
+              </div>
               <textarea
                 className="agrd__input agrd__textarea"
                 placeholder="Optional message for the approver"
@@ -2300,7 +2303,7 @@ function AgreementDetailScreen() {
                         onChange={() => setSignatureAttachmentId(att.id)}
                       />
                       <div className="agrd__template-option-info">
-                        <span className="agrd__template-option-name">{att.name}</span>
+                        <span className="agrd__template-option-name">{att.name}{att.version && <span className="agrd__version-badge">v{att.version}</span>}</span>
                         <span className="agrd__template-option-lang">{formatFileSize(att.size)}</span>
                       </div>
                     </label>

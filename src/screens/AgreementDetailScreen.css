@@ -555,6 +555,16 @@
   text-overflow: ellipsis;
 }
 
+.agrd__field-row {
+  display: flex;
+  gap: 8px;
+}
+
+.agrd__field-row .agrd__input {
+  flex: 1;
+  min-width: 0;
+}
+
 .agrd__version-badge {
   display: inline-block;
   margin-left: 8px;
