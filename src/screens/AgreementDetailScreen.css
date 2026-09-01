@@ -555,6 +555,18 @@
   text-overflow: ellipsis;
 }
 
+.agrd__version-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  font-size: 0.7rem;
+  font-weight: 600;
+  border-radius: var(--radius-xl);
+  vertical-align: middle;
+}
+
 .agrd__attachment-size {
   font-size: 0.75rem;
   color: var(--color-text-tertiary);

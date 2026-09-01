@@ -4,6 +4,11 @@ const EMAILJS_SERVICE_ID = 'service_vnyvtke';
 const EMAILJS_TEMPLATE_ID = 'template_c0tjshe';
 const EMAILJS_PUBLIC_KEY = 'XxhyAZmbDbStZ2m4E';
 const ACTIVATION_TEMPLATE_ID = 'template_mh5uqob';
+// Create this template in the EmailJS dashboard (same shape as the approval
+// template — to_email, to_name, from_name, agreement_title, message,
+// review_link, cc_email — with the template's "CC" field set to {{cc_email}})
+// and paste its id here.
+const REVIEW_TEMPLATE_ID = 'YOUR_REVIEW_TEMPLATE_ID';
 
 export const sendApprovalEmail = async ({
   toEmail,
@@ -12,6 +17,7 @@ export const sendApprovalEmail = async ({
   agreementTitle,
   message,
   approvalLink,
+  ccEmail,
 }) => {
   if (
     EMAILJS_SERVICE_ID === 'YOUR_SERVICE_ID' ||
@@ -31,6 +37,7 @@ export const sendApprovalEmail = async ({
       agreement_title: agreementTitle || '',
       message: message || '',
       approval_link: approvalLink,
+      cc_email: ccEmail || '',
     },
     { publicKey: EMAILJS_PUBLIC_KEY }
   );
@@ -43,6 +50,7 @@ export const sendActivationEmail = async ({
   agreementTitle,
   message,
   recordLink,
+  ccEmail,
 }) => {
   if (ACTIVATION_TEMPLATE_ID === 'YOUR_ACTIVATION_TEMPLATE_ID') {
     throw new Error('The activation email template is not configured yet — set ACTIVATION_TEMPLATE_ID in src/emailApi.js.');
@@ -58,6 +66,36 @@ export const sendActivationEmail = async ({
       agreement_title: agreementTitle || '',
       message: message || '',
       record_link: recordLink,
+      cc_email: ccEmail || '',
+    },
+    { publicKey: EMAILJS_PUBLIC_KEY }
+  );
+};
+
+export const sendReviewEmail = async ({
+  toEmail,
+  toName,
+  fromName,
+  agreementTitle,
+  message,
+  reviewLink,
+  ccEmail,
+}) => {
+  if (REVIEW_TEMPLATE_ID === 'YOUR_REVIEW_TEMPLATE_ID') {
+    throw new Error('The review email template is not configured yet — set REVIEW_TEMPLATE_ID in src/emailApi.js.');
+  }
+
+  return emailjs.send(
+    EMAILJS_SERVICE_ID,
+    REVIEW_TEMPLATE_ID,
+    {
+      to_email: toEmail,
+      to_name: toName || toEmail,
+      from_name: fromName || 'Legal Space',
+      agreement_title: agreementTitle || '',
+      message: message || '',
+      review_link: reviewLink,
+      cc_email: ccEmail || '',
     },
     { publicKey: EMAILJS_PUBLIC_KEY }
   );

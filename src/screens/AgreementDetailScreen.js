@@ -29,7 +29,7 @@ import {
   rejectReviewChanges,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
-import { sendApprovalEmail, sendActivationEmail } from '../emailApi';
+import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
 import { finalizeRedlineHtml, countPendingChanges } from '../redlineUtils';
 import './AgreementDetailScreen.css';
@@ -142,9 +142,9 @@ function sanitizeFileName(name) {
   return (name || 'Agreement').replace(/[\\/:*?"<>|]+/g, '').trim() || 'Agreement';
 }
 
-function buildRedlineFileName(originalName) {
+function buildRedlineFileName(originalName, version) {
   const base = (originalName || 'Document').replace(/\.docx$/i, '');
-  return `${base} - Redlines.docx`;
+  return `${base} - v${version} - Redlines.docx`;
 }
 
 function computeAdvancedStatus(currentStatus, targetStatus) {
@@ -329,6 +329,7 @@ function AgreementDetailScreen() {
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewAttachmentId, setReviewAttachmentId] = useState('');
   const [reviewRecipients, setReviewRecipients] = useState('');
+  const [reviewCc, setReviewCc] = useState('');
   const [reviewMessage, setReviewMessage] = useState('');
   const [sendingReview, setSendingReview] = useState(false);
   const [reviewError, setReviewError] = useState('');
@@ -370,6 +371,7 @@ function AgreementDetailScreen() {
   const [activateNotifyName, setActivateNotifyName] = useState('');
   const [activateNotifyEmail, setActivateNotifyEmail] = useState('');
   const [activateMessage, setActivateMessage] = useState('');
+  const [activateCc, setActivateCc] = useState('');
   const [activating, setActivating] = useState(false);
   const [activateError, setActivateError] = useState('');
 
@@ -716,6 +718,7 @@ function AgreementDetailScreen() {
     setReviewError('');
     setReviewAttachmentId('');
     setReviewRecipients('');
+    setReviewCc('');
     setReviewMessage('');
   };
 
@@ -741,11 +744,13 @@ function AgreementDetailScreen() {
 
     setSendingReview(true);
     setReviewError('');
+    let emailWarning = '';
     try {
       const originalHtml = await attachmentToMergeHtml(attachment);
+      const ccEmail = reviewCc.trim();
 
       for (const email of recipients) {
-        await createReviewRequest({
+        const reviewId = await createReviewRequest({
           agreementId,
           agreementTitle: agreement.title,
           attachmentId: attachment.id,
@@ -754,6 +759,20 @@ function AgreementDetailScreen() {
           reviewerEmail: email,
           message: reviewMessage,
         });
+
+        try {
+          await sendReviewEmail({
+            toEmail: email,
+            fromName: agreement.createdBy,
+            agreementTitle: agreement.title,
+            message: reviewMessage,
+            reviewLink: `${window.location.origin}/review/${reviewId}`,
+            ccEmail,
+          });
+        } catch (emailErr) {
+          console.error('Failed to send the review email:', emailErr);
+          emailWarning = `Review link${recipients.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) — copy the link manually below.`;
+        }
       }
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'In review');
@@ -761,9 +780,13 @@ function AgreementDetailScreen() {
         await updateAgreementStatus(agreementId, advancedStatus);
       }
 
-      setShowReviewModal(false);
-      setActiveNav('attachments');
       await load();
+      if (emailWarning) {
+        setReviewError(emailWarning);
+      } else {
+        setShowReviewModal(false);
+        setActiveNav('attachments');
+      }
     } catch (err) {
       console.error('Failed to send document for review:', err);
       setReviewError('Something went wrong while sending the document for review. Please try again.');
@@ -881,13 +904,16 @@ function AgreementDetailScreen() {
       const finalHtml = finalizeRedlineHtml(redlineContainerRef.current);
       const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(finalHtml));
       const dataBase64 = await blobToBase64(docxBlob);
+      const version = (agreement.attachments || []).length + 1;
       const newAttachment = {
         id: `att_${Date.now()}`,
-        name: buildRedlineFileName(activeReviewRequest.attachmentName),
+        name: buildRedlineFileName(activeReviewRequest.attachmentName, version),
         size: docxBlob.size,
         mimeType: DOCX_MIME,
         dataBase64,
         sourceHtml: finalHtml,
+        version,
+        basedOnReviewId: activeReviewRequest.id,
         uploadedAt: new Date().toISOString(),
       };
       await addAgreementAttachment(agreementId, newAttachment);
@@ -1227,6 +1253,7 @@ function AgreementDetailScreen() {
     setActivateNotifyName('');
     setActivateNotifyEmail('');
     setActivateMessage('');
+    setActivateCc('');
   };
 
   const closeActivateModal = () => {
@@ -1255,6 +1282,7 @@ function AgreementDetailScreen() {
             agreementTitle: agreement.title,
             message: activateMessage,
             recordLink,
+            ccEmail: activateCc.trim(),
           });
         } catch (emailErr) {
           console.error('Failed to send the activation email:', emailErr);
@@ -1711,7 +1739,10 @@ function AgreementDetailScreen() {
                         <div className="agrd__attachment-info">
                           <FileIcon />
                           <div className="agrd__attachment-meta">
-                            <span className="agrd__attachment-name">{att.name}</span>
+                            <span className="agrd__attachment-name">
+                              {att.name}
+                              {att.version && <span className="agrd__version-badge">v{att.version}</span>}
+                            </span>
                             <span className="agrd__attachment-size">{formatFileSize(att.size)}</span>
                           </div>
                         </div>
@@ -2005,6 +2036,16 @@ function AgreementDetailScreen() {
                 placeholder="reviewer@company.com, another@company.com"
                 value={reviewRecipients}
                 onChange={(e) => setReviewRecipients(e.target.value)}
+              />
+              <h4 className="agrd__review-section-title">
+                CC <span className="agrd__modal-hint">(optional)</span>
+              </h4>
+              <input
+                type="text"
+                className="agrd__input"
+                placeholder="cc@company.com, another-cc@company.com"
+                value={reviewCc}
+                onChange={(e) => setReviewCc(e.target.value)}
               />
               <textarea
                 className="agrd__input agrd__textarea"
@@ -2405,6 +2446,13 @@ function AgreementDetailScreen() {
                 placeholder="Leave empty to activate without notifying anyone"
                 value={activateNotifyEmail}
                 onChange={(e) => setActivateNotifyEmail(e.target.value)}
+              />
+              <input
+                type="text"
+                className="agrd__input"
+                placeholder="CC (optional): cc@company.com, another-cc@company.com"
+                value={activateCc}
+                onChange={(e) => setActivateCc(e.target.value)}
               />
               <textarea
                 className="agrd__input agrd__textarea"
