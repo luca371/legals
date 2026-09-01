@@ -121,14 +121,14 @@ export function computeRedlineHtml(originalHtml, editedHtml) {
     const tag = type === 'insert' ? 'ins' : 'del';
     const tagStyle =
       type === 'insert'
-        ? 'text-decoration: underline; background: #e3f6ea; color: #1a7a41;'
-        : 'text-decoration: line-through; background: #fde8e8; color: #b42318;';
+        ? 'text-decoration: underline; background: #e8f7ee; color: #1a9e5c;'
+        : 'text-decoration: line-through; background: #fdecec; color: #d92d20;';
     currentParagraph.push(
       `<span class="redline-change" data-change-id="${id}" data-type="${type === 'insert' ? 'ins' : 'del'}" data-decision="pending" style="display:inline;">` +
         `<${tag} style="${tagStyle}">${safe}</${tag}>` +
         `<span contenteditable="false" style="display:inline-flex;gap:2px;margin:0 2px;vertical-align:middle;">` +
-        `<button type="button" class="redline-btn redline-accept" data-change-id="${id}" style="cursor:pointer;border:1px solid #1a7a41;background:#fff;color:#1a7a41;border-radius:4px;font-size:10px;line-height:1;padding:1px 4px;">✓</button>` +
-        `<button type="button" class="redline-btn redline-reject" data-change-id="${id}" style="cursor:pointer;border:1px solid #b42318;background:#fff;color:#b42318;border-radius:4px;font-size:10px;line-height:1;padding:1px 4px;">✕</button>` +
+        `<button type="button" class="redline-btn redline-accept" data-change-id="${id}" style="cursor:pointer;border:1px solid #1a9e5c;background:#fff;color:#1a9e5c;border-radius:6px;font-size:10px;line-height:1;padding:1px 4px;">✓</button>` +
+        `<button type="button" class="redline-btn redline-reject" data-change-id="${id}" style="cursor:pointer;border:1px solid #d92d20;background:#fff;color:#d92d20;border-radius:6px;font-size:10px;line-height:1;padding:1px 4px;">✕</button>` +
         `</span></span>`
     );
   };

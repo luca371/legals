@@ -2,13 +2,13 @@
   display: flex;
   flex-direction: column;
   gap: 20px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .admin__tabs {
   display: flex;
   gap: 8px;
-  border-bottom: 1px solid #e6e7ee;
+  border-bottom: 1px solid var(--color-border);
 }
 
 .admin__tab {
@@ -18,25 +18,25 @@
   border-bottom: 2px solid transparent;
   font-size: 0.92rem;
   font-weight: 500;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: color 0.18s ease, border-color 0.18s ease;
 }
 
 .admin__tab:hover {
-  color: #001272;
+  color: var(--color-accent);
 }
 
 .admin__tab--active {
-  color: #001272;
-  border-bottom-color: #001272;
+  color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
   font-weight: 600;
 }
 
 .admin__panel {
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 24px;
 }
 
@@ -48,19 +48,19 @@
 }
 
 .admin__panel-title {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 1.15rem;
-  color: #001272;
+  color: var(--color-accent);
   margin: 0;
 }
 
 .admin__add-btn {
   padding: 10px 18px;
-  background: #001272;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-surface);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
@@ -68,11 +68,11 @@
 }
 
 .admin__add-btn:hover {
-  background: #1a2e8c;
+  background: var(--color-accent-hover);
 }
 
 .admin__empty {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-size: 0.95rem;
   padding: 20px 0;
 }
@@ -90,16 +90,16 @@
 .admin__table th {
   text-align: left;
   padding: 10px 14px;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   font-weight: 500;
-  border-bottom: 1px solid #e6e7ee;
+  border-bottom: 1px solid var(--color-border);
   white-space: nowrap;
 }
 
 .admin__table td {
   padding: 12px 14px;
-  border-bottom: 1px solid #f0f1f6;
-  color: #0b0c1a;
+  border-bottom: 1px solid var(--color-bg);
+  color: var(--color-text);
 }
 
 .admin__table tr:last-child td {
@@ -107,10 +107,10 @@
 }
 
 .admin__toast {
-  background: #eaf7ee;
-  color: #1e7b3d;
-  border: 1px solid #c9ead4;
-  border-radius: 10px;
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border: 1px solid var(--color-success-soft);
+  border-radius: var(--radius-md);
   padding: 12px 16px;
   font-size: 0.88rem;
   animation: fadeIn 0.3s ease-out both;
@@ -119,7 +119,7 @@
 .admin__modal-backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(11, 12, 26, 0.4);
+  background: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -128,8 +128,8 @@
 }
 
 .admin__modal {
-  background: #ffffff;
-  border-radius: 16px;
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
   padding: 0;
   width: 100%;
   max-width: 420px;
@@ -144,7 +144,7 @@
   overflow-y: auto;
   flex: 1;
   scrollbar-width: thin;
-  scrollbar-color: #d8dae5 transparent;
+  scrollbar-color: var(--color-border-strong) transparent;
 }
 
 .admin__modal-scroll::-webkit-scrollbar {
@@ -156,27 +156,27 @@
 }
 
 .admin__modal-scroll::-webkit-scrollbar-thumb {
-  background: #d8dae5;
-  border-radius: 10px;
+  background: var(--color-border-strong);
+  border-radius: var(--radius-md);
 }
 
 .admin__modal-scroll::-webkit-scrollbar-thumb:hover {
-  background: #b9bcd0;
+  background: var(--color-text-tertiary);
 }
 
 .admin__modal-title {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 1.2rem;
-  color: #001272;
+  color: var(--color-accent);
   margin: 0 0 18px;
 }
 
 .admin__error {
-  background: #fdecec;
-  color: #b3261e;
-  border: 1px solid #f6c6c4;
-  border-radius: 8px;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 0.85rem;
   margin: 0 0 16px;
@@ -185,12 +185,12 @@
 .admin__label {
   font-size: 0.85rem;
   font-weight: 500;
-  color: #0b0c1a;
+  color: var(--color-text);
   margin-bottom: 6px;
 }
 
 .admin__label-hint {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-weight: 400;
 }
 
@@ -198,31 +198,31 @@
   width: 100%;
   padding: 11px 13px;
   margin-bottom: 16px;
-  border: 1px solid #e6e7ee;
-  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   font-size: 0.92rem;
-  font-family: 'Inter', sans-serif;
-  color: #0b0c1a;
-  background: #fafafc;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-bg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 .admin__input:focus {
   outline: none;
-  border-color: #001272;
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 18, 114, 0.12);
+  border-color: var(--color-accent);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
 }
 
 .admin__input:disabled {
-  background: #f0f1f6;
-  color: #9a9dae;
+  background: var(--color-bg);
+  color: var(--color-text-tertiary);
   cursor: not-allowed;
 }
 
 .admin__hint {
   font-size: 0.78rem;
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   margin: -10px 0 16px;
 }
 
@@ -235,38 +235,38 @@
   justify-content: flex-end;
   gap: 10px;
   padding: 16px 28px 24px;
-  border-top: 1px solid #f0f1f6;
+  border-top: 1px solid var(--color-bg);
 }
 
 .admin__btn-secondary {
   padding: 10px 18px;
   background: transparent;
-  border: 1px solid #d8dae5;
-  border-radius: 10px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
   font-size: 0.88rem;
   font-weight: 500;
-  color: #001272;
+  color: var(--color-accent);
   cursor: pointer;
 }
 
 .admin__btn-secondary:hover {
-  background: #f0f1f8;
+  background: var(--color-bg);
 }
 
 .admin__btn-primary {
   padding: 10px 18px;
-  background: #001272;
+  background: var(--color-accent);
   border: none;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 0.88rem;
   font-weight: 600;
-  color: #ffffff;
+  color: var(--color-surface);
   cursor: pointer;
   transition: background 0.2s ease;
 }
 
 .admin__btn-primary:hover {
-  background: #1a2e8c;
+  background: var(--color-accent-hover);
 }
 
 .admin__btn-primary:disabled {
@@ -285,25 +285,25 @@
   border: none;
   font-size: 1.2rem;
   line-height: 1;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   cursor: pointer;
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   transition: background 0.18s ease, color 0.18s ease;
 }
 
 .admin__dots-btn:hover {
-  background: #f0f1f8;
-  color: #001272;
+  background: var(--color-bg);
+  color: var(--color-accent);
 }
 
 .admin__menu {
   position: fixed;   /* era absolute — acum e ancorat la viewport, nu la tabel */
   width: 200px;
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 10px;
-  box-shadow: 0 8px 24px rgba(11, 12, 26, 0.16);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
   z-index: 1000;      /* peste orice altceva din pagină */
   overflow: hidden;
   animation: fadeIn 0.15s ease-out both;
@@ -317,40 +317,40 @@
   background: transparent;
   border: none;
   font-size: 0.85rem;
-  font-family: 'Inter', sans-serif;
-  color: #0b0c1a;
+  font-family: var(--font-sans);
+  color: var(--color-text);
   cursor: pointer;
   transition: background 0.15s ease;
 }
 
 .admin__menu-item:hover {
-  background: #f6f7fb;
+  background: var(--color-bg);
 }
 
 .admin__menu-item--danger {
-  color: #b3261e;
+  color: var(--color-danger);
 }
 
 .admin__menu-item--danger:hover {
-  background: #fdecec;
+  background: var(--color-danger-soft);
 }
 
 .admin__status {
   display: inline-block;
   padding: 3px 10px;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   font-size: 0.78rem;
   font-weight: 600;
 }
 
 .admin__status--active {
-  background: #eaf7ee;
-  color: #1e7b3d;
+  background: var(--color-success-soft);
+  color: var(--color-success);
 }
 
 .admin__status--inactive {
-  background: #f0f1f6;
-  color: #6b6f86;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
 }
 
 @keyframes fadeIn {
@@ -366,23 +366,23 @@
 
 .admin__object-tab {
   padding: 8px 16px;
-  background: #f0f1f6;
+  background: var(--color-bg);
   border: none;
-  border-radius: 20px;
+  border-radius: var(--radius-xl);
   font-size: 0.85rem;
   font-weight: 500;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease;
 }
 
 .admin__object-tab:hover {
-  background: #e6e7ee;
+  background: var(--color-border);
 }
 
 .admin__object-tab--active {
-  background: #001272;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-surface);
 }
 
 .admin__fields-section {
@@ -397,10 +397,10 @@
 }
 
 .admin__fields-subtitle {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 0.95rem;
-  color: #001272;
+  color: var(--color-accent);
   margin: 0 0 10px;
 }
 
@@ -413,13 +413,13 @@
   list-style: none;
   margin: 0;
   padding: 0;
-  border: 1px solid #e6e7ee;
-  border-radius: 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
   overflow: hidden;
 }
 
 .admin__fields-list--builtin {
-  background: #fafafc;
+  background: var(--color-bg);
 }
 
 .admin__field-row {
@@ -427,7 +427,7 @@
   align-items: center;
   justify-content: space-between;
   padding: 10px 14px;
-  border-bottom: 1px solid #f0f1f6;
+  border-bottom: 1px solid var(--color-bg);
   font-size: 0.88rem;
 }
 
@@ -436,13 +436,13 @@
 }
 
 .admin__field-label {
-  color: #0b0c1a;
+  color: var(--color-text);
   font-weight: 500;
   flex: 1;
 }
 
 .admin__field-type {
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   font-size: 0.82rem;
   margin-right: 14px;
 }
@@ -450,16 +450,16 @@
 .admin__field-remove {
   background: transparent;
   border: none;
-  color: #b3261e;
+  color: var(--color-danger);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 4px 6px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   transition: background 0.15s ease;
 }
 
 .admin__field-remove:hover {
-  background: #fdecec;
+  background: var(--color-danger-soft);
 }
 
 /* ---------- Objects tab - card-based navigation ---------- */
@@ -481,22 +481,22 @@
   align-items: center;
   gap: 12px;
   padding: 16px 18px;
-  background: #ffffff;
-  border: 1.5px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-lg);
   cursor: pointer;
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.15s ease;
   text-align: left;
 }
 
 .admin__object-card:hover {
-  border-color: #b9bcd0;
+  border-color: var(--color-text-tertiary);
   transform: translateY(-1px);
 }
 
 .admin__object-card--active {
-  border-color: #001272;
-  background: linear-gradient(160deg, #001272 0%, #000a4d 100%);
+  border-color: var(--color-accent);
+  background: linear-gradient(160deg, var(--color-accent) 0%, var(--color-dark-surface) 100%);
 }
 
 .admin__object-card-icon {
@@ -506,15 +506,15 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 10px;
-  background: #f0f1f8;
-  color: #001272;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  color: var(--color-accent);
   transition: background 0.18s ease, color 0.18s ease;
 }
 
 .admin__object-card--active .admin__object-card-icon {
   background: rgba(255, 255, 255, 0.14);
-  color: #ffffff;
+  color: var(--color-surface);
 }
 
 .admin__object-card-icon svg {
@@ -523,15 +523,15 @@
 }
 
 .admin__object-card-label {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 0.95rem;
-  color: #0b0c1a;
+  color: var(--color-text);
   transition: color 0.18s ease;
 }
 
 .admin__object-card--active .admin__object-card-label {
-  color: #ffffff;
+  color: var(--color-surface);
 }
 
 .admin__panel--objects {
@@ -563,17 +563,17 @@
 .admin__option-remove {
   background: transparent;
   border: none;
-  color: #b3261e;
+  color: var(--color-danger);
   cursor: pointer;
   font-size: 0.85rem;
   padding: 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-xs);
   flex-shrink: 0;
   transition: background 0.15s ease;
 }
 
 .admin__option-remove:hover {
-  background: #fdecec;
+  background: var(--color-danger-soft);
 }
 
 .admin__add-option-btn {
@@ -581,30 +581,30 @@
   align-items: center;
   gap: 6px;
   background: transparent;
-  border: 1px dashed #c7cae0;
-  border-radius: 8px;
+  border: 1px dashed var(--color-border-strong);
+  border-radius: var(--radius-sm);
   padding: 8px 14px;
   font-size: 0.84rem;
   font-weight: 500;
-  color: #001272;
+  color: var(--color-accent);
   cursor: pointer;
   margin-top: 4px;
   transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .admin__add-option-btn:hover {
-  background: #f0f1f8;
-  border-color: #001272;
+  background: var(--color-bg);
+  border-color: var(--color-accent);
 }
 
 .admin__field-edit {
   background: transparent;
-  border: 1px solid #d8dae5;
-  border-radius: 6px;
-  color: #001272;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-xs);
+  color: var(--color-accent);
   font-size: 0.78rem;
   font-weight: 500;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   cursor: pointer;
   padding: 4px 10px;
   white-space: nowrap;
@@ -612,7 +612,7 @@
 }
 
 .admin__field-edit:hover {
-  background: #f0f1f8;
+  background: var(--color-bg);
 }
 
 .admin__modal--wide {
@@ -622,7 +622,7 @@
 .admin__map-group {
   margin-bottom: 20px;
   padding-bottom: 20px;
-  border-bottom: 1px solid #f0f1f6;
+  border-bottom: 1px solid var(--color-bg);
 }
 
 .admin__map-group:last-child {
@@ -633,7 +633,7 @@
 .admin__map-type-label {
   font-weight: 600;
   font-size: 0.9rem;
-  color: #001272;
+  color: var(--color-accent);
   margin: 0 0 10px;
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
 }

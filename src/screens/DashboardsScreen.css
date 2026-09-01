@@ -1,14 +1,13 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@600;700&family=Inter:wght@400;500;600&display=swap');
 
 .dbd {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 
 .dbd__loading {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-size: 0.95rem;
   padding: 20px 0;
 }
@@ -20,9 +19,9 @@
   flex-wrap: wrap;
   align-items: center;
   gap: 16px 24px;
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 16px 20px;
 }
 
@@ -36,7 +35,7 @@
 .dbd__filter-label {
   font-size: 0.78rem;
   font-weight: 600;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   margin-right: 4px;
   text-transform: uppercase;
   letter-spacing: 0.03em;
@@ -49,10 +48,10 @@
 }
 
 .dbd__pill {
-  background: #f0f1f6;
+  background: var(--color-bg);
   border: none;
-  color: #6b6f86;
-  font-family: 'Inter', sans-serif;
+  color: var(--color-text-secondary);
+  font-family: var(--font-sans);
   font-size: 0.8rem;
   font-weight: 500;
   padding: 7px 14px;
@@ -63,12 +62,12 @@
 }
 
 .dbd__pill:hover {
-  background: #e4e6f2;
+  background: var(--color-bg);
 }
 
 .dbd__pill--active {
-  background: #001272;
-  color: #ffffff;
+  background: var(--color-accent);
+  color: var(--color-surface);
 }
 
 .dbd__pill--sm {
@@ -77,42 +76,42 @@
 }
 
 .dbd__select {
-  border: 1px solid #dcdfec;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 8px 12px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.84rem;
-  color: #26283a;
-  background: #ffffff;
+  color: var(--color-text);
+  background: var(--color-surface);
   cursor: pointer;
 }
 
 .dbd__date-input {
-  border: 1px solid #dcdfec;
-  border-radius: 8px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
   padding: 7px 10px;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   font-size: 0.82rem;
-  color: #26283a;
+  color: var(--color-text);
 }
 
 .dbd__date-sep {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
 }
 
 .dbd__reset-btn {
   background: transparent;
-  border: 1px solid #dcdfec;
-  color: #001272;
+  border: 1px solid var(--color-border);
+  color: var(--color-accent);
   font-size: 0.8rem;
   font-weight: 600;
   padding: 7px 14px;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
 .dbd__reset-btn:hover {
-  background: #f0f1f8;
+  background: var(--color-bg);
 }
 
 /* ---- KPI row ---- */
@@ -127,36 +126,36 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 18px 20px;
 }
 
 .dbd__kpi-icon {
   width: 30px;
   height: 30px;
-  color: #001272;
+  color: var(--color-accent);
   flex-shrink: 0;
-  background: #eef0fb;
-  border-radius: 10px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
   padding: 6px;
   box-sizing: border-box;
 }
 
 .dbd__kpi-value {
   display: block;
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 1.5rem;
-  color: #001272;
+  color: var(--color-accent);
   line-height: 1.1;
 }
 
 .dbd__kpi-label {
   display: block;
   font-size: 0.78rem;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   margin-top: 2px;
 }
 
@@ -169,11 +168,11 @@
 }
 
 .dbd__card {
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 18px 20px 12px;
-  box-shadow: 0 2px 8px rgba(0, 18, 114, 0.03);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.03);
 }
 
 .dbd__card--full {
@@ -190,34 +189,34 @@
 }
 
 .dbd__card-title {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 0.95rem;
-  color: #001272;
+  color: var(--color-accent);
   margin: 0;
 }
 
 .dbd__chart-empty {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-size: 0.85rem;
   padding: 40px 0;
   text-align: center;
 }
 
 .dbd__footnote {
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-size: 0.74rem;
   margin: 8px 0 0;
   line-height: 1.4;
 }
 
 .dbd__empty-state {
-  background: #ffffff;
-  border: 1px solid #e6e7ee;
-  border-radius: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
   padding: 48px 0;
   text-align: center;
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
   font-size: 0.95rem;
 }
 
@@ -234,7 +233,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
-  border-left: 1px solid #eceef5;
+  border-left: 1px solid var(--color-bg);
   padding-left: 20px;
 }
 
@@ -243,7 +242,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  color: #6b6f86;
+  color: var(--color-text-secondary);
   margin-bottom: 4px;
 }
 
@@ -253,12 +252,12 @@
   justify-content: space-between;
   gap: 10px;
   padding: 6px 0;
-  border-bottom: 1px solid #f2f3f8;
+  border-bottom: 1px solid var(--color-bg);
 }
 
 .dbd__expiring-name {
   font-size: 0.84rem;
-  color: #26283a;
+  color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -267,16 +266,16 @@
 .dbd__expiring-days {
   font-size: 0.76rem;
   font-weight: 700;
-  color: #6b6f86;
-  background: #f0f1f6;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
   padding: 2px 8px;
   border-radius: 999px;
   flex-shrink: 0;
 }
 
 .dbd__expiring-days--urgent {
-  color: #b42318;
-  background: #fde8e8;
+  color: var(--color-danger);
+  background: var(--color-danger-soft);
 }
 
 /* ---- Approval funnel donut ---- */
@@ -297,15 +296,15 @@
 }
 
 .dbd__donut-value {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 1.3rem;
-  color: #001272;
+  color: var(--color-accent);
 }
 
 .dbd__donut-label {
   font-size: 0.72rem;
-  color: #9a9dae;
+  color: var(--color-text-tertiary);
 }
 
 /* ---- Responsive ---- */
@@ -322,7 +321,7 @@
   }
   .dbd__expiring-list {
     border-left: none;
-    border-top: 1px solid #eceef5;
+    border-top: 1px solid var(--color-bg);
     padding-left: 0;
     padding-top: 16px;
   }

@@ -3,8 +3,8 @@ import { useParams } from 'react-router-dom';
 import { getReviewRequestPublic, submitReviewChanges } from '../supabase';
 import { computeRedlineHtml } from '../redlineUtils';
 
-const fontStack = "'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
-const headingFontStack = "'Sora', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif";
+const fontStack = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
+const headingFontStack = fontStack;
 
 function CenteredMessage({ icon, title, subtitle }) {
   return (
@@ -14,7 +14,7 @@ function CenteredMessage({ icon, title, subtitle }) {
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
-        background: '#f7f8fc',
+        background: '#f5f5f7',
         fontFamily: fontStack,
         padding: '24px',
       }}
@@ -22,12 +22,12 @@ function CenteredMessage({ icon, title, subtitle }) {
       <div
         style={{
           background: '#ffffff',
-          borderRadius: '16px',
+          borderRadius: '20px',
           padding: '40px 36px',
           maxWidth: '420px',
           width: '100%',
           textAlign: 'center',
-          boxShadow: '0 8px 30px rgba(0, 18, 114, 0.08)',
+          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)',
         }}
       >
         <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>{icon}</div>
@@ -36,13 +36,13 @@ function CenteredMessage({ icon, title, subtitle }) {
             fontFamily: headingFontStack,
             fontWeight: 700,
             fontSize: '1.25rem',
-            color: '#001272',
+            color: '#0071e3',
             margin: '0 0 10px',
           }}
         >
           {title}
         </h2>
-        <p style={{ fontSize: '0.9rem', color: '#6b6f86', margin: 0, lineHeight: 1.6 }}>{subtitle}</p>
+        <p style={{ fontSize: '0.9rem', color: '#6e6e73', margin: 0, lineHeight: 1.6 }}>{subtitle}</p>
       </div>
     </div>
   );
@@ -123,10 +123,10 @@ function ReviewLinkScreen() {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '20px 32px', borderBottom: '1px solid #e6e7ee', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+      <div style={{ padding: '20px 32px', borderBottom: '1px solid rgba(0, 0, 0, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h2 style={{ margin: 0, fontFamily: 'Sora, sans-serif', color: '#001272' }}>{review.agreementTitle}</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#6b6f86' }}>
+          <h2 style={{ margin: 0, fontFamily: headingFontStack, color: '#0071e3' }}>{review.agreementTitle}</h2>
+          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#6e6e73' }}>
             Reviewing: {review.attachmentName}
             {review.message && <> — "{review.message}"</>}
           </p>
@@ -136,10 +136,10 @@ function ReviewLinkScreen() {
           disabled={submitting}
           style={{
             padding: '10px 20px',
-            background: '#001272',
+            background: '#0071e3',
             color: '#fff',
             border: 'none',
-            borderRadius: '10px',
+            borderRadius: '12px',
             fontWeight: 600,
             cursor: 'pointer',
           }}
@@ -149,10 +149,10 @@ function ReviewLinkScreen() {
       </div>
 
       {error && (
-        <p style={{ color: '#b3261e', padding: '10px 32px', margin: 0 }}>{error}</p>
+        <p style={{ color: '#d92d20', padding: '10px 32px', margin: 0 }}>{error}</p>
       )}
 
-      <p style={{ padding: '12px 32px 0', fontSize: '0.82rem', color: '#9a9dae' }}>
+      <p style={{ padding: '12px 32px 0', fontSize: '0.82rem', color: '#86868b' }}>
         Edit the document directly below, then click "Submit changes" when you're done. Once submitted, this link can't be used again.
       </p>
 
@@ -163,8 +163,8 @@ function ReviewLinkScreen() {
           suppressContentEditableWarning
           style={{
             background: '#fff',
-            border: '1px solid #e6e7ee',
-            borderRadius: '14px',
+            border: '1px solid rgba(0, 0, 0, 0.08)',
+            borderRadius: '16px',
             padding: '32px',
             maxWidth: '800px',
             margin: '0 auto',

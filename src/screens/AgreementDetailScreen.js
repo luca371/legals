@@ -820,11 +820,11 @@ function AgreementDetailScreen() {
 
     if (innerEl) {
       if (type === 'ins') {
-        innerEl.style.background = decision === 'accepted' ? '#c9f0d6' : 'transparent';
+        innerEl.style.background = decision === 'accepted' ? '#e8f7ee' : 'transparent';
         innerEl.style.textDecoration = decision === 'accepted' ? 'underline' : 'line-through';
         innerEl.style.opacity = decision === 'accepted' ? '1' : '0.4';
       } else {
-        innerEl.style.background = decision === 'accepted' ? '#fbd0cd' : 'transparent';
+        innerEl.style.background = decision === 'accepted' ? '#fdecec' : 'transparent';
         innerEl.style.textDecoration = decision === 'accepted' ? 'line-through' : 'none';
         innerEl.style.opacity = '1';
       }
@@ -832,15 +832,15 @@ function AgreementDetailScreen() {
 
     if (acceptBtn && rejectBtn) {
       if (decision === 'accepted') {
-        acceptBtn.style.background = '#1a7a41';
+        acceptBtn.style.background = '#1a9e5c';
         acceptBtn.style.color = '#fff';
         rejectBtn.style.background = '#fff';
-        rejectBtn.style.color = '#b42318';
+        rejectBtn.style.color = '#d92d20';
       } else {
-        rejectBtn.style.background = '#b42318';
+        rejectBtn.style.background = '#d92d20';
         rejectBtn.style.color = '#fff';
         acceptBtn.style.background = '#fff';
-        acceptBtn.style.color = '#1a7a41';
+        acceptBtn.style.color = '#1a9e5c';
       }
     }
   };
@@ -2337,7 +2337,7 @@ function AgreementDetailScreen() {
                 <button type="button" className="agrd__attachment-btn" onClick={handleRejectAllRemaining}>
                   Reject all remaining
                 </button>
-                <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: pendingChangeCount > 0 ? '#9a6a00' : '#1a7a41', alignSelf: 'center' }}>
+                <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: pendingChangeCount > 0 ? '#c9820a' : '#1a9e5c', alignSelf: 'center' }}>
                   {pendingChangeCount > 0 ? `${pendingChangeCount} change${pendingChangeCount === 1 ? '' : 's'} pending` : 'All changes decided'}
                 </span>
               </div>
@@ -2346,7 +2346,7 @@ function AgreementDetailScreen() {
                 ref={redlineContainerRef}
                 onClick={handleRedlineClick}
                 style={{
-                  border: '1px solid #e6e7ee',
+                  border: '1px solid rgba(0, 0, 0, 0.08)',
                   borderRadius: '12px',
                   padding: '24px',
                   fontSize: '0.9rem',

@@ -1,12 +1,11 @@
-@import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Inter:wght@400;500;600&display=swap');
 
 :root {
-  --navy: #001272;
-  --navy-soft: #1a2e8c;
-  --paper: #ffffff;
-  --ink: #0b0c1a;
-  --ink-muted: #6b6f86;
-  --line: #e6e7ee;
+  --navy: var(--color-accent);
+  --navy-soft: var(--color-accent-hover);
+  --paper: var(--color-surface);
+  --ink: var(--color-text);
+  --ink-muted: var(--color-text-secondary);
+  --line: var(--color-border);
 }
 
 * {
@@ -19,7 +18,7 @@
   width: 100vw;
   height: 100vh;
   overflow: hidden;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
 }
 
 /* ---------- LEFT : 30% navy ---------- */
@@ -27,8 +26,8 @@
   flex: 0 0 30%;
   width: 30%;
   height: 100%;
-  background: linear-gradient(160deg, var(--navy) 0%, #000a4d 100%);
-  color: #ffffff;
+  background: linear-gradient(160deg, var(--navy) 0%, var(--color-dark-surface) 100%);
+  color: var(--color-surface);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -69,7 +68,7 @@
 }
 
 .start-screen__title {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 700;
   font-size: 2rem;
   line-height: 1.2;
@@ -115,7 +114,7 @@
 }
 
 .login-form__title {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--font-sans);
   font-weight: 600;
   font-size: 1.65rem;
   color: var(--ink);
@@ -129,10 +128,10 @@
 }
 
 .login-form__error {
-  background: #fdecec;
-  color: #b3261e;
-  border: 1px solid #f6c6c4;
-  border-radius: 8px;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border: 1px solid var(--color-danger);
+  border-radius: var(--radius-sm);
   padding: 10px 12px;
   font-size: 0.85rem;
   margin: 0 0 18px;
@@ -151,23 +150,23 @@
   padding: 12px 14px;
   margin-bottom: 18px;
   border: 1px solid var(--line);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   font-size: 0.95rem;
-  font-family: 'Inter', sans-serif;
+  font-family: var(--font-sans);
   color: var(--ink);
-  background: #fafafc;
+  background: var(--color-bg);
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
 .login-form__input::placeholder {
-  color: #aaadc0;
+  color: var(--color-text-tertiary);
 }
 
 .login-form__input:focus {
   outline: none;
   border-color: var(--navy);
-  background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 18, 114, 0.12);
+  background: var(--color-surface);
+  box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.12);
 }
 
 .login-form__submit {
@@ -175,10 +174,10 @@
   padding: 13px;
   margin-top: 6px;
   background: var(--navy);
-  color: #ffffff;
+  color: var(--color-surface);
   border: none;
-  border-radius: 10px;
-  font-family: 'Inter', sans-serif;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
   font-size: 0.97rem;
   font-weight: 600;
   cursor: pointer;
@@ -235,10 +234,10 @@
   gap: 10px;
   width: 100%;
   padding: 11px;
-  background: #ffffff;
+  background: var(--color-surface);
   border: 1px solid var(--line);
-  border-radius: 10px;
-  font-family: 'Inter', sans-serif;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
   font-size: 0.92rem;
   font-weight: 500;
   color: var(--ink);
@@ -247,8 +246,8 @@
 }
 
 .sso-button:hover {
-  border-color: #c7cae0;
-  box-shadow: 0 2px 8px rgba(0, 18, 114, 0.08);
+  border-color: var(--color-border-strong);
+  box-shadow: 0 2px 8px rgba(0, 113, 227, 0.08);
 }
 
 .sso-button:active {

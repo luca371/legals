@@ -27,10 +27,14 @@
 
   /* Status */
   --color-success: #1a9e5c;
+  --color-success-soft: #e8f7ee;
   --color-warning: #c9820a;
+  --color-warning-soft: #fdf3e2;
   --color-danger: #d92d20;
+  --color-danger-soft: #fdecec;
 
   /* Radius */
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 16px;

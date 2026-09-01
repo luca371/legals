@@ -22,7 +22,7 @@ const DEFAULT_STATUS_ORDER = [
   'In approval', 'Approved', 'Pending signatures', 'Signed', 'Activated',
 ];
 
-const COLORS = ['#001272', '#3b5bfe', '#00b8a9', '#f6a723', '#ef5b5b', '#8e5cf7', '#2fb67c', '#ff8fa3', '#5c6bc0', '#9a9dae'];
+const COLORS = ['#0071e3', '#5e5ce6', '#00b8a9', '#f6a723', '#ef5b5b', '#8e5cf7', '#2fb67c', '#ff8fa3', '#5c6bc0', '#86868b'];
 const FUNNEL_COLORS = { Pending: '#f6a723', Approved: '#2fb67c', Rejected: '#ef5b5b' };
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -430,11 +430,11 @@ function DashboardsScreen() {
             ) : (
               <ResponsiveContainer width="100%" height={260}>
                 <LineChart data={timeSeries} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
-                  <Line type="monotone" dataKey="count" name="Agreements" stroke="#001272" strokeWidth={2.5} dot={{ r: 3 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
+                  <Line type="monotone" dataKey="count" name="Agreements" stroke="#0071e3" strokeWidth={2.5} dot={{ r: 3 }} />
                 </LineChart>
               </ResponsiveContainer>
             )}
@@ -447,10 +447,10 @@ function DashboardsScreen() {
             {byType.length === 0 ? <p className="dbd__chart-empty">No data.</p> : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={byType} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b6f86' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
                   <Bar dataKey="value" name="Agreements" radius={[6, 6, 0, 0]}>
                     {byType.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
                   </Bar>
@@ -466,10 +466,10 @@ function DashboardsScreen() {
             {bySubtype.length === 0 ? <p className="dbd__chart-empty">No data.</p> : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={bySubtype} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b6f86' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
                   <Bar dataKey="value" name="Agreements" radius={[6, 6, 0, 0]}>
                     {bySubtype.map((entry, index) => <Cell key={entry.name} fill={COLORS[(index + 3) % COLORS.length]} />)}
                   </Bar>
@@ -485,11 +485,11 @@ function DashboardsScreen() {
             {byAccount.length === 0 ? <p className="dbd__chart-empty">No data.</p> : (
               <ResponsiveContainer width="100%" height={Math.max(220, byAccount.length * 34)}>
                 <BarChart data={byAccount} layout="vertical" margin={{ top: 8, right: 24, left: 8, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
-                  <Bar dataKey="value" name="Agreements" fill="#001272" radius={[0, 6, 6, 0]} barSize={18} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis type="number" allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <YAxis type="category" dataKey="name" width={160} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
+                  <Bar dataKey="value" name="Agreements" fill="#0071e3" radius={[0, 6, 6, 0]} barSize={18} />
                 </BarChart>
               </ResponsiveContainer>
             )}
@@ -502,10 +502,10 @@ function DashboardsScreen() {
             {byStatus.length === 0 ? <p className="dbd__chart-empty">No data.</p> : (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={byStatus} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b6f86' }} interval={0} angle={-20} textAnchor="end" height={60} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={60} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
                   <Bar dataKey="value" name="Agreements" radius={[6, 6, 0, 0]}>
                     {byStatus.map((entry, index) => <Cell key={entry.name} fill={COLORS[index % COLORS.length]} />)}
                   </Bar>
@@ -521,10 +521,10 @@ function DashboardsScreen() {
             <div className="dbd__split">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={byEndDate} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
                   <Bar dataKey="count" name="Ending" fill="#ef5b5b" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -555,10 +555,10 @@ function DashboardsScreen() {
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={ttcByType} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#eceef5" />
-                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6b6f86' }} interval={0} angle={-20} textAnchor="end" height={50} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6b6f86' }} unit="d" />
-                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} formatter={(v) => [`${v} days`, 'Avg. time']} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={50} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} unit="d" />
+                  <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} formatter={(v) => [`${v} days`, 'Avg. time']} />
                   <Bar dataKey="value" name="Avg. days" fill="#00b8a9" radius={[6, 6, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
@@ -580,10 +580,10 @@ function DashboardsScreen() {
                   <PieChart>
                     <Pie data={approvalFunnel} dataKey="value" nameKey="name" innerRadius={55} outerRadius={80} paddingAngle={2}>
                       {approvalFunnel.map((entry) => (
-                        <Cell key={entry.name} fill={FUNNEL_COLORS[entry.name] || '#9a9dae'} />
+                        <Cell key={entry.name} fill={FUNNEL_COLORS[entry.name] || '#86868b'} />
                       ))}
                     </Pie>
-                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid #e5e7f0', fontSize: 12 }} />
+                    <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
                     <Legend verticalAlign="bottom" height={24} iconType="circle" wrapperStyle={{ fontSize: 12 }} />
                   </PieChart>
                 </ResponsiveContainer>

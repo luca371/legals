@@ -336,12 +336,12 @@ function AgreementsScreen() {
                     <>
                       {createFlow === 'signed' ? (
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agr__upload-zone-icon">
-                          <rect x="4" y="3" width="16" height="18" rx="2" stroke="#001272" strokeWidth="1.8" />
-                          <path d="M9 12l2 2 4-4" stroke="#001272" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          <rect x="4" y="3" width="16" height="18" rx="2" stroke="#0071e3" strokeWidth="1.8" />
+                          <path d="M9 12l2 2 4-4" stroke="#0071e3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       ) : (
                         <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agr__upload-zone-icon">
-                          <path d="M6 10a5 5 0 0 1 10 0 3 3 0 0 1 0 6H6a3.5 3.5 0 0 1 0-7z" stroke="#001272" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                          <path d="M6 10a5 5 0 0 1 10 0 3 3 0 0 1 0 6H6a3.5 3.5 0 0 1 0-7z" stroke="#0071e3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       )}
                       <p className="agr__upload-title">Upload a Word document (.docx)</p>
