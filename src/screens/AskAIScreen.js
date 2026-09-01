@@ -22,6 +22,12 @@ const STARTER_PROMPTS = [
   'List all NDAs that are still in Draft status.',
 ];
 
+const QUICK_PROMPTS = [
+  { label: 'Summarize', prompt: 'Give me a summary of all our active agreements and their current statuses.' },
+  { label: 'Find risks', prompt: 'Are there any agreements with unusual or risky terms I should be aware of?' },
+  { label: 'Draft clause', prompt: 'Help me draft a standard confidentiality clause I could add to a contract.' },
+];
+
 const MARKDOWN_COMPONENTS = {
   table: ({ children }) => (
     <div className="ask__markdown-table-wrap">
@@ -229,7 +235,10 @@ function AskAIScreen() {
   return (
     <div className="ask">
       <div className="ask__header">
-        <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
+        <div>
+          <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
+          <p className="ask__disclaimer">By using this tool, you're interacting with our AI system — answers can be wrong, always verify anything important.</p>
+        </div>
         {chatLog.length > 0 && (
           <button type="button" className="ask__new-btn" onClick={handleNewConversation}>
             New conversation
@@ -276,6 +285,20 @@ function AskAIScreen() {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="ask__quick-prompts">
+        {QUICK_PROMPTS.map((qp) => (
+          <button
+            key={qp.label}
+            type="button"
+            className="ask__quick-prompt"
+            onClick={() => handleSend(qp.prompt)}
+            disabled={sending}
+          >
+            {qp.label}
+          </button>
+        ))}
       </div>
 
       <div className="ask__composer">

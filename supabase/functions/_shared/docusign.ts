@@ -53,6 +53,7 @@ export async function sendEnvelopeForSignature({
   documentName,
   fileExtension,
   signers,
+  ccRecipients,
   emailSubject,
   emailMessage,
 }: {
@@ -62,6 +63,7 @@ export async function sendEnvelopeForSignature({
   documentName?: string;
   fileExtension?: string;
   signers: Array<{ email: string; name: string }>;
+  ccRecipients?: Array<{ email: string; name: string }>;
   emailSubject?: string;
   emailMessage?: string;
 }) {
@@ -111,6 +113,15 @@ export async function sendEnvelopeForSignature({
     };
   });
 
+  const ccRecipientEntries = (ccRecipients || [])
+    .filter((r) => r.email)
+    .map((r, index) => ({
+      email: r.email,
+      name: r.name || r.email,
+      recipientId: String(signerRecipients.length + index + 1),
+      routingOrder: String(signers.length + 1),
+    }));
+
   const envelopeDefinition = {
     emailSubject: emailSubject || `Please sign: ${documentName || 'document'}`,
     emailBlurb: emailMessage || '',
@@ -122,7 +133,10 @@ export async function sendEnvelopeForSignature({
         documentId: '1',
       },
     ],
-    recipients: { signers: signerRecipients },
+    recipients: {
+      signers: signerRecipients,
+      ...(ccRecipientEntries.length > 0 ? { carbonCopies: ccRecipientEntries } : {}),
+    },
     status: 'sent',
   };
 

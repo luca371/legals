@@ -704,3 +704,33 @@ export const updateDocusignEnvelope = async (agreementId, envelopeId, patch) => 
     .eq('id', agreementId);
   if (error) throw error;
 };
+
+export const SIGNATURES_INCLUDED_PER_USER = 10;
+export const SIGNATURE_OVERAGE_PRICE = 2;
+
+export const getSignatureUsageThisMonth = async () => {
+  const [agreements, users] = await Promise.all([listAgreements(), listUsers()]);
+
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+  let used = 0;
+  agreements.forEach((a) => {
+    (a.docusignEnvelopes || []).forEach((env) => {
+      const sentAt = env.sentAt ? new Date(env.sentAt) : null;
+      if (sentAt && sentAt >= monthStart) used += 1;
+    });
+  });
+
+  const activeUsers = users.filter((u) => u.isActive).length;
+  const included = activeUsers * SIGNATURES_INCLUDED_PER_USER;
+  const over = Math.max(0, used - included);
+
+  return {
+    used,
+    included,
+    activeUsers,
+    over,
+    overageCost: over * SIGNATURE_OVERAGE_PRICE,
+  };
+};

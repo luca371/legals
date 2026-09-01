@@ -19,6 +19,7 @@ import {
   listApprovalRequestsForAgreement,
   addDocusignEnvelope,
   updateDocusignEnvelope,
+  getCurrentUser,
   getObjectSchema,
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
@@ -357,13 +358,11 @@ function AgreementDetailScreen() {
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
-  const [signer1Name, setSigner1Name] = useState('');
-  const [signer1Email, setSigner1Email] = useState('');
-  const [includeSecondSigner, setIncludeSecondSigner] = useState(false);
-  const [signer2Name, setSigner2Name] = useState('');
-  const [signer2Email, setSigner2Email] = useState('');
+  const [signersList, setSignersList] = useState([{ name: '', email: '' }]);
+  const [ccList, setCcList] = useState([]);
   const [signatureMessage, setSignatureMessage] = useState('');
   const [sendingSignature, setSendingSignature] = useState(false);
+  const [markingManualSignature, setMarkingManualSignature] = useState(false);
   const [signatureError, setSignatureError] = useState('');
   const [refreshingEnvelopeId, setRefreshingEnvelopeId] = useState('');
 
@@ -1031,34 +1030,59 @@ function AgreementDetailScreen() {
   const openSignatureModal = () => {
     setShowSignatureModal(true);
     setSignatureError('');
-    setSigner1Name('');
-    setSigner1Email('');
-    setIncludeSecondSigner(false);
-    setSigner2Name('');
-    setSigner2Email('');
+    setSignersList([{ name: '', email: '' }]);
+    setCcList([]);
     setSignatureMessage('');
     const attachments = agreement.attachments || [];
     setSignatureAttachmentId(attachments.length === 1 ? attachments[0].id : '');
   };
 
   const closeSignatureModal = () => {
-    if (sendingSignature) return;
+    if (sendingSignature || markingManualSignature) return;
     setShowSignatureModal(false);
+  };
+
+  const updateSignerAt = (index, field, value) => {
+    setSignersList((prev) => prev.map((s, i) => (i === index ? { ...s, [field]: value } : s)));
+  };
+
+  const addSignerRow = () => {
+    if (signersList.length >= 10) return;
+    setSignersList((prev) => [...prev, { name: '', email: '' }]);
+  };
+
+  const removeSignerAt = (index) => {
+    setSignersList((prev) => (prev.length > 1 ? prev.filter((_, i) => i !== index) : prev));
+  };
+
+  const updateCcAt = (index, field, value) => {
+    setCcList((prev) => prev.map((r, i) => (i === index ? { ...r, [field]: value } : r)));
+  };
+
+  const addCcRow = () => {
+    if (ccList.length >= 10) return;
+    setCcList((prev) => [...prev, { name: '', email: '' }]);
+  };
+
+  const removeCcAt = (index) => {
+    setCcList((prev) => prev.filter((_, i) => i !== index));
   };
 
   const handleSendForSignature = async () => {
     const isValidSigner = (name, email) => name.trim() && /^\S+@\S+\.\S+$/.test(email.trim());
+    const isValidEmail = (email) => /^\S+@\S+\.\S+$/.test(email.trim());
 
     if (!signatureAttachmentId) {
       setSignatureError('Choose a document to send.');
       return;
     }
-    if (!isValidSigner(signer1Name, signer1Email)) {
-      setSignatureError('Enter a valid name and email for the first signer.');
+    if (signersList.length === 0 || !signersList.every((s) => isValidSigner(s.name, s.email))) {
+      setSignatureError('Enter a valid name and email for every signer.');
       return;
     }
-    if (includeSecondSigner && !isValidSigner(signer2Name, signer2Email)) {
-      setSignatureError('Enter a valid name and email for the second signer.');
+    const ccToSend = ccList.filter((r) => r.email.trim() || r.name.trim());
+    if (ccToSend.some((r) => !isValidEmail(r.email))) {
+      setSignatureError('Enter a valid email for every recipient in copy.');
       return;
     }
 
@@ -1069,10 +1093,8 @@ function AgreementDetailScreen() {
       return;
     }
 
-    const signers = [{ name: signer1Name.trim(), email: signer1Email.trim() }];
-    if (includeSecondSigner) {
-      signers.push({ name: signer2Name.trim(), email: signer2Email.trim() });
-    }
+    const signers = signersList.map((s) => ({ name: s.name.trim(), email: s.email.trim() }));
+    const ccRecipients = ccToSend.map((r) => ({ name: r.name.trim(), email: r.email.trim() }));
 
     setSendingSignature(true);
     setSignatureError('');
@@ -1082,6 +1104,7 @@ function AgreementDetailScreen() {
         documentName: attachment.name,
         fileExtension: payload.fileExtension,
         signers,
+        ccRecipients,
         emailSubject: `Please sign: ${agreement.title}`,
         emailMessage: signatureMessage,
       });
@@ -1090,6 +1113,7 @@ function AgreementDetailScreen() {
         envelopeId: envelope.envelopeId,
         attachmentName: attachment.name,
         signers,
+        ccRecipients,
         status: envelope.status || 'sent',
         sentAt: new Date().toISOString(),
       });
@@ -1107,6 +1131,48 @@ function AgreementDetailScreen() {
       setSignatureError(err.message || 'Something went wrong while sending for signature.');
     } finally {
       setSendingSignature(false);
+    }
+  };
+
+  const handleMarkSignedManually = async () => {
+    if (!signatureAttachmentId) {
+      setSignatureError('Choose a document to mark as signed.');
+      return;
+    }
+    const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentId);
+    if (!attachment) {
+      setSignatureError('Could not find that document — try a different attachment.');
+      return;
+    }
+
+    setMarkingManualSignature(true);
+    setSignatureError('');
+    try {
+      const user = await getCurrentUser();
+      await addDocusignEnvelope(agreementId, {
+        envelopeId: `manual-${Date.now()}`,
+        manual: true,
+        attachmentName: attachment.name,
+        signedAttachmentId: attachment.id,
+        signers: [],
+        status: 'completed',
+        markedBy: user?.email || 'Unknown',
+        completedAt: new Date().toISOString(),
+      });
+
+      const advancedStatus = computeAdvancedStatus(agreement.status, 'Signed');
+      if (advancedStatus) {
+        await updateAgreementStatus(agreementId, advancedStatus);
+      }
+
+      setShowSignatureModal(false);
+      setActiveNav('attachments');
+      await load();
+    } catch (err) {
+      console.error('Failed to mark as signed manually:', err);
+      setSignatureError(err.message || 'Something went wrong while marking this as signed.');
+    } finally {
+      setMarkingManualSignature(false);
     }
   };
 
@@ -1598,11 +1664,13 @@ function AgreementDetailScreen() {
                       <div key={env.envelopeId} className="agrd__review-session-row">
                         <div className="agrd__review-session-info">
                           <span className="agrd__review-session-name">
-                            {(env.signers || []).map((s) => `${s.name} (${s.email})`).join('  →  ')}
+                            {env.manual
+                              ? `Marked as signed manually${env.markedBy ? ` by ${env.markedBy}` : ''}`
+                              : (env.signers || []).map((s) => `${s.name} (${s.email})`).join('  →  ')}
                           </span>
                           <span className="agrd__review-session-meta">
                             {env.attachmentName} ·{' '}
-                            {env.sentAt ? new Date(env.sentAt).toLocaleDateString() : ''}
+                            {(env.sentAt || env.completedAt) ? new Date(env.sentAt || env.completedAt).toLocaleDateString() : ''}
                           </span>
                         </div>
                         <div className="agrd__review-session-actions">
@@ -2050,6 +2118,7 @@ function AgreementDetailScreen() {
               <h3 className="arv__title"><SparkleIcon /> Review with AI</h3>
               <p className="arv__subtitle">
                 A contract-manager-style quality check — not legal advice. Based only on the document text you pick below.
+                By using this tool, you're interacting with our AI system.
               </p>
             </div>
 
@@ -2167,7 +2236,7 @@ function AgreementDetailScreen() {
               <h3 className="agrd__modal-title">Send for signature</h3>
               <p className="agrd__modal-subtitle">
                 Sends the document to DocuSign for e-signature. Sandbox mode — signatures aren't legally binding yet.
-                {includeSecondSigner && ' Make sure the document also has /sig2/, /name2/, /title2/, /date2/ tags for the second signer.'}
+                {signersList.length > 1 && ` Make sure the document also has the matching /sig{n}/, /name{n}/, /title{n}/, /date{n}/ tags for each of the ${signersList.length} signers.`}
               </p>
 
               {signatureError && <p className="agrd__error">{signatureError}</p>}
@@ -2198,52 +2267,89 @@ function AgreementDetailScreen() {
                 </div>
               )}
 
-              <h4 className="agrd__review-section-title">Signer 1</h4>
-              <input
-                type="text"
-                className="agrd__input"
-                placeholder="Signer name"
-                value={signer1Name}
-                onChange={(e) => setSigner1Name(e.target.value)}
-              />
-              <input
-                type="email"
-                className="agrd__input"
-                placeholder="signer@company.com"
-                value={signer1Email}
-                onChange={(e) => setSigner1Email(e.target.value)}
-              />
+              <button
+                type="button"
+                className="agrd__attachment-btn"
+                onClick={handleMarkSignedManually}
+                disabled={!signatureAttachmentId || sendingSignature || markingManualSignature}
+              >
+                {markingManualSignature ? 'Marking as signed…' : 'Signed on paper? Mark as signed manually'}
+              </button>
 
-              {includeSecondSigner ? (
-                <>
+              {signersList.map((signer, index) => (
+                <div key={index} className="agrd__recipient-row">
                   <h4 className="agrd__review-section-title">
-                    Signer 2 <span className="agrd__modal-hint">(signs after Signer 1)</span>
+                    Signer {index + 1}
+                    {index > 0 && <span className="agrd__modal-hint"> (signs after Signer {index})</span>}
                   </h4>
-                  <input
-                    type="text"
-                    className="agrd__input"
-                    placeholder="Signer name"
-                    value={signer2Name}
-                    onChange={(e) => setSigner2Name(e.target.value)}
-                  />
-                  <input
-                    type="email"
-                    className="agrd__input"
-                    placeholder="signer@company.com"
-                    value={signer2Email}
-                    onChange={(e) => setSigner2Email(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="agrd__attachment-btn"
-                    onClick={() => { setIncludeSecondSigner(false); setSigner2Name(''); setSigner2Email(''); }}
-                  >
-                    Remove second signer
-                  </button>
-                </>
-              ) : (
-                <button type="button" className="agrd__attachment-btn" onClick={() => setIncludeSecondSigner(true)}>
-                  + Add a second signer
+                  <div className="agrd__recipient-fields">
+                    <input
+                      type="text"
+                      className="agrd__input"
+                      placeholder="Signer name"
+                      value={signer.name}
+                      onChange={(e) => updateSignerAt(index, 'name', e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      className="agrd__input"
+                      placeholder="signer@company.com"
+                      value={signer.email}
+                      onChange={(e) => updateSignerAt(index, 'email', e.target.value)}
+                    />
+                    {signersList.length > 1 && (
+                      <button
+                        type="button"
+                        className="agrd__recipient-remove"
+                        onClick={() => removeSignerAt(index)}
+                        aria-label={`Remove signer ${index + 1}`}
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {signersList.length < 10 && (
+                <button type="button" className="agrd__attachment-btn" onClick={addSignerRow}>
+                  + Add a signer
+                </button>
+              )}
+
+              <h4 className="agrd__review-section-title">
+                Recipients in copy <span className="agrd__modal-hint">(optional, don't sign)</span>
+              </h4>
+              {ccList.map((recipient, index) => (
+                <div key={index} className="agrd__recipient-row">
+                  <div className="agrd__recipient-fields">
+                    <input
+                      type="text"
+                      className="agrd__input"
+                      placeholder="Name"
+                      value={recipient.name}
+                      onChange={(e) => updateCcAt(index, 'name', e.target.value)}
+                    />
+                    <input
+                      type="email"
+                      className="agrd__input"
+                      placeholder="email@company.com"
+                      value={recipient.email}
+                      onChange={(e) => updateCcAt(index, 'email', e.target.value)}
+                    />
+                    <button
+                      type="button"
+                      className="agrd__recipient-remove"
+                      onClick={() => removeCcAt(index)}
+                      aria-label={`Remove CC recipient ${index + 1}`}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {ccList.length < 10 && (
+                <button type="button" className="agrd__attachment-btn" onClick={addCcRow}>
+                  + Add a recipient in copy
                 </button>
               )}
 
@@ -2258,14 +2364,14 @@ function AgreementDetailScreen() {
             </div>
 
             <div className="agrd__modal-actions">
-              <button type="button" className="agrd__btn-secondary" onClick={closeSignatureModal} disabled={sendingSignature}>
+              <button type="button" className="agrd__btn-secondary" onClick={closeSignatureModal} disabled={sendingSignature || markingManualSignature}>
                 Cancel
               </button>
               <button
                 type="button"
                 className="agrd__btn-primary"
                 onClick={handleSendForSignature}
-                disabled={!signatureAttachmentId || !signer1Email.trim() || sendingSignature}
+                disabled={!signatureAttachmentId || !signersList[0]?.email.trim() || sendingSignature || markingManualSignature}
               >
                 {sendingSignature ? 'Sending…' : 'Send for signature'}
               </button>

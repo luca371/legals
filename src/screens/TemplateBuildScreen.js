@@ -7,6 +7,7 @@ import {
   saveTemplate,
   listTemplates,
   deleteTemplate,
+  listAgreements,
 } from '../supabase';
 import './TemplateBuildScreen.css';
 
@@ -109,6 +110,7 @@ function TemplateBuildScreen() {
   const [view, setView] = useState('list');
   const [templates, setTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
+  const [templateUsage, setTemplateUsage] = useState({});
 
   const [meta, setMeta] = useState({ name: '', agreementType: '', agreementSubtype: '', language: 'English' });
   const [directFields, setDirectFields] = useState([]);
@@ -136,7 +138,14 @@ function TemplateBuildScreen() {
   const loadTemplates = async () => {
     setLoadingTemplates(true);
     try {
-      setTemplates(await listTemplates());
+      const [tpls, agreements] = await Promise.all([listTemplates(), listAgreements()]);
+      setTemplates(tpls);
+      const usage = {};
+      agreements.forEach((a) => {
+        if (!a.templateId) return;
+        usage[a.templateId] = (usage[a.templateId] || 0) + 1;
+      });
+      setTemplateUsage(usage);
     } catch (err) {
       console.error('Failed to load templates:', err);
     } finally {
@@ -343,6 +352,7 @@ function TemplateBuildScreen() {
                   <span className="tpl__tag tpl__tag--lang">{t.language}</span>
                 </div>
                 <p className="tpl__card-fields">{(t.fieldsUsed || []).length} field{(t.fieldsUsed || []).length === 1 ? '' : 's'} mapped</p>
+                <p className="tpl__card-usage">Used in {templateUsage[t.id] || 0} document{(templateUsage[t.id] || 0) === 1 ? '' : 's'}</p>
               </div>
             ))}
           </div>

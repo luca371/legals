@@ -303,6 +303,43 @@
   box-shadow: 0 0 0 3px rgba(0, 113, 227, 0.1);
 }
 
+.agrd__recipient-row {
+  margin-bottom: 6px;
+}
+
+.agrd__recipient-fields {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.agrd__recipient-fields .agrd__input {
+  flex: 1;
+  min-width: 0;
+}
+
+.agrd__recipient-remove {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  color: var(--color-text-tertiary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.16s var(--ease), color 0.16s var(--ease), border-color 0.16s var(--ease);
+}
+
+.agrd__recipient-remove:hover {
+  background: var(--color-danger-soft);
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
 .agrd__form-actions {
   display: flex;
   justify-content: flex-end;

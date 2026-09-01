@@ -7,13 +7,16 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { documentBase64, documentName, fileExtension, signers, emailSubject, emailMessage } = await req.json();
+    const { documentBase64, documentName, fileExtension, signers, ccRecipients, emailSubject, emailMessage } = await req.json();
 
     if (!documentBase64 || !Array.isArray(signers) || signers.length === 0) {
       return jsonResponse({ error: 'documentBase64 and at least one signer are required.' }, 400);
     }
     if (signers.some((s: { email?: string; name?: string }) => !s.email || !s.name)) {
       return jsonResponse({ error: 'Every signer needs a name and email.' }, 400);
+    }
+    if (Array.isArray(ccRecipients) && ccRecipients.some((r: { email?: string }) => !r.email)) {
+      return jsonResponse({ error: 'Every recipient in copy needs an email.' }, 400);
     }
 
     const accessToken = await getAccessToken({
@@ -29,6 +32,7 @@ Deno.serve(async (req) => {
       documentName,
       fileExtension,
       signers,
+      ccRecipients,
       emailSubject,
       emailMessage,
     });

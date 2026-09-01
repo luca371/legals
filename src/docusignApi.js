@@ -5,11 +5,12 @@ export async function sendForSignature({
   documentName,
   fileExtension,
   signers,
+  ccRecipients,
   emailSubject,
   emailMessage,
 }) {
   const { data, error } = await supabase.functions.invoke('docusign-send', {
-    body: { documentBase64, documentName, fileExtension, signers, emailSubject, emailMessage },
+    body: { documentBase64, documentName, fileExtension, signers, ccRecipients, emailSubject, emailMessage },
   });
 
   if (error) throw new Error(error.message || 'DocuSign send failed.');
