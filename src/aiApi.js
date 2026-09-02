@@ -12,3 +12,7 @@ export async function suggestClausesWithAI(documentText, metadata) {
     existingClauses: data?.existingClauses || [],
   };
 }
+
+export async function analyzeClauseWithAI(clauseTitle, clauseText, metadata) {
+  return invokeFunction('analyze-clause', { clauseTitle, clauseText, metadata });
+}

@@ -10,10 +10,17 @@ import {
   deleteTemplate,
   listAgreements,
 } from '../supabase';
-import { analyzeTemplateWithAI, suggestClausesWithAI } from '../aiApi';
+import { analyzeTemplateWithAI, suggestClausesWithAI, analyzeClauseWithAI } from '../aiApi';
 import './TemplateBuildScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
+
+const TEXT_COLORS = [
+  { label: 'Black', value: '#1d1d1f' },
+  { label: 'Red', value: '#d92d20' },
+  { label: 'Blue', value: '#0071e3' },
+  { label: 'Green', value: '#1a9e5c' },
+];
 
 const OBJECT_LABELS = { account: 'Account', agreement: 'Agreement', template: 'Template' };
 
@@ -183,6 +190,12 @@ function TemplateBuildScreen() {
   const [clauseSuggestionsError, setClauseSuggestionsError] = useState('');
   const [hasRunClauseAnalysis, setHasRunClauseAnalysis] = useState(false);
 
+  const [clauseModalView, setClauseModalView] = useState('list'); // 'list' | 'detail'
+  const [activeClauseId, setActiveClauseId] = useState(null);
+  const [clauseDetailCache, setClauseDetailCache] = useState({});
+  const [loadingClauseDetail, setLoadingClauseDetail] = useState(false);
+  const [clauseDetailError, setClauseDetailError] = useState('');
+
   const editableRef = useRef(null);
   const fileInputRef = useRef(null);
   const draggedFieldRef = useRef(null);
@@ -239,6 +252,9 @@ function TemplateBuildScreen() {
     setMissingClauses([]);
     setExistingClauses([]);
     setHasRunClauseAnalysis(false);
+    setClauseDetailCache({});
+    setClauseModalView('list');
+    setActiveClauseId(null);
     setInsertedClauseIds([]);
     setView('setup');
   };
@@ -257,6 +273,9 @@ function TemplateBuildScreen() {
     setMissingClauses([]);
     setExistingClauses([]);
     setHasRunClauseAnalysis(false);
+    setClauseDetailCache({});
+    setClauseModalView('list');
+    setActiveClauseId(null);
     setInsertedClauseIds([]);
     try {
       const [configs, map] = await Promise.all([
@@ -315,6 +334,19 @@ function TemplateBuildScreen() {
       }).catch(console.error);
     }
   }, [view]);
+
+  // onMouseDown (not onClick) + preventDefault, so the toolbar button never
+  // steals focus/selection away from the document before execCommand runs.
+  const applyFormat = (e, command, value) => {
+    e.preventDefault();
+    editableRef.current?.focus();
+    document.execCommand(command, false, value);
+  };
+
+  const applyCustomColor = (color) => {
+    editableRef.current?.focus();
+    document.execCommand('foreColor', false, color);
+  };
 
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
@@ -498,7 +530,38 @@ function TemplateBuildScreen() {
     }
   };
 
-  const closeClausesModal = () => setShowClausesModal(false);
+  const closeClausesModal = () => {
+    setShowClausesModal(false);
+    setClauseModalView('list');
+  };
+
+  const handleOpenClauseDetail = async (clause) => {
+    setActiveClauseId(clause.id);
+    setClauseModalView('detail');
+    setClauseDetailError('');
+    // Already fetched this one — reuse it instead of spending another AI call.
+    if (clauseDetailCache[clause.id]) return;
+    setLoadingClauseDetail(true);
+    try {
+      const detail = await analyzeClauseWithAI(clause.title, clause.excerpt, {
+        agreementType: meta.agreementType,
+        agreementSubtype: meta.agreementSubtype,
+        language: meta.language,
+      });
+      setClauseDetailCache((prev) => ({ ...prev, [clause.id]: detail }));
+    } catch (err) {
+      console.error('Clause detail analysis failed:', err);
+      setClauseDetailError(err.message || 'Could not analyze this clause. Please try again.');
+    } finally {
+      setLoadingClauseDetail(false);
+    }
+  };
+
+  const handleBackToClauseList = () => {
+    setClauseModalView('list');
+    setActiveClauseId(null);
+    setClauseDetailError('');
+  };
 
   // A signature block is either an actual docusign.* placeholder chip
   // (dropped in from the field sidebar) or, failing that, the first
@@ -806,6 +869,33 @@ function TemplateBuildScreen() {
           </aside>
 
           <div className="tpl__doc-wrap">
+            <div className="tpl__format-toolbar">
+              <button type="button" className="tpl__format-btn" onMouseDown={(e) => applyFormat(e, 'bold')} title="Bold">
+                <strong>B</strong>
+              </button>
+              <button type="button" className="tpl__format-btn tpl__format-btn--italic" onMouseDown={(e) => applyFormat(e, 'italic')} title="Italic">
+                I
+              </button>
+              <button type="button" className="tpl__format-btn tpl__format-btn--underline" onMouseDown={(e) => applyFormat(e, 'underline')} title="Underline">
+                U
+              </button>
+              <span className="tpl__format-divider" />
+              {TEXT_COLORS.map((c) => (
+                <button
+                  key={c.value}
+                  type="button"
+                  className="tpl__format-swatch"
+                  style={{ background: c.value }}
+                  onMouseDown={(e) => applyFormat(e, 'foreColor', c.value)}
+                  title={c.label}
+                  aria-label={c.label}
+                />
+              ))}
+              <label className="tpl__format-color-picker" title="Custom color">
+                <span className="tpl__format-swatch tpl__format-swatch--custom" />
+                <input type="color" onMouseDown={(e) => e.stopPropagation()} onChange={(e) => applyCustomColor(e.target.value)} />
+              </label>
+            </div>
             <div
               ref={editableRef}
               className={`tpl__doc ${dragOverField ? 'tpl__doc--dragover' : ''}`}
@@ -821,7 +911,7 @@ function TemplateBuildScreen() {
         </div>
       )}
 
-      {showClausesModal && (
+      {showClausesModal && clauseModalView === 'list' && (
         <div className="agrd__modal-backdrop" onClick={closeClausesModal}>
           <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
             <div className="agrd__modal-scroll">
@@ -872,9 +962,15 @@ function TemplateBuildScreen() {
                       <h4 className="tpl__clause-section-title tpl__clause-section-title--spaced">
                         Existing clauses — quality &amp; risk
                       </h4>
+                      <p className="tpl__clause-hint">Click any clause for a full breakdown.</p>
                       <div className="tpl__clause-list">
                         {existingClauses.map((clause) => (
-                          <div key={clause.id} className="tpl__clause">
+                          <button
+                            type="button"
+                            key={clause.id}
+                            className="tpl__clause tpl__clause--clickable"
+                            onClick={() => handleOpenClauseDetail(clause)}
+                          >
                             <div className="tpl__clause-header">
                               <span className="tpl__clause-title">{clause.title}</span>
                               <div className="tpl__clause-scores">
@@ -885,12 +981,7 @@ function TemplateBuildScreen() {
                               </div>
                             </div>
                             {clause.assessment && <p className="tpl__clause-reason">{clause.assessment}</p>}
-                            {clause.improvement && (
-                              <p className="tpl__clause-improvement">
-                                <strong>Improve:</strong> {clause.improvement}
-                              </p>
-                            )}
-                          </div>
+                          </button>
                         ))}
                       </div>
                     </>
@@ -907,6 +998,92 @@ function TemplateBuildScreen() {
           </div>
         </div>
       )}
+
+      {showClausesModal && clauseModalView === 'detail' && (() => {
+        const clause = existingClauses.find((c) => c.id === activeClauseId);
+        const detail = clauseDetailCache[activeClauseId];
+        return (
+          <div className="agrd__modal-backdrop" onClick={closeClausesModal}>
+            <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
+              <div className="agrd__modal-scroll">
+                <button type="button" className="tpl__back tpl__back--modal" onClick={handleBackToClauseList}>
+                  <BackIcon /> Back to suggested clauses
+                </button>
+
+                <div className="tpl__detail-header">
+                  <h3 className="agrd__modal-title tpl__detail-title">{clause?.title}</h3>
+                  {detail && (
+                    <div className="tpl__clause-scores">
+                      <span className={`tpl__risk-badge tpl__risk-badge--${(detail.risk || 'medium').toLowerCase()}`}>
+                        {detail.risk || 'medium'} risk
+                      </span>
+                      <span className="tpl__score-badge">{detail.score}/10</span>
+                    </div>
+                  )}
+                </div>
+
+                {clauseDetailError && <p className="agrd__error">{clauseDetailError}</p>}
+
+                {loadingClauseDetail ? (
+                  <p className="tpl__empty">Analyzing this clause…</p>
+                ) : detail ? (
+                  <div className="tpl__detail-sections">
+                    <div className="tpl__detail-section">
+                      <h4 className="tpl__detail-section-title">Summary</h4>
+                      <p className="tpl__detail-text">{detail.summary}</p>
+                    </div>
+
+                    {detail.pros.length > 0 && (
+                      <div className="tpl__detail-section tpl__detail-section--pros">
+                        <h4 className="tpl__detail-section-title">Strengths</h4>
+                        <ul className="tpl__detail-list">
+                          {detail.pros.map((item, i) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detail.cons.length > 0 && (
+                      <div className="tpl__detail-section tpl__detail-section--cons">
+                        <h4 className="tpl__detail-section-title">Weaknesses</h4>
+                        <ul className="tpl__detail-list">
+                          {detail.cons.map((item, i) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detail.watchFor.length > 0 && (
+                      <div className="tpl__detail-section tpl__detail-section--watch">
+                        <h4 className="tpl__detail-section-title">What to watch for</h4>
+                        <ul className="tpl__detail-list">
+                          {detail.watchFor.map((item, i) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {detail.improvements.length > 0 && (
+                      <div className="tpl__detail-section tpl__detail-section--improve">
+                        <h4 className="tpl__detail-section-title">How to improve it</h4>
+                        <ul className="tpl__detail-list">
+                          {detail.improvements.map((item, i) => <li key={i}>{item}</li>)}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="agrd__modal-actions">
+                <button type="button" className="agrd__btn-secondary" onClick={handleBackToClauseList}>
+                  Back
+                </button>
+                <button type="button" className="agrd__btn-primary" onClick={closeClausesModal}>
+                  Close
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
