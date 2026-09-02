@@ -79,7 +79,7 @@ function mergeTokens(tokens) {
   return merged;
 }
 
-function escapeHtml(text) {
+export function escapeHtml(text) {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
@@ -90,83 +90,94 @@ function normalizeText(text) {
     .join('\n\n');
 }
 
-export function computeRedlineHtml(originalHtml, editedHtml) {
+// Computes the diff as a flat, ordered list of tokens — the single source
+// of truth for a review's changes. Every non-equal token gets a stable id;
+// nothing here touches the DOM, so it's safe to run anywhere (including
+// once, up front, in the reviewer's browser at submit time) and to persist
+// as plain JSON.
+export function computeChangeTokens(originalHtml, editedHtml) {
   const originalText = normalizeText(paragraphsToText(htmlToParagraphs(originalHtml)));
   const editedText = normalizeText(paragraphsToText(htmlToParagraphs(editedHtml)));
   const tokens = diffTokens(tokenize(originalText), tokenize(editedText));
 
-  let changeCounter = 0;
+  let counter = 0;
+  return tokens.map((tok) => {
+    const clean = tok.text;
+    if (tok.type === 'equal') return { type: 'equal', text: clean };
+    counter += 1;
+    return { type: tok.type, text: clean, id: `chg-${counter}` };
+  });
+}
+
+export function listChangeIds(tokens) {
+  return (tokens || []).filter((t) => t.type !== 'equal').map((t) => t.id);
+}
+
+// Walks tokens paragraph-by-paragraph (splitting on the \n\n paragraph
+// markers preserved inside token text) and hands each piece to `emit`,
+// which decides what HTML (if any) to contribute for it. Both the display
+// renderer and the final-document builder are just different `emit`
+// implementations over the exact same token stream, so they can never
+// disagree with each other.
+function buildParagraphs(tokens, emit) {
   const paragraphsHtml = [];
-  let currentParagraph = [];
+  let current = [];
 
-  const flushParagraph = () => {
-    paragraphsHtml.push(`<p>${currentParagraph.join('')}</p>`);
-    currentParagraph = [];
-  };
-
-  const pushEqualText = (text) => {
-    const parts = text.split('\n\n');
-    parts.forEach((part, idx) => {
-      if (part.trim()) currentParagraph.push(escapeHtml(part.replace(/\n/g, ' ')));
-      if (idx < parts.length - 1) flushParagraph();
-    });
-  };
-
-  const pushChange = (type, text) => {
-    const clean = text.replace(/\n\n/g, ' ').replace(/\n/g, ' ').trim();
-    if (!clean) return;
-    changeCounter++;
-    const id = `chg-${changeCounter}`;
-    const safe = escapeHtml(clean);
-    const tag = type === 'insert' ? 'ins' : 'del';
-    const tagStyle =
-      type === 'insert'
-        ? 'text-decoration: underline; background: #e8f7ee; color: #1a9e5c;'
-        : 'text-decoration: line-through; background: #fdecec; color: #d92d20;';
-    currentParagraph.push(
-      `<span class="redline-change" data-change-id="${id}" data-type="${type === 'insert' ? 'ins' : 'del'}" data-decision="pending" style="display:inline;">` +
-        `<${tag} style="${tagStyle}">${safe}</${tag}>` +
-        `<span contenteditable="false" style="display:inline-flex;gap:2px;margin:0 2px;vertical-align:middle;">` +
-        `<button type="button" class="redline-btn redline-accept" data-change-id="${id}" style="cursor:pointer;border:1px solid #1a9e5c;background:#fff;color:#1a9e5c;border-radius:6px;font-size:10px;line-height:1;padding:1px 4px;">✓</button>` +
-        `<button type="button" class="redline-btn redline-reject" data-change-id="${id}" style="cursor:pointer;border:1px solid #d92d20;background:#fff;color:#d92d20;border-radius:6px;font-size:10px;line-height:1;padding:1px 4px;">✕</button>` +
-        `</span></span>`
-    );
+  const flush = () => {
+    paragraphsHtml.push(`<p>${current.join('')}</p>`);
+    current = [];
   };
 
   tokens.forEach((tok) => {
-    if (tok.type === 'equal') pushEqualText(tok.text);
-    else if (tok.type === 'insert') pushChange('insert', tok.text);
-    else if (tok.type === 'delete') pushChange('delete', tok.text);
+    const parts = tok.text.split('\n\n');
+    parts.forEach((part, idx) => {
+      const html = emit(tok, part);
+      if (html) current.push(html);
+      if (idx < parts.length - 1) flush();
+    });
   });
-  flushParagraph();
+  flush();
 
   return paragraphsHtml.filter((p) => p !== '<p></p>').join('\n');
 }
 
-export function finalizeRedlineHtml(containerEl) {
-  const clone = containerEl.cloneNode(true);
-  clone.querySelectorAll('.redline-change').forEach((el) => {
-    const type = el.getAttribute('data-type');
-    const decision = el.getAttribute('data-decision') || 'pending';
-    const textEl = el.querySelector('ins, del');
-    const text = textEl ? textEl.textContent : '';
-    let keepText = '';
-    if (type === 'ins') {
-      keepText = decision === 'accepted' ? text : '';
-    } else {
-      keepText = decision === 'accepted' ? '' : text;
+// Display HTML: every change is a <span data-change-id> wrapping an
+// <ins>/<del> — styling is driven entirely by CSS classes derived from
+// `decisions`, and there is no embedded button markup to keep in sync
+// with anything.
+export function renderChangeTokensToHtml(tokens, decisions = {}, currentId = null) {
+  return buildParagraphs(tokens, (tok, part) => {
+    if (tok.type === 'equal') {
+      const text = part.replace(/\n/g, ' ');
+      return text.trim() ? escapeHtml(text) : '';
     }
-    el.replaceWith(document.createTextNode(keepText));
+    const clean = part.replace(/\n/g, ' ').trim();
+    if (!clean) return '';
+    const decision = decisions[tok.id] || 'pending';
+    const tag = tok.type === 'insert' ? 'ins' : 'del';
+    const classes = [
+      'redline-change',
+      `redline-change--${tok.type}`,
+      `redline-change--${decision}`,
+      tok.id === currentId ? 'redline-change--current' : '',
+    ].filter(Boolean).join(' ');
+    return `<span class="${classes}" data-change-id="${tok.id}"><${tag}>${escapeHtml(clean)}</${tag}></span>`;
   });
-  return clone.innerHTML;
 }
 
-export function countPendingChanges(containerEl) {
-  if (!containerEl) return 0;
-  const all = containerEl.querySelectorAll('.redline-change');
-  let pending = 0;
-  all.forEach((el) => {
-    if ((el.getAttribute('data-decision') || 'pending') === 'pending') pending++;
+// Final document HTML: accepted insertions and rejected deletions keep
+// their text; everything else is dropped. Pure function of tokens +
+// decisions — no DOM involved, so there's nothing to lose across renders.
+export function buildFinalHtmlFromTokens(tokens, decisions = {}) {
+  return buildParagraphs(tokens, (tok, part) => {
+    if (tok.type === 'equal') {
+      const text = part.replace(/\n/g, ' ');
+      return text.trim() ? escapeHtml(text) : '';
+    }
+    const clean = part.replace(/\n/g, ' ').trim();
+    if (!clean) return '';
+    const decision = decisions[tok.id] || 'pending';
+    const keep = tok.type === 'insert' ? decision === 'accepted' : decision !== 'accepted';
+    return keep ? escapeHtml(clean) : '';
   });
-  return pending;
 }

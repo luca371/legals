@@ -2,62 +2,44 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { getReviewRequestPublic, submitReviewChanges, getNextReviewInBatch } from '../supabase';
 import { sendReviewEmail } from '../emailApi';
-import { computeRedlineHtml } from '../redlineUtils';
+import { computeChangeTokens, renderChangeTokensToHtml } from '../redlineUtils';
+import './ReviewLinkScreen.css';
 
-const fontStack = "-apple-system, BlinkMacSystemFont, 'SF Pro Display', 'SF Pro Text', 'Segoe UI', 'Helvetica Neue', Arial, sans-serif";
-const headingFontStack = fontStack;
+const LINK_EXPIRY_DAYS = 30;
 
 function CenteredMessage({ icon, title, subtitle }) {
   return (
-    <div
-      style={{
-        minHeight: '100vh',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        background: '#f5f5f7',
-        fontFamily: fontStack,
-        padding: '24px',
-      }}
-    >
-      <div
-        style={{
-          background: '#ffffff',
-          borderRadius: '20px',
-          padding: '40px 36px',
-          maxWidth: '420px',
-          width: '100%',
-          textAlign: 'center',
-          boxShadow: '0 8px 30px rgba(0, 0, 0, 0.08)',
-        }}
-      >
-        <div style={{ fontSize: '2.5rem', marginBottom: '16px' }}>{icon}</div>
-        <h2
-          style={{
-            fontFamily: headingFontStack,
-            fontWeight: 700,
-            fontSize: '1.25rem',
-            color: '#0071e3',
-            margin: '0 0 10px',
-          }}
-        >
-          {title}
-        </h2>
-        <p style={{ fontSize: '0.9rem', color: '#6e6e73', margin: 0, lineHeight: 1.6 }}>{subtitle}</p>
+    <div className="rvl">
+      <div className="rvl__center-card">
+        <div className="rvl__center-icon">{icon}</div>
+        <h1 className="rvl__center-title">{title}</h1>
+        <p className="rvl__center-subtitle">{subtitle}</p>
       </div>
     </div>
   );
 }
 
+function isExpired(createdAt) {
+  if (!createdAt) return false;
+  const created = new Date(createdAt).getTime();
+  if (Number.isNaN(created)) return false;
+  return Date.now() - created > LINK_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+}
+
 function ReviewLinkScreen() {
   const { reviewId } = useParams();
+  const editableRef = useRef(null);
+
   const [review, setReview] = useState(null);
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
+  const [expired, setExpired] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [stage, setStage] = useState('edit'); // 'edit' | 'preview'
+  const [previewTokens, setPreviewTokens] = useState(null);
+  const [editedHtml, setEditedHtml] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const editableRef = useRef(null);
 
   useEffect(() => {
     const load = async () => {
@@ -66,6 +48,8 @@ function ReviewLinkScreen() {
         setReview(data);
         if (data.status !== 'Pending') {
           setSubmitted(true);
+        } else if (isExpired(data.createdAt)) {
+          setExpired(true);
         }
       } catch (err) {
         console.error('Failed to load review request:', err);
@@ -74,17 +58,27 @@ function ReviewLinkScreen() {
         setLoading(false);
       }
     };
-    load();
+    if (reviewId) load();
   }, [reviewId]);
 
-  const handleSubmit = async () => {
+  const handleContinue = () => {
     if (!editableRef.current) return;
+    const html = editableRef.current.innerHTML || '';
+    const tokens = computeChangeTokens(review.originalHtml, html);
+    setEditedHtml(html);
+    setPreviewTokens(tokens);
+    setStage('preview');
+  };
+
+  const handleBackToEdit = () => {
+    setStage('edit');
+  };
+
+  const handleConfirmSubmit = async () => {
     setSubmitting(true);
     setError('');
     try {
-      const finalHtml = editableRef.current.innerHTML || '';
-      const redlineHtml = computeRedlineHtml(review.originalHtml, finalHtml);
-      await submitReviewChanges(reviewId, finalHtml, redlineHtml);
+      await submitReviewChanges(reviewId, editedHtml, previewTokens);
 
       try {
         const next = await getNextReviewInBatch(review.batchId, review.sequence);
@@ -125,75 +119,89 @@ function ReviewLinkScreen() {
     );
   }
 
+  if (expired) {
+    return (
+      <CenteredMessage
+        icon="⌛"
+        title="This link has expired"
+        subtitle={`Review links expire ${LINK_EXPIRY_DAYS} days after they're sent. Ask the sender for a new one.`}
+      />
+    );
+  }
+
   if (submitted) {
     return review.status === 'Pending' ? (
       <CenteredMessage
+        icon="✓"
         title="Changes submitted"
-        subtitle="Thank you — your changes have been submitted and the sender has been notified."
+        subtitle="Thank you — your changes have been submitted and the sender has been notified. This link has now been used and can't be opened again."
       />
     ) : (
       <CenteredMessage
+        icon="🔒"
         title="This link has already been used"
-        subtitle="This review link is no longer active. If you need to make further changes, ask the sender for a new link."
+        subtitle="This review link is only valid for one submission. If you need to make further changes, ask the sender for a new link."
       />
     );
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ padding: '20px 32px', borderBottom: '1px solid rgba(0, 0, 0, 0.08)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px' }}>
+    <div className="rvl">
+      <header className="rvl__header">
         <div>
-          <h2 style={{ margin: 0, fontFamily: headingFontStack, color: '#0071e3' }}>{review.agreementTitle}</h2>
-          <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: '#6e6e73' }}>
+          <h1 className="rvl__title">{review.agreementTitle}</h1>
+          <p className="rvl__subtitle">
             Reviewing: {review.attachmentName}
-            {review.message && <> — "{review.message}"</>}
+            {review.message && <> — “{review.message}”</>}
             {review.sequence > 1 && <> · You are the next reviewer in this chain.</>}
           </p>
         </div>
-        <button
-          onClick={handleSubmit}
-          disabled={submitting}
-          style={{
-            padding: '10px 20px',
-            background: '#0071e3',
-            color: '#fff',
-            border: 'none',
-            borderRadius: '12px',
-            fontWeight: 600,
-            cursor: 'pointer',
-          }}
-        >
-          {submitting ? 'Submitting…' : 'Submit changes'}
-        </button>
-      </div>
+        {stage === 'edit' ? (
+          <button type="button" className="rvl__btn rvl__btn--primary" onClick={handleContinue}>
+            Continue
+          </button>
+        ) : (
+          <div className="rvl__header-actions">
+            <button type="button" className="rvl__btn rvl__btn--secondary" onClick={handleBackToEdit} disabled={submitting}>
+              Back to edit
+            </button>
+            <button type="button" className="rvl__btn rvl__btn--primary" onClick={handleConfirmSubmit} disabled={submitting}>
+              {submitting ? 'Submitting…' : 'Confirm & submit'}
+            </button>
+          </div>
+        )}
+      </header>
 
-      {error && (
-        <p style={{ color: '#d92d20', padding: '10px 32px', margin: 0 }}>{error}</p>
+      {error && <p className="rvl__error">{error}</p>}
+
+      {stage === 'edit' ? (
+        <>
+          <p className="rvl__hint">
+            Edit the document directly below. When you're done, click "Continue" to preview your changes with track changes before submitting.
+          </p>
+          <div className="rvl__doc-wrap">
+            <div
+              ref={editableRef}
+              contentEditable
+              suppressContentEditableWarning
+              className="rvl__doc rvl__doc--editable"
+              dangerouslySetInnerHTML={{ __html: review.originalHtml || '' }}
+            />
+          </div>
+        </>
+      ) : (
+        <>
+          <p className="rvl__hint">
+            This is exactly what will be submitted — deletions struck through, additions underlined. Go back to keep editing, or confirm to send it.
+          </p>
+          <div className="rvl__doc-wrap">
+            <div
+              className="rvl__doc"
+              dangerouslySetInnerHTML={{ __html: renderChangeTokensToHtml(previewTokens, {}, null) }}
+            />
+          </div>
+        </>
       )}
-
-      <p style={{ padding: '12px 32px 0', fontSize: '0.82rem', color: '#86868b' }}>
-        Edit the document directly below, then click "Submit changes" when you're done. Once submitted, this link can't be used again.
-      </p>
-
-      <div style={{ flex: 1, padding: '20px 32px 40px', overflowY: 'auto' }}>
-        <div
-          ref={editableRef}
-          contentEditable
-          suppressContentEditableWarning
-          style={{
-            background: '#fff',
-            border: '1px solid rgba(0, 0, 0, 0.08)',
-            borderRadius: '16px',
-            padding: '32px',
-            maxWidth: '800px',
-            margin: '0 auto',
-            minHeight: '400px',
-            fontSize: '0.95rem',
-            lineHeight: 1.6,
-          }}
-          dangerouslySetInnerHTML={{ __html: review.originalHtml || '' }}
-        />
-      </div>
     </div>
   );
 }

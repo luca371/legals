@@ -432,7 +432,7 @@ const mapReviewRequest = (r) => ({
   message: r.message,
   status: r.status,
   submittedHtml: r.submitted_html,
-  redlineHtml: r.redline_html,
+  redlineTokens: r.redline_tokens,
   submittedAt: r.submitted_at,
   sequence: r.sequence || 1,
   batchId: r.batch_id,
@@ -472,12 +472,12 @@ export const getNextReviewInBatch = async (batchId, sequence) => {
   return data ? mapReviewRequest(data) : null;
 };
 
-export const submitReviewChanges = async (id, submittedHtml, redlineHtml) => {
+export const submitReviewChanges = async (id, submittedHtml, changeTokens) => {
   const { error } = await supabase
     .from('review_requests')
     .update({
       submitted_html: submittedHtml,
-      redline_html: redlineHtml,
+      redline_tokens: changeTokens,
       status: 'Submitted',
       submitted_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),

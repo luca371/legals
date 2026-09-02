@@ -31,7 +31,7 @@ import {
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
-import { finalizeRedlineHtml, countPendingChanges } from '../redlineUtils';
+import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds } from '../redlineUtils';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
 
@@ -338,8 +338,9 @@ function AgreementDetailScreen() {
   const [processingReviewId, setProcessingReviewId] = useState('');
   const [showChangesModal, setShowChangesModal] = useState(false);
   const [activeReviewRequest, setActiveReviewRequest] = useState(null);
-  const [pendingChangeCount, setPendingChangeCount] = useState(0);
-  const redlineContainerRef = useRef(null);
+  const [changeDecisions, setChangeDecisions] = useState({});
+  const [currentChangeId, setCurrentChangeId] = useState(null);
+  const redlineMainRef = useRef(null);
 
   const [showApprovalModal, setShowApprovalModal] = useState(false);
   const [approvalAttachmentId, setApprovalAttachmentId] = useState('');
@@ -838,8 +839,15 @@ function AgreementDetailScreen() {
     window.open(url, '_blank');
   };
 
+  const activeChangeTokens = activeReviewRequest?.redlineTokens || [];
+  const activeChangeIds = listChangeIds(activeChangeTokens);
+  const pendingChangeCount = activeChangeIds.filter((id) => !changeDecisions[id]).length;
+
   const openChangesModal = (reviewRequest) => {
     setActiveReviewRequest(reviewRequest);
+    setChangeDecisions({});
+    const ids = listChangeIds(reviewRequest?.redlineTokens || []);
+    setCurrentChangeId(ids[0] || null);
     setShowChangesModal(true);
   };
 
@@ -847,85 +855,51 @@ function AgreementDetailScreen() {
     if (processingReviewId) return;
     setShowChangesModal(false);
     setActiveReviewRequest(null);
-    setPendingChangeCount(0);
+    setChangeDecisions({});
+    setCurrentChangeId(null);
   };
+
+  const goToChange = (id) => setCurrentChangeId(id);
 
   useEffect(() => {
-    if (showChangesModal && redlineContainerRef.current) {
-      setPendingChangeCount(countPendingChanges(redlineContainerRef.current));
-    }
-  }, [showChangesModal, activeReviewRequest]);
+    if (!currentChangeId || !redlineMainRef.current) return;
+    const el = redlineMainRef.current.querySelector(`[data-change-id="${currentChangeId}"]`);
+    el?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [currentChangeId]);
 
-  const applyDecisionStyle = (wrapper, decision) => {
-    const type = wrapper.getAttribute('data-type');
-    const innerEl = wrapper.querySelector('ins, del');
-    const acceptBtn = wrapper.querySelector('.redline-accept');
-    const rejectBtn = wrapper.querySelector('.redline-reject');
-
-    wrapper.setAttribute('data-decision', decision);
-
-    if (innerEl) {
-      if (type === 'ins') {
-        innerEl.style.background = decision === 'accepted' ? '#e8f7ee' : 'transparent';
-        innerEl.style.textDecoration = decision === 'accepted' ? 'underline' : 'line-through';
-        innerEl.style.opacity = decision === 'accepted' ? '1' : '0.4';
-      } else {
-        innerEl.style.background = decision === 'accepted' ? '#fdecec' : 'transparent';
-        innerEl.style.textDecoration = decision === 'accepted' ? 'line-through' : 'none';
-        innerEl.style.opacity = '1';
-      }
-    }
-
-    if (acceptBtn && rejectBtn) {
-      if (decision === 'accepted') {
-        acceptBtn.style.background = '#1a9e5c';
-        acceptBtn.style.color = '#fff';
-        rejectBtn.style.background = '#fff';
-        rejectBtn.style.color = '#d92d20';
-      } else {
-        rejectBtn.style.background = '#d92d20';
-        rejectBtn.style.color = '#fff';
-        acceptBtn.style.background = '#fff';
-        acceptBtn.style.color = '#1a9e5c';
-      }
-    }
+  const decideChange = (id, decision) => {
+    setChangeDecisions((prev) => ({ ...prev, [id]: decision }));
+    const idx = activeChangeIds.indexOf(id);
+    const nextPending = activeChangeIds.slice(idx + 1).find((cid) => !changeDecisions[cid] && cid !== id);
+    if (nextPending) setCurrentChangeId(nextPending);
   };
 
-  const handleRedlineClick = (e) => {
-    const btn = e.target.closest('.redline-btn');
-    if (!btn) return;
-    const wrapper = btn.closest('.redline-change');
-    if (!wrapper) return;
-    const decision = btn.classList.contains('redline-accept') ? 'accepted' : 'rejected';
-    applyDecisionStyle(wrapper, decision);
-    setPendingChangeCount(countPendingChanges(redlineContainerRef.current));
+  const handleMainPanelClick = (e) => {
+    const wrapper = e.target.closest('[data-change-id]');
+    if (wrapper) setCurrentChangeId(wrapper.getAttribute('data-change-id'));
   };
 
   const handleAcceptAllRemaining = () => {
-    if (!redlineContainerRef.current) return;
-    redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
-      if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
-        applyDecisionStyle(el, 'accepted');
-      }
+    setChangeDecisions((prev) => {
+      const next = { ...prev };
+      activeChangeIds.forEach((id) => { if (!next[id]) next[id] = 'accepted'; });
+      return next;
     });
-    setPendingChangeCount(0);
   };
 
   const handleRejectAllRemaining = () => {
-    if (!redlineContainerRef.current) return;
-    redlineContainerRef.current.querySelectorAll('.redline-change').forEach((el) => {
-      if ((el.getAttribute('data-decision') || 'pending') === 'pending') {
-        applyDecisionStyle(el, 'rejected');
-      }
+    setChangeDecisions((prev) => {
+      const next = { ...prev };
+      activeChangeIds.forEach((id) => { if (!next[id]) next[id] = 'rejected'; });
+      return next;
     });
-    setPendingChangeCount(0);
   };
 
   const handleFinalizeReview = async () => {
-    if (!redlineContainerRef.current || !activeReviewRequest) return;
+    if (!activeReviewRequest) return;
     setProcessingReviewId(activeReviewRequest.id);
     try {
-      const finalHtml = finalizeRedlineHtml(redlineContainerRef.current);
+      const finalHtml = buildFinalHtmlFromTokens(activeChangeTokens, changeDecisions);
       const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(finalHtml));
       const dataBase64 = await blobToBase64(docxBlob);
       const version = (agreement.attachments || []).length + 1;
@@ -950,6 +924,8 @@ function AgreementDetailScreen() {
 
       setShowChangesModal(false);
       setActiveReviewRequest(null);
+      setChangeDecisions({});
+      setCurrentChangeId(null);
       setActiveNav('attachments');
       await load();
     } catch (err) {
@@ -2682,40 +2658,97 @@ function AgreementDetailScreen() {
       )}
       {showChangesModal && activeReviewRequest && (
         <div className="agrd__modal-backdrop" onClick={closeChangesModal}>
-          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '760px' }}>
-            <div className="agrd__modal-scroll">
-              <h3 className="agrd__modal-title">Review changes</h3>
-              <p className="agrd__modal-subtitle">
-                From {activeReviewRequest.reviewerName || activeReviewRequest.reviewerEmail} · deletions are struck through, additions are underlined.
-                Click ✓ to accept or ✕ to reject each change.
-              </p>
-
-              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                <button type="button" className="agrd__attachment-btn" onClick={handleAcceptAllRemaining}>
-                  Accept all remaining
-                </button>
-                <button type="button" className="agrd__attachment-btn" onClick={handleRejectAllRemaining}>
-                  Reject all remaining
-                </button>
-                <span style={{ marginLeft: 'auto', fontSize: '0.82rem', color: pendingChangeCount > 0 ? '#c9820a' : '#1a9e5c', alignSelf: 'center' }}>
-                  {pendingChangeCount > 0 ? `${pendingChangeCount} change${pendingChangeCount === 1 ? '' : 's'} pending` : 'All changes decided'}
-                </span>
+          <div className="agrd__redline-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__redline-header">
+              <div>
+                <h3 className="agrd__modal-title">Review changes</h3>
+                <p className="agrd__modal-subtitle">
+                  From {activeReviewRequest.reviewerName || activeReviewRequest.reviewerEmail}
+                </p>
               </div>
+              <span
+                className={`agrd__redline-counter ${
+                  pendingChangeCount > 0 ? 'agrd__redline-counter--pending' : 'agrd__redline-counter--done'
+                }`}
+              >
+                {pendingChangeCount > 0
+                  ? `${pendingChangeCount} change${pendingChangeCount === 1 ? '' : 's'} pending`
+                  : 'All changes decided'}
+              </span>
+            </div>
 
+            <div className="agrd__redline-body">
               <div
-                ref={redlineContainerRef}
-                onClick={handleRedlineClick}
-                style={{
-                  border: '1px solid rgba(0, 0, 0, 0.08)',
-                  borderRadius: '12px',
-                  padding: '24px',
-                  fontSize: '0.9rem',
-                  lineHeight: 1.7,
-                  maxHeight: '50vh',
-                  overflowY: 'auto',
+                ref={redlineMainRef}
+                className="agrd__redline-main"
+                onClick={handleMainPanelClick}
+                dangerouslySetInnerHTML={{
+                  __html:
+                    activeChangeIds.length > 0
+                      ? renderChangeTokensToHtml(activeChangeTokens, changeDecisions, currentChangeId)
+                      : '<p>No changes detected.</p>',
                 }}
-                dangerouslySetInnerHTML={{ __html: activeReviewRequest.redlineHtml || '<p>No changes detected.</p>' }}
               />
+
+              <div className="agrd__redline-sidebar">
+                {activeChangeIds.length > 0 && (
+                  <div className="agrd__redline-sidebar-actions">
+                    <button type="button" className="agrd__attachment-btn" onClick={handleAcceptAllRemaining}>
+                      Accept all
+                    </button>
+                    <button type="button" className="agrd__attachment-btn" onClick={handleRejectAllRemaining}>
+                      Reject all
+                    </button>
+                  </div>
+                )}
+                <div className="agrd__redline-list">
+                  {activeChangeIds.length === 0 ? (
+                    <p className="agrd__modal-hint">No changes were made to this document.</p>
+                  ) : (
+                    activeChangeTokens
+                      .filter((tok) => tok.type !== 'equal')
+                      .map((tok) => {
+                        const decision = changeDecisions[tok.id] || 'pending';
+                        const cleanText = tok.text.replace(/\n+/g, ' ').trim();
+                        return (
+                          <button
+                            type="button"
+                            key={tok.id}
+                            className={`agrd__redline-item agrd__redline-item--${decision} ${
+                              currentChangeId === tok.id ? 'agrd__redline-item--current' : ''
+                            }`}
+                            onClick={() => goToChange(tok.id)}
+                          >
+                            <span className={`agrd__redline-tag agrd__redline-tag--${tok.type}`}>
+                              {tok.type === 'insert' ? 'Added' : 'Deleted'}
+                            </span>
+                            <p className="agrd__redline-item-text">
+                              {cleanText.length > 90 ? `${cleanText.slice(0, 90)}…` : cleanText}
+                            </p>
+                            <span className="agrd__redline-item-actions">
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                className="agrd__redline-mini-btn agrd__redline-mini-btn--reject"
+                                onClick={(e) => { e.stopPropagation(); decideChange(tok.id, 'rejected'); }}
+                              >
+                                ✕
+                              </span>
+                              <span
+                                role="button"
+                                tabIndex={0}
+                                className="agrd__redline-mini-btn agrd__redline-mini-btn--accept"
+                                onClick={(e) => { e.stopPropagation(); decideChange(tok.id, 'accepted'); }}
+                              >
+                                ✓
+                              </span>
+                            </span>
+                          </button>
+                        );
+                      })
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="agrd__modal-actions">

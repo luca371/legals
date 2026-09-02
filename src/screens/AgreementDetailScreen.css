@@ -640,6 +640,248 @@
   background: var(--color-danger-soft);
 }
 
+/* ---- Review changes: redline modal with sidebar ---- */
+
+.agrd__redline-modal {
+  background: var(--color-surface);
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 980px;
+  height: 82vh;
+  max-height: 780px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.agrd__redline-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 22px 28px 16px;
+  border-bottom: 1px solid var(--color-border);
+  flex-shrink: 0;
+}
+
+.agrd__redline-counter {
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-xl);
+  white-space: nowrap;
+}
+
+.agrd__redline-counter--pending {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.agrd__redline-counter--done {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.agrd__redline-body {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.agrd__redline-main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 28px 32px;
+  font-size: 0.92rem;
+  line-height: 1.75;
+  color: var(--color-text);
+  border-right: 1px solid var(--color-border);
+}
+
+.agrd__redline-main p {
+  margin: 0 0 14px;
+}
+
+.agrd__redline-sidebar {
+  width: 320px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.agrd__redline-sidebar-actions {
+  display: flex;
+  gap: 8px;
+  padding: 16px 16px 12px;
+  flex-shrink: 0;
+}
+
+.agrd__redline-sidebar-actions .agrd__attachment-btn {
+  flex: 1;
+}
+
+.agrd__redline-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 16px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agrd__redline-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: var(--color-bg);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  padding: 10px 12px;
+  cursor: pointer;
+  font-family: var(--font-sans);
+}
+
+.agrd__redline-item--current {
+  border-color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.agrd__redline-tag {
+  display: inline-block;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 2px 7px;
+  border-radius: var(--radius-xs);
+  margin-bottom: 6px;
+}
+
+.agrd__redline-tag--insert {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.agrd__redline-tag--delete {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.agrd__redline-item-text {
+  margin: 0 0 8px;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+}
+
+.agrd__redline-item--accepted .agrd__redline-item-text,
+.agrd__redline-item--rejected .agrd__redline-item-text {
+  color: var(--color-text-tertiary);
+}
+
+.agrd__redline-item-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.agrd__redline-mini-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+  color: var(--color-text-tertiary);
+}
+
+.agrd__redline-mini-btn--accept:hover {
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.agrd__redline-mini-btn--reject:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.agrd__redline-item--accepted .agrd__redline-mini-btn--accept {
+  background: var(--color-success);
+  border-color: var(--color-success);
+  color: #ffffff;
+}
+
+.agrd__redline-item--rejected .agrd__redline-mini-btn--reject {
+  background: var(--color-danger);
+  border-color: var(--color-danger);
+  color: #ffffff;
+}
+
+/* Track-changes marks inside .agrd__redline-main (rendered via
+   renderChangeTokensToHtml — classes come from redlineUtils.js) */
+
+.redline-change--insert ins {
+  text-decoration: underline;
+  text-decoration-color: var(--color-success);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.redline-change--delete del {
+  text-decoration: line-through;
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.redline-change--insert.redline-change--rejected ins {
+  text-decoration: line-through;
+  background: transparent;
+  color: var(--color-text-tertiary);
+  opacity: 0.6;
+}
+
+.redline-change--delete.redline-change--rejected del {
+  text-decoration: none;
+  background: transparent;
+  color: var(--color-text);
+}
+
+.redline-change--current {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+@media (max-width: 800px) {
+  .agrd__redline-modal {
+    height: 92vh;
+    max-height: none;
+  }
+
+  .agrd__redline-body {
+    flex-direction: column;
+  }
+
+  .agrd__redline-main {
+    border-right: none;
+    border-bottom: 1px solid var(--color-border);
+    max-height: 40vh;
+  }
+
+  .agrd__redline-sidebar {
+    width: 100%;
+  }
+}
+
 /* ---- Generate agreement modal ---- */
 
 .agrd__modal-backdrop {
