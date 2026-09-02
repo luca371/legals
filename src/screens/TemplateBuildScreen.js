@@ -601,22 +601,6 @@ function TemplateBuildScreen() {
     return topLevel.parentElement === root ? topLevel : null;
   };
 
-  // If the document numbers its clauses ("1. Definitions", "2. Term", …),
-  // new clauses continue that numbering instead of starting a fresh "1.".
-  const detectNextClauseNumber = (root) => {
-    if (!root) return null;
-    let maxNum = 0;
-    let found = false;
-    root.querySelectorAll('p, li').forEach((el) => {
-      const match = (el.textContent || '').trim().match(/^(\d+)[.)]\s+\S/);
-      if (match) {
-        found = true;
-        maxNum = Math.max(maxNum, parseInt(match[1], 10));
-      }
-    });
-    return found ? maxNum + 1 : null;
-  };
-
   // Remembers where the cursor was in the document the moment a clause
   // modal was opened, so "Insert" lands the new clause right there instead
   // of always at the end — captured on open because clicking a button
@@ -657,9 +641,8 @@ function TemplateBuildScreen() {
     const editable = editableRef.current;
     if (!editable) return;
 
-    const nextNumber = detectNextClauseNumber(editable);
     const p = document.createElement('p');
-    p.textContent = nextNumber ? `${nextNumber}. ${clause.title}. ${clause.text}` : `${clause.title}. ${clause.text}`;
+    p.textContent = `${clause.title}. ${clause.text}`;
 
     if (!insertNodeAfterCaretBlock(editable, p, caretRangeRef.current)) {
       const signatureBlock = findSignatureBlock(editable);
@@ -676,9 +659,8 @@ function TemplateBuildScreen() {
     const editable = editableRef.current;
     if (!editable) return;
 
-    const nextNumber = detectNextClauseNumber(editable);
     const p = document.createElement('p');
-    p.textContent = nextNumber ? `${nextNumber}. ${title}. ${text}` : `${title}. ${text}`;
+    p.textContent = `${title}. ${text}`;
 
     if (!insertNodeAfterCaretBlock(editable, p, caretRangeRef.current)) {
       const signatureBlock = findSignatureBlock(editable);
