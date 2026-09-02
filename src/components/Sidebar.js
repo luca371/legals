@@ -134,12 +134,13 @@ function IconAskAI({ className }) {
 function IconSettings({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="3" stroke="currentColor" strokeWidth="1.6" />
+      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.9" />
       <path
         d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.4-1.5-2.6-2 .6c-.4-.3-.8-.6-1.3-.8l-.4-2.1H10.2l-.4 2.1c-.5.2-.9.5-1.3.8l-2-.6-1.5 2.6L6.6 12c-.1.5-.1 1 0 1.5L5 14.9l1.5 2.6 2-.6c.4.3.8.6 1.3.8l.4 2.1h3.6l.4-2.1c.5-.2.9-.5 1.3-.8l2 .6 1.5-2.6-1.6-1.4z"
         stroke="currentColor"
-        strokeWidth="1.4"
+        strokeWidth="1.9"
         strokeLinejoin="round"
+        strokeLinecap="round"
       />
     </svg>
   );

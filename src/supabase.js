@@ -340,6 +340,7 @@ export const listAgreements = async () => {
     customFields: a.custom_fields || {},
     attachments: a.attachments || [],
     reviewSessions: a.review_sessions || [],
+    docusignEnvelopes: a.docusign_envelopes || [],
     relatedAgreementId: a.related_agreement_id || null,
     relationType: a.relation_type || null,
     reminderDaysOverride: a.reminder_days_override || null,
@@ -877,8 +878,18 @@ export const listAllApprovalRequests = async () => {
     message: r.message,
     status: r.status,
     comment: r.comment,
+    requestedBy: r.requested_by,
     createdAt: r.created_at ? { seconds: Math.floor(new Date(r.created_at).getTime() / 1000) } : null,
   }));
+};
+
+export const listAllReviewRequests = async () => {
+  const { data, error } = await supabase
+    .from('review_requests')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map(mapReviewRequest);
 };
 
 export const addDocusignEnvelope = async (agreementId, envelope) => {

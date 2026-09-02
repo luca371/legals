@@ -14,7 +14,13 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-import { listAgreements, listAllApprovalRequests, getBuiltInFieldConfigs } from '../supabase';
+import {
+  listAgreements,
+  listAllApprovalRequests,
+  listAllReviewRequests,
+  getBuiltInFieldConfigs,
+  getObjectSchema,
+} from '../supabase';
 import './DashboardsScreen.css';
 
 const DEFAULT_STATUS_ORDER = [
@@ -63,11 +69,50 @@ function AlertIcon() {
   );
 }
 
+function SignatureIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="dbd__kpi-icon">
+      <path d="M3 17c2-4 3.5-9 5-9s1 6 2.5 6 2-8 3.5-8 1.5 7 3 7 2-2 4-2" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M3 21h18" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function ValueIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="dbd__kpi-icon">
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M12 6.5v11M15 9.2c0-1.2-1.3-2.2-3-2.2s-3 .9-3 2.2 1.3 1.8 3 2 3 .8 3 2-1.3 2.2-3 2.2-3-1-3-2.2" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ActivityIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="dbd__activity-icon">
+      <path d="M3 12h4l2-7 4 14 2-7h6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function toDate(value) {
   if (!value) return null;
   if (typeof value.seconds === 'number') return new Date(value.seconds * 1000);
   const d = new Date(value);
   return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function formatRelativeTime(date) {
+  if (!date) return '';
+  const diffMs = Date.now() - date.getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return date.toLocaleDateString();
 }
 
 function isWithinPreset(date, preset, customFrom, customTo) {
@@ -160,7 +205,9 @@ function DashboardsScreen() {
   const [loading, setLoading] = useState(true);
   const [agreements, setAgreements] = useState([]);
   const [approvals, setApprovals] = useState([]);
+  const [reviews, setReviews] = useState([]);
   const [statusOrder, setStatusOrder] = useState(DEFAULT_STATUS_ORDER);
+  const [valueFieldDef, setValueFieldDef] = useState(null);
 
   const [datePreset, setDatePreset] = useState('all');
   const [customFrom, setCustomFrom] = useState('');
@@ -174,14 +221,23 @@ function DashboardsScreen() {
     const load = async () => {
       setLoading(true);
       try {
-        const [agrs, apprs, configs] = await Promise.all([
+        const [agrs, apprs, revs, configs, schema] = await Promise.all([
           listAgreements(),
           listAllApprovalRequests(),
+          listAllReviewRequests(),
           getBuiltInFieldConfigs('agreement'),
+          getObjectSchema('agreement'),
         ]);
         setAgreements(agrs);
         setApprovals(apprs);
+        setReviews(revs);
         if (configs.status?.length) setStatusOrder(configs.status);
+        // Best-effort: use the first numeric custom field whose label reads
+        // as monetary for the "active contract value" KPI — falls back to
+        // any numeric field, since tenants name this differently.
+        const numberFields = (schema || []).filter((f) => f.type === 'number');
+        const moneyLike = numberFields.find((f) => /value|amount|price|cost/i.test(f.label || ''));
+        setValueFieldDef(moneyLike || numberFields[0] || null);
       } catch (err) {
         console.error('Failed to load dashboard data:', err);
       } finally {
@@ -241,6 +297,115 @@ function DashboardsScreen() {
       .filter((a) => a && a.daysLeft >= 0 && a.daysLeft <= 90)
       .sort((a, b) => a.daysLeft - b.daysLeft);
   }, [filteredAgreements]);
+
+  const expiringBuckets = useMemo(
+    () => ({
+      d30: expiringSoon.filter((a) => a.daysLeft <= 30).length,
+      d60: expiringSoon.filter((a) => a.daysLeft <= 60).length,
+      d90: expiringSoon.filter((a) => a.daysLeft <= 90).length,
+    }),
+    [expiringSoon]
+  );
+
+  const pendingSignaturesCount = useMemo(
+    () => filteredAgreements.filter((a) => a.status === 'Pending signatures').length,
+    [filteredAgreements]
+  );
+
+  const totalActiveValue = useMemo(() => {
+    if (!valueFieldDef) return null;
+    return filteredAgreements
+      .filter((a) => a.status === 'Activated')
+      .reduce((sum, a) => {
+        const raw = a.customFields?.[valueFieldDef.id];
+        const num = typeof raw === 'number' ? raw : parseFloat(raw);
+        return Number.isFinite(num) ? sum + num : sum;
+      }, 0);
+  }, [filteredAgreements, valueFieldDef]);
+
+  // ---- Activity feed (derived from existing timestamps — no dedicated
+  // audit log table, so this can't capture every edit, just the events
+  // that already carry a timestamp: created, sent/signed, reviewed). ----
+  const activityFeed = useMemo(() => {
+    const filteredIds = new Set(filteredAgreements.map((a) => a.id));
+    const events = [];
+
+    filteredAgreements.forEach((a) => {
+      if (a.createdAt) {
+        events.push({
+          id: `${a.id}-created`,
+          at: toDate(a.createdAt),
+          actor: a.createdBy || 'Someone',
+          verb: 'created',
+          target: a.title || 'an agreement',
+          agreementId: a.id,
+        });
+      }
+      (a.docusignEnvelopes || []).forEach((env, i) => {
+        if (env.sentAt) {
+          events.push({
+            id: `${a.id}-env-${i}-sent`,
+            at: toDate(env.sentAt),
+            actor: env.manual ? env.markedBy || 'Someone' : 'Someone',
+            verb: env.manual ? 'marked as signed manually' : 'sent for signature',
+            target: a.title || 'an agreement',
+            agreementId: a.id,
+          });
+        }
+        if (env.completedAt) {
+          events.push({
+            id: `${a.id}-env-${i}-completed`,
+            at: toDate(env.completedAt),
+            actor: 'Signer',
+            verb: 'completed signing',
+            target: a.title || 'an agreement',
+            agreementId: a.id,
+          });
+        }
+      });
+    });
+
+    approvals
+      .filter((r) => filteredIds.has(r.agreementId))
+      .forEach((r) => {
+        events.push({
+          id: `${r.id}-requested`,
+          at: toDate(r.createdAt),
+          actor: r.requestedBy || 'Someone',
+          verb: `requested approval from ${r.approverName || r.approverEmail || 'someone'}`,
+          target: r.agreementTitle || 'an agreement',
+          agreementId: r.agreementId,
+        });
+      });
+
+    reviews
+      .filter((r) => filteredIds.has(r.agreementId))
+      .forEach((r) => {
+        events.push({
+          id: `${r.id}-requested`,
+          at: toDate(r.createdAt),
+          actor: r.requestedBy || 'Someone',
+          verb: `sent for review to ${r.reviewerName || r.reviewerEmail || 'someone'}`,
+          target: r.agreementTitle || 'an agreement',
+          agreementId: r.agreementId,
+        });
+        if (r.submittedAt) {
+          events.push({
+            id: `${r.id}-submitted`,
+            at: toDate(r.submittedAt),
+            actor: r.reviewerName || r.reviewerEmail || 'Reviewer',
+            verb: 'submitted review changes for',
+            target: r.agreementTitle || 'an agreement',
+            agreementId: r.agreementId,
+          });
+        }
+      });
+
+    return events
+      .filter((e) => e.at)
+      .sort((a, b) => b.at - a.at)
+      .slice(0, 30);
+  }, [filteredAgreements, approvals, reviews]);
 
   const timeToContractValues = useMemo(
     () => filteredAgreements.map((a) => ({ agreement: a, ttc: computeTimeToContract(a) })).filter((x) => x.ttc),
@@ -402,6 +567,24 @@ function DashboardsScreen() {
             <span className="dbd__kpi-label">Avg. time to contract{hasApproximateTtc ? '*' : ''}</span>
           </div>
         </div>
+        <div className="dbd__kpi-card">
+          <SignatureIcon />
+          <div>
+            <span className="dbd__kpi-value">{pendingSignaturesCount}</span>
+            <span className="dbd__kpi-label">Pending signatures</span>
+          </div>
+        </div>
+        <div className="dbd__kpi-card">
+          <ValueIcon />
+          <div>
+            <span className="dbd__kpi-value">
+              {totalActiveValue !== null ? totalActiveValue.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
+            </span>
+            <span className="dbd__kpi-label">
+              {valueFieldDef ? `Active value (${valueFieldDef.label})` : 'Active contract value (no numeric field set up)'}
+            </span>
+          </div>
+        </div>
       </div>
 
       {totalCount === 0 ? (
@@ -518,6 +701,20 @@ function DashboardsScreen() {
             <div className="dbd__card-header">
               <h3 className="dbd__card-title">Upcoming expirations (by end date)</h3>
             </div>
+            <div className="dbd__bucket-row">
+              <div className="dbd__bucket">
+                <span className="dbd__bucket-value">{expiringBuckets.d30}</span>
+                <span className="dbd__bucket-label">within 30 days</span>
+              </div>
+              <div className="dbd__bucket">
+                <span className="dbd__bucket-value">{expiringBuckets.d60}</span>
+                <span className="dbd__bucket-label">within 60 days</span>
+              </div>
+              <div className="dbd__bucket">
+                <span className="dbd__bucket-value">{expiringBuckets.d90}</span>
+                <span className="dbd__bucket-label">within 90 days</span>
+              </div>
+            </div>
             <div className="dbd__split">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={byEndDate} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
@@ -591,6 +788,27 @@ function DashboardsScreen() {
                   <span className="dbd__donut-value">{totalApprovalsSent}</span>
                   <span className="dbd__donut-label">sent</span>
                 </div>
+              </div>
+            )}
+          </div>
+
+          <div className="dbd__card dbd__card--full">
+            <div className="dbd__card-header">
+              <h3 className="dbd__card-title">Recent activity</h3>
+            </div>
+            {activityFeed.length === 0 ? (
+              <p className="dbd__chart-empty">Nothing yet — activity shows up here as agreements get created, sent, and signed.</p>
+            ) : (
+              <div className="dbd__activity-list">
+                {activityFeed.map((e) => (
+                  <div key={e.id} className="dbd__activity-row">
+                    <ActivityIcon />
+                    <span className="dbd__activity-text">
+                      <strong>{e.actor}</strong> {e.verb} <strong>{e.target}</strong>
+                    </span>
+                    <span className="dbd__activity-time">{formatRelativeTime(e.at)}</span>
+                  </div>
+                ))}
               </div>
             )}
           </div>
