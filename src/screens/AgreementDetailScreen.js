@@ -28,6 +28,8 @@ import {
   acceptReviewChanges,
   rejectReviewChanges,
   listPlaybooksByAccount,
+  listAgreements,
+  listAgreementsRelatedTo,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
@@ -366,6 +368,16 @@ function AgreementDetailScreen() {
   const [customValues, setCustomValues] = useState({});
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
   const [accounts, setAccounts] = useState([]);
+
+  const [relatedAgreementTitle, setRelatedAgreementTitle] = useState('');
+  const [reverseRelatedAgreements, setReverseRelatedAgreements] = useState([]);
+  const [showRelationModal, setShowRelationModal] = useState(false);
+  const [relationDraftType, setRelationDraftType] = useState('renewal');
+  const [relationDraftTargetId, setRelationDraftTargetId] = useState('');
+  const [relationPickerAgreements, setRelationPickerAgreements] = useState([]);
+  const [loadingRelationPicker, setLoadingRelationPicker] = useState(false);
+  const [savingRelation, setSavingRelation] = useState(false);
+  const [relationError, setRelationError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -389,6 +401,13 @@ function AgreementDetailScreen() {
   const [selectedMergeIds, setSelectedMergeIds] = useState([]);
   const [merging, setMerging] = useState(false);
   const [mergeError, setMergeError] = useState('');
+
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [compareFromId, setCompareFromId] = useState('');
+  const [compareToId, setCompareToId] = useState('');
+  const [comparing, setComparing] = useState(false);
+  const [compareError, setCompareError] = useState('');
+  const [compareTokens, setCompareTokens] = useState(null);
 
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [reviewAttachmentId, setReviewAttachmentId] = useState('');
@@ -494,6 +513,24 @@ function AgreementDetailScreen() {
       setAccounts(accs);
     } catch (err) {
       console.error('Failed to load accounts (non-blocking):', err);
+    }
+
+    try {
+      setReverseRelatedAgreements(await listAgreementsRelatedTo(agreementId));
+    } catch (err) {
+      console.error('Failed to load related agreements (non-blocking):', err);
+    }
+
+    if (agr.relatedAgreementId) {
+      try {
+        const related = await getAgreement(agr.relatedAgreementId);
+        setRelatedAgreementTitle(related.title || '');
+      } catch (err) {
+        console.error('Failed to load linked agreement title (non-blocking):', err);
+        setRelatedAgreementTitle('');
+      }
+    } else {
+      setRelatedAgreementTitle('');
     }
 
     setLoading(false);
@@ -786,6 +823,110 @@ function AgreementDetailScreen() {
       setMergeError('Something went wrong while merging the files.');
     } finally {
       setMerging(false);
+    }
+  };
+
+  const openRelationModal = async () => {
+    setShowRelationModal(true);
+    setRelationError('');
+    setRelationDraftType(agreement.relationType || 'renewal');
+    setRelationDraftTargetId(agreement.relatedAgreementId || '');
+    setLoadingRelationPicker(true);
+    try {
+      const all = await listAgreements();
+      setRelationPickerAgreements(all.filter((a) => a.id !== agreementId));
+    } catch (err) {
+      console.error('Failed to load agreements for the relation picker:', err);
+      setRelationError('Could not load the list of agreements.');
+    } finally {
+      setLoadingRelationPicker(false);
+    }
+  };
+
+  const closeRelationModal = () => {
+    if (savingRelation) return;
+    setShowRelationModal(false);
+  };
+
+  const handleSaveRelation = async () => {
+    if (!relationDraftTargetId) {
+      setRelationError('Choose an agreement to link to.');
+      return;
+    }
+    setSavingRelation(true);
+    setRelationError('');
+    try {
+      await updateAgreement(agreementId, { relatedAgreementId: relationDraftTargetId, relationType: relationDraftType });
+      setShowRelationModal(false);
+      await load();
+    } catch (err) {
+      console.error('Failed to save relation:', err);
+      setRelationError('Could not save this link. Please try again.');
+    } finally {
+      setSavingRelation(false);
+    }
+  };
+
+  const handleRemoveRelation = async () => {
+    setSavingRelation(true);
+    setRelationError('');
+    try {
+      await updateAgreement(agreementId, { relatedAgreementId: null, relationType: null });
+      setShowRelationModal(false);
+      await load();
+    } catch (err) {
+      console.error('Failed to remove relation:', err);
+      setRelationError('Could not remove this link. Please try again.');
+    } finally {
+      setSavingRelation(false);
+    }
+  };
+
+  const openCompareModal = () => {
+    setShowCompareModal(true);
+    setCompareError('');
+    setCompareTokens(null);
+    const attachments = mergeableAttachments;
+    if (attachments.length >= 2) {
+      setCompareFromId(attachments[attachments.length - 1].id);
+      setCompareToId(attachments[0].id);
+    } else {
+      setCompareFromId('');
+      setCompareToId('');
+    }
+  };
+
+  const closeCompareModal = () => {
+    if (comparing) return;
+    setShowCompareModal(false);
+  };
+
+  const handleRunCompare = async () => {
+    if (!compareFromId || !compareToId || compareFromId === compareToId) {
+      setCompareError('Choose two different versions to compare.');
+      return;
+    }
+    setComparing(true);
+    setCompareError('');
+    setCompareTokens(null);
+    try {
+      const attachmentsById = new Map((agreement.attachments || []).map((a) => [a.id, a]));
+      const fromAttachment = attachmentsById.get(compareFromId);
+      const toAttachment = attachmentsById.get(compareToId);
+      if (!fromAttachment || !toAttachment) {
+        setCompareError('Could not find one of the selected versions.');
+        return;
+      }
+      const [fromHtml, toHtml] = await Promise.all([
+        attachmentToMergeHtml(fromAttachment),
+        attachmentToMergeHtml(toAttachment),
+      ]);
+      setCompareTokens(computeChangeTokens(fromHtml, toHtml));
+    } catch (err) {
+      console.error('Failed to compare versions:', err);
+      setCompareError('Something went wrong while comparing these versions.');
+    } finally {
+      setComparing(false);
     }
   };
 
@@ -1683,6 +1824,28 @@ function AgreementDetailScreen() {
         })}
       </div>
 
+      <div className="agrd__relations">
+          {agreement.relatedAgreementId && (
+            <div className="agrd__relation-row">
+              <span className="agrd__relation-label">{agreement.relationType === 'amendment' ? 'Amends' : 'Renews'}</span>
+              <button type="button" className="agrd__relation-link" onClick={() => navigate(`/dashboard/agreements/${agreement.relatedAgreementId}`)}>
+                {relatedAgreementTitle || 'View agreement'}
+              </button>
+            </div>
+          )}
+          {reverseRelatedAgreements.map((rel) => (
+            <div key={rel.id} className="agrd__relation-row">
+              <span className="agrd__relation-label">{rel.relationType === 'amendment' ? 'Amended by' : 'Renewed by'}</span>
+              <button type="button" className="agrd__relation-link" onClick={() => navigate(`/dashboard/agreements/${rel.id}`)}>
+                {rel.title}
+              </button>
+            </div>
+          ))}
+          <button type="button" className="agrd__btn-secondary-sm" onClick={openRelationModal}>
+            {agreement.relatedAgreementId ? 'Edit link to another agreement' : '+ Link to another agreement'}
+          </button>
+      </div>
+
       <div className="agrd__grid">
 
         <aside className="agrd__nav">
@@ -2099,6 +2262,9 @@ function AgreementDetailScreen() {
                   {showAll && (
                     <button className="agrd__btn-secondary-sm" onClick={openMergeModal}>Merge files</button>
                   )}
+                  {showAll && mergeableAttachments.length >= 2 && (
+                    <button className="agrd__btn-secondary-sm" onClick={openCompareModal}>Compare versions</button>
+                  )}
                   {showAll && (
                     <button className="agrd__btn-secondary-sm" onClick={openReviewModal}>Send to review</button>
                   )}
@@ -2283,6 +2449,123 @@ function AgreementDetailScreen() {
                 disabled={selectedMergeIds.length === 0 || merging}
               >
                 {merging ? 'Exporting…' : 'Export as Word'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showCompareModal && (
+        <div className="agrd__modal-backdrop" onClick={closeCompareModal}>
+          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Compare versions</h3>
+              <p className="agrd__modal-subtitle">
+                Side-by-side redline between any two Word (.docx) versions on this agreement — insertions underlined, deletions struck through.
+              </p>
+
+              {compareError && <p className="agrd__error">{compareError}</p>}
+
+              {mergeableAttachments.length < 2 ? (
+                <p className="agrd__modal-hint">Need at least two Word (.docx) attachments to compare.</p>
+              ) : (
+                <div className="agrd__compare-pickers">
+                  <div className="agrd__compare-picker">
+                    <span className="agrd__doc-select-label">From</span>
+                    <select className="agrd__input" value={compareFromId} onChange={(e) => setCompareFromId(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {mergeableAttachments.map((att) => (
+                        <option key={att.id} value={att.id}>{att.name}{att.version ? ` (v${att.version})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <span className="agrd__compare-arrow">→</span>
+                  <div className="agrd__compare-picker">
+                    <span className="agrd__doc-select-label">To</span>
+                    <select className="agrd__input" value={compareToId} onChange={(e) => setCompareToId(e.target.value)}>
+                      <option value="">— Select —</option>
+                      {mergeableAttachments.map((att) => (
+                        <option key={att.id} value={att.id}>{att.name}{att.version ? ` (v${att.version})` : ''}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <button
+                    type="button"
+                    className="agrd__btn-primary"
+                    onClick={handleRunCompare}
+                    disabled={!compareFromId || !compareToId || compareFromId === compareToId || comparing}
+                  >
+                    {comparing ? 'Comparing…' : 'Compare'}
+                  </button>
+                </div>
+              )}
+
+              {compareTokens && (
+                listChangeIds(compareTokens).length === 0 ? (
+                  <p className="agrd__modal-hint agrd__modal-hint--top">These two versions are identical — no differences found.</p>
+                ) : (
+                  <div
+                    className="arv__redline-preview agrd__compare-preview"
+                    dangerouslySetInnerHTML={{ __html: renderChangeTokensToHtml(compareTokens) }}
+                  />
+                )
+              )}
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeCompareModal} disabled={comparing}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRelationModal && (
+        <div className="agrd__modal-backdrop" onClick={closeRelationModal}>
+          <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Link to another agreement</h3>
+              <p className="agrd__modal-subtitle">
+                Mark this agreement as a renewal or amendment of another one — the link shows on both records.
+              </p>
+
+              {relationError && <p className="agrd__error">{relationError}</p>}
+
+              <div className="agrd__field">
+                <label className="agrd__label">Relation</label>
+                <select className="agrd__input" value={relationDraftType} onChange={(e) => setRelationDraftType(e.target.value)}>
+                  <option value="renewal">Renewal of</option>
+                  <option value="amendment">Amendment of</option>
+                </select>
+              </div>
+
+              <div className="agrd__field">
+                <label className="agrd__label">Agreement</label>
+                {loadingRelationPicker ? (
+                  <p className="agrd__modal-hint">Loading…</p>
+                ) : (
+                  <select className="agrd__input" value={relationDraftTargetId} onChange={(e) => setRelationDraftTargetId(e.target.value)}>
+                    <option value="">— Select an agreement —</option>
+                    {relationPickerAgreements.map((a) => (
+                      <option key={a.id} value={a.id}>{a.title}{a.accountName ? ` (${a.accountName})` : ''}</option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
+
+            <div className="agrd__modal-actions">
+              {agreement.relatedAgreementId && (
+                <button type="button" className="agrd__btn-secondary" onClick={handleRemoveRelation} disabled={savingRelation}>
+                  Remove link
+                </button>
+              )}
+              <button type="button" className="agrd__btn-secondary" onClick={closeRelationModal} disabled={savingRelation}>
+                Cancel
+              </button>
+              <button type="button" className="agrd__btn-primary" onClick={handleSaveRelation} disabled={!relationDraftTargetId || savingRelation}>
+                {savingRelation ? 'Saving…' : 'Save link'}
               </button>
             </div>
           </div>

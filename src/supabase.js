@@ -339,6 +339,8 @@ export const listAgreements = async () => {
     customFields: a.custom_fields || {},
     attachments: a.attachments || [],
     reviewSessions: a.review_sessions || [],
+    relatedAgreementId: a.related_agreement_id || null,
+    relationType: a.relation_type || null,
     createdBy: a.created_by,
     createdAt: a.created_at,
     updatedAt: a.updated_at,
@@ -365,10 +367,23 @@ export const getAgreement = async (id) => {
     attachments: data.attachments || [],
     reviewSessions: data.review_sessions || [],
     docusignEnvelopes: data.docusign_envelopes || [],
+    relatedAgreementId: data.related_agreement_id || null,
+    relationType: data.relation_type || null,
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
   };
+};
+
+// Agreements that point AT this one (e.g. its renewals/amendments) — the
+// reverse direction of relatedAgreementId, for showing "renewed by X".
+export const listAgreementsRelatedTo = async (agreementId) => {
+  const { data, error } = await supabase
+    .from('agreements')
+    .select('id, title, relation_type')
+    .eq('related_agreement_id', agreementId);
+  if (error) throw error;
+  return data.map((a) => ({ id: a.id, title: a.title, relationType: a.relation_type }));
 };
 
 export const createAgreement = async (agreement) => {
@@ -406,6 +421,8 @@ export const updateAgreement = async (id, updates) => {
   if (updates.effectiveDate !== undefined) payload.effective_date = updates.effectiveDate;
   if (updates.endDate !== undefined) payload.end_date = updates.endDate;
   if (updates.customFields !== undefined) payload.custom_fields = updates.customFields;
+  if (updates.relatedAgreementId !== undefined) payload.related_agreement_id = updates.relatedAgreementId;
+  if (updates.relationType !== undefined) payload.relation_type = updates.relationType;
   const { data, error } = await supabase.from('agreements').update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;

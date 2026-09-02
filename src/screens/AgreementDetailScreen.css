@@ -1229,3 +1229,71 @@
   background: var(--color-danger-soft);
   color: var(--color-danger);
 }
+
+/* ---------- Compare versions ---------- */
+
+.agrd__compare-pickers {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.agrd__compare-picker {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.agrd__compare-arrow {
+  padding-bottom: 10px;
+  color: var(--color-text-tertiary);
+  font-size: 1.1rem;
+}
+
+.agrd__compare-preview {
+  margin-top: 16px;
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+/* ---------- Related agreements ---------- */
+
+.agrd__relations {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 20px;
+  padding: 14px 16px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.agrd__relation-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.86rem;
+  color: var(--color-text-secondary);
+}
+
+.agrd__relation-label {
+  font-weight: 600;
+  color: var(--color-text-tertiary);
+  text-transform: uppercase;
+  font-size: 0.72rem;
+  letter-spacing: 0.03em;
+  min-width: 90px;
+}
+
+.agrd__relation-link {
+  background: transparent;
+  border: none;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-decoration: underline;
+}
