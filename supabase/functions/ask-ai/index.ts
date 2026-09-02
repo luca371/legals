@@ -4,8 +4,9 @@ import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 const SYSTEM_PROMPT = `You are the AI assistant embedded in "Legal Space", a contract lifecycle management platform. You help the user answer questions about their organization's accounts and agreements (contracts) — things like "how many agreements does account X have", "what clauses are in contract Y", "which agreements are expiring soon", "list all NDAs with account Z", etc.
 
 You have tools to look up real data — ALWAYS use them rather than guessing or making anything up. Typical flow:
-- To find agreements for a company, call list_agreements with accountName — agreements already store the account name directly, so you don't need to look up an account id first just for this.
-- To answer anything about a SPECIFIC contract's content, clauses, obligations, or terms, first find it with list_agreements (by title and/or account), then call get_agreement_details with its id to read the actual document text.
+- To find agreements by exact metadata (a specific account, type, status), call list_agreements — agreements already store the account name directly, so you don't need to look up an account id first just for this.
+- To find agreements by TOPIC, subject matter, or a concept described in prose (e.g. "contracts about data processing", "anything mentioning exclusivity", "agreements similar to X") — where you don't have an exact title/type/account to filter on — call search_agreements_semantic instead. It searches the actual document content by meaning, not just metadata.
+- To answer anything about a SPECIFIC contract's content, clauses, obligations, or terms, first find it with list_agreements or search_agreements_semantic, then call get_agreement_details with its id to read the actual document text.
 - To answer questions about an account's own info (not its contracts), use get_account_details.
 - If a lookup returns nothing, or several records could match, ask a short clarifying question instead of guessing — never invent agreements, accounts, or contract content that a tool didn't actually return.
 
@@ -31,6 +32,18 @@ const TOOLS = [
         agreementType: { type: 'string', description: 'Filter by agreement type' },
       },
       required: [],
+    },
+  },
+  {
+    name: 'search_agreements_semantic',
+    description:
+      'Searches agreements by MEANING across their full document content, not just title or metadata — use this when the question is about a topic, subject, or concept a contract might discuss, rather than an exact field to filter on. Returns the most relevant agreements ranked by relevance (best first).',
+    input_schema: {
+      type: 'object',
+      properties: {
+        query: { type: 'string', description: 'Natural-language description of what to search for, e.g. "data processing obligations" or "exclusivity clauses"' },
+      },
+      required: ['query'],
     },
   },
   {

@@ -1,6 +1,7 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mammoth from 'mammoth';
+import { indexAgreement } from '../embeddingsApi';
 import {
   listAgreements,
   createAgreement,
@@ -195,6 +196,7 @@ function AgreementsScreen() {
         customFields: customValues,
         contentHtml: uploadedFile?.contentHtml || '',
       });
+      indexAgreement(created.id).catch((err) => console.warn('Background indexing failed:', err));
       handleCloseCreate();
       navigate(`/dashboard/agreements/${created.id}`);
     } catch (err) {

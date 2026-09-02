@@ -1,10 +1,19 @@
 import { useEffect, useState } from 'react';
-import { getSignatureUsageThisMonth, SIGNATURES_INCLUDED_PER_USER, SIGNATURE_OVERAGE_PRICE } from '../supabase';
+import { getSignatureUsageThisMonth, listAgreements, SIGNATURES_INCLUDED_PER_USER, SIGNATURE_OVERAGE_PRICE } from '../supabase';
+import { indexAgreement } from '../embeddingsApi';
 import './SettingsScreen.css';
+
+const REINDEX_CONCURRENCY = 3;
 
 function SettingsScreen() {
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const [reindexing, setReindexing] = useState(false);
+  const [reindexDone, setReindexDone] = useState(0);
+  const [reindexTotal, setReindexTotal] = useState(0);
+  const [reindexFailed, setReindexFailed] = useState(0);
+  const [reindexFinished, setReindexFinished] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -21,6 +30,40 @@ function SettingsScreen() {
   }, []);
 
   const pct = usage && usage.included > 0 ? Math.min(100, Math.round((usage.used / usage.included) * 100)) : 0;
+
+  const handleReindexAll = async () => {
+    setReindexing(true);
+    setReindexFinished(false);
+    setReindexDone(0);
+    setReindexFailed(0);
+    try {
+      const agreements = await listAgreements();
+      setReindexTotal(agreements.length);
+
+      let cursor = 0;
+      const worker = async () => {
+        while (cursor < agreements.length) {
+          const agreement = agreements[cursor];
+          cursor += 1;
+          try {
+            await indexAgreement(agreement.id);
+          } catch (err) {
+            console.warn(`Failed to index "${agreement.title}":`, err);
+            setReindexFailed((prev) => prev + 1);
+          } finally {
+            setReindexDone((prev) => prev + 1);
+          }
+        }
+      };
+
+      await Promise.all(Array.from({ length: REINDEX_CONCURRENCY }, worker));
+      setReindexFinished(true);
+    } catch (err) {
+      console.error('Reindex failed:', err);
+    } finally {
+      setReindexing(false);
+    }
+  };
 
   return (
     <div className="settings">
@@ -70,6 +113,41 @@ function SettingsScreen() {
         ) : (
           <p className="settings__loading">Could not load usage data.</p>
         )}
+      </div>
+
+      <div className="settings__card">
+        <div className="settings__card-header">
+          <h3 className="settings__card-title">Ask AI — search index</h3>
+          <span className="settings__card-hint">
+            Powers "search by meaning" in Ask AI. New and edited agreements index automatically — use this to (re)index everything at once, e.g. before a demo.
+          </span>
+        </div>
+
+        {reindexing && (
+          <>
+            <div className="settings__usage-bar-track">
+              <div
+                className="settings__usage-bar-fill"
+                style={{ width: `${reindexTotal > 0 ? Math.round((reindexDone / reindexTotal) * 100) : 0}%` }}
+              />
+            </div>
+            <p className="settings__card-hint">
+              Indexed {reindexDone} of {reindexTotal}
+              {reindexFailed > 0 ? ` (${reindexFailed} failed)` : ''}…
+            </p>
+          </>
+        )}
+
+        {!reindexing && reindexFinished && (
+          <p className={reindexFailed > 0 ? 'settings__overage-note' : 'settings__card-hint'}>
+            Done — indexed {reindexDone - reindexFailed} of {reindexTotal} agreement{reindexTotal === 1 ? '' : 's'}
+            {reindexFailed > 0 ? `, ${reindexFailed} failed (check the console for details).` : '.'}
+          </p>
+        )}
+
+        <button type="button" className="settings__reindex-btn" onClick={handleReindexAll} disabled={reindexing}>
+          {reindexing ? 'Indexing…' : 'Reindex all agreements'}
+        </button>
       </div>
     </div>
   );

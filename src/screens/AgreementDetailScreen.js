@@ -31,6 +31,7 @@ import {
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
+import { indexAgreement } from '../embeddingsApi';
 import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds } from '../redlineUtils';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
@@ -508,6 +509,7 @@ function AgreementDetailScreen() {
     setSaving(true);
     try {
       await updateAgreement(agreementId, { ...form, customFields: customValues });
+      indexAgreement(agreementId).catch((err) => console.warn('Background indexing failed:', err));
       setEditing(false);
       await load();
     } catch (err) {
@@ -589,6 +591,7 @@ function AgreementDetailScreen() {
         templateId: template.id,
         status: computeAdvancedStatus(agreement.status, 'Generated') || agreement.status,
       });
+      indexAgreement(agreementId).catch((err) => console.warn('Background indexing failed:', err));
 
       setShowGenerateModal(false);
       setActiveNav('attachments');
@@ -951,6 +954,7 @@ function AgreementDetailScreen() {
       };
       await addAgreementAttachment(agreementId, newAttachment);
       await acceptReviewChanges(activeReviewRequest.id);
+      indexAgreement(agreementId).catch((err) => console.warn('Background indexing failed:', err));
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'Reviewed');
       if (advancedStatus) {
@@ -1181,6 +1185,7 @@ function AgreementDetailScreen() {
         uploadedAt: new Date().toISOString(),
       };
       await addAgreementAttachment(agreementId, newAttachment);
+      indexAgreement(agreementId).catch((err) => console.warn('Background indexing failed:', err));
       setPendingReviewEditsHtml(null);
       setAppliedSuggestionIndexes([]);
       setShowReviewAIModal(false);

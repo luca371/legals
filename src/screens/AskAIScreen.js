@@ -10,6 +10,7 @@ import {
   getAccount,
 } from '../supabase';
 import { sendToClaudeWithTools } from '../askAiApi';
+import { semanticSearchAgreements } from '../embeddingsApi';
 import './AskAIScreen.css';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -101,6 +102,14 @@ async function executeTool(name, input = {}) {
           endDate: a.endDate,
         }));
       }
+      case 'search_agreements_semantic': {
+        if (!input.query) return { error: 'query is required.' };
+        try {
+          return await semanticSearchAgreements(input.query);
+        } catch (err) {
+          return { error: err.message || 'Semantic search failed.', hint: 'This agreement may not be indexed yet — try list_agreements instead, or ask the user to run Reindex from Settings.' };
+        }
+      }
       case 'get_agreement_details': {
         const agreement = await getAgreement(input.agreementId);
         if (!agreement) return { error: 'Agreement not found.' };
@@ -146,6 +155,7 @@ function describeTools(blocks) {
     switch (b.name) {
       case 'list_accounts': return 'looking up accounts';
       case 'list_agreements': return 'searching agreements';
+      case 'search_agreements_semantic': return 'searching by meaning';
       case 'get_agreement_details': return 'reading a contract';
       case 'get_account_details': return 'looking up an account';
       default: return 'looking something up';
