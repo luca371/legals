@@ -205,6 +205,36 @@ async function attachmentToPlainText(attachment) {
   return '';
 }
 
+// Same "insert before the signature block, continue the numbering" logic
+// used in the template builder, but operating on a detached container
+// (this flow has no live contentEditable — edits accumulate in an HTML
+// string across multiple "Apply suggestion" clicks).
+function findSignatureBlockNode(root) {
+  if (!root) return null;
+  const blocks = Array.from(root.querySelectorAll('p, div, li'));
+  const target = blocks.find((el) => /in witness whereof|signature|signed\s+by|semn(at|ătur)/i.test(el.textContent || ''));
+  if (!target) return null;
+  let topLevel = target;
+  while (topLevel.parentElement && topLevel.parentElement !== root) {
+    topLevel = topLevel.parentElement;
+  }
+  return topLevel.parentElement === root ? topLevel : null;
+}
+
+function detectNextClauseNumberNode(root) {
+  if (!root) return null;
+  let maxNum = 0;
+  let found = false;
+  root.querySelectorAll('p, li').forEach((el) => {
+    const match = (el.textContent || '').trim().match(/^(\d+)[.)]\s+\S/);
+    if (match) {
+      found = true;
+      maxNum = Math.max(maxNum, parseInt(match[1], 10));
+    }
+  });
+  return found ? maxNum + 1 : null;
+}
+
 function describeEmailError(err) {
   if (err?.text) return `${err.text}${err.status ? ` (${err.status})` : ''}`;
   if (err?.message) return err.message;
@@ -356,6 +386,11 @@ function AgreementDetailScreen() {
   const [reviewingAI, setReviewingAI] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [reviewAIError, setReviewAIError] = useState('');
+  const [reviewModalView, setReviewModalView] = useState('list'); // 'list' | 'detail'
+  const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(null);
+  const [appliedSuggestionIndexes, setAppliedSuggestionIndexes] = useState([]);
+  const [pendingReviewEditsHtml, setPendingReviewEditsHtml] = useState(null);
+  const [savingReviewEdits, setSavingReviewEdits] = useState(false);
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
   const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
@@ -1063,6 +1098,10 @@ function AgreementDetailScreen() {
     setShowReviewAIModal(true);
     setReviewAIError('');
     setAiReview(null);
+    setReviewModalView('list');
+    setActiveSuggestionIndex(null);
+    setAppliedSuggestionIndexes([]);
+    setPendingReviewEditsHtml(null);
     const attachments = agreement.attachments || [];
     if (attachments.length === 0) {
       setAiReviewAttachmentId('');
@@ -1075,8 +1114,84 @@ function AgreementDetailScreen() {
   };
 
   const closeReviewAIModal = () => {
-    if (reviewingAI) return;
+    if (reviewingAI || savingReviewEdits) return;
     setShowReviewAIModal(false);
+  };
+
+  const openSuggestionDetail = (index) => {
+    setActiveSuggestionIndex(index);
+    setReviewModalView('detail');
+  };
+
+  const backToReviewList = () => {
+    setReviewModalView('list');
+    setActiveSuggestionIndex(null);
+  };
+
+  const handleApplySuggestion = async (suggestion, index) => {
+    if (appliedSuggestionIndexes.includes(index) || !suggestion.suggestedText) return;
+    try {
+      let baseHtml = pendingReviewEditsHtml;
+      if (baseHtml === null) {
+        const attachment = (agreement.attachments || []).find((a) => a.id === aiReviewAttachmentId);
+        if (!attachment) return;
+        baseHtml = await attachmentToMergeHtml(attachment);
+      }
+
+      const container = document.createElement('div');
+      container.innerHTML = baseHtml;
+
+      const nextNumber = detectNextClauseNumberNode(container);
+      const p = document.createElement('p');
+      p.textContent = nextNumber
+        ? `${nextNumber}. ${suggestion.title}. ${suggestion.suggestedText}`
+        : `${suggestion.title}. ${suggestion.suggestedText}`;
+
+      const signatureBlock = findSignatureBlockNode(container);
+      if (signatureBlock) {
+        container.insertBefore(p, signatureBlock);
+      } else {
+        container.appendChild(p);
+      }
+
+      setPendingReviewEditsHtml(container.innerHTML);
+      setAppliedSuggestionIndexes((prev) => [...prev, index]);
+    } catch (err) {
+      console.error('Failed to apply suggestion:', err);
+      alert('Could not apply this suggestion. Please try again.');
+    }
+  };
+
+  const handleSaveReviewEdits = async () => {
+    if (!pendingReviewEditsHtml) return;
+    setSavingReviewEdits(true);
+    try {
+      const sourceAttachment = (agreement.attachments || []).find((a) => a.id === aiReviewAttachmentId);
+      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(pendingReviewEditsHtml));
+      const dataBase64 = await blobToBase64(docxBlob);
+      const version = (agreement.attachments || []).length + 1;
+      const newAttachment = {
+        id: `att_${Date.now()}`,
+        name: `${(sourceAttachment?.name || 'Document').replace(/\.docx$/i, '')} - v${version} - AI Suggestions.docx`,
+        size: docxBlob.size,
+        mimeType: DOCX_MIME,
+        dataBase64,
+        sourceHtml: pendingReviewEditsHtml,
+        version,
+        uploadedAt: new Date().toISOString(),
+      };
+      await addAgreementAttachment(agreementId, newAttachment);
+      setPendingReviewEditsHtml(null);
+      setAppliedSuggestionIndexes([]);
+      setShowReviewAIModal(false);
+      setActiveNav('attachments');
+      await load();
+    } catch (err) {
+      console.error('Failed to save the AI-suggested changes:', err);
+      alert('Could not save the new document version. Please try again.');
+    } finally {
+      setSavingReviewEdits(false);
+    }
   };
 
   const openSignatureModal = () => {
@@ -1367,6 +1482,8 @@ function AgreementDetailScreen() {
     setReviewingAI(true);
     setReviewAIError('');
     setAiReview(null);
+    setAppliedSuggestionIndexes([]);
+    setPendingReviewEditsHtml(null);
     try {
       const attachments = agreement.attachments || [];
       const targets =
@@ -2334,7 +2451,7 @@ function AgreementDetailScreen() {
         </div>
       )}
 
-      {showReviewAIModal && (
+      {showReviewAIModal && reviewModalView === 'list' && (
         <div className="arv__backdrop" onClick={closeReviewAIModal}>
           <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
             <div className="arv__header">
@@ -2467,14 +2584,43 @@ function AgreementDetailScreen() {
                       {aiReview.suggestions?.length > 0 && (
                         <div className="arv__section">
                           <h4 className="arv__section-title">Suggestions</h4>
+                          <p className="arv__suggestion-hint">Click any suggestion for the full detail and to apply it.</p>
                           <div className="arv__suggestion-list">
-                            {aiReview.suggestions.map((s, i) => (
-                              <div key={i} className="arv__suggestion-item">
-                                <p className="arv__suggestion-title">{s.title}</p>
-                                {s.detail && <p className="arv__suggestion-detail">{s.detail}</p>}
-                              </div>
-                            ))}
+                            {aiReview.suggestions.map((s, i) => {
+                              const applied = appliedSuggestionIndexes.includes(i);
+                              return (
+                                <button
+                                  type="button"
+                                  key={i}
+                                  className={`arv__suggestion-item arv__suggestion-item--clickable ${applied ? 'arv__suggestion-item--applied' : ''}`}
+                                  onClick={() => openSuggestionDetail(i)}
+                                >
+                                  <div className="arv__suggestion-item-top">
+                                    <p className="arv__suggestion-title">{s.title}</p>
+                                    {applied && <span className="arv__applied-pill">✓ Applied</span>}
+                                  </div>
+                                  {s.detail && <p className="arv__suggestion-detail">{s.detail}</p>}
+                                </button>
+                              );
+                            })}
                           </div>
+                        </div>
+                      )}
+
+                      {pendingReviewEditsHtml && (
+                        <div className="arv__save-banner">
+                          <span>
+                            {appliedSuggestionIndexes.length} suggestion{appliedSuggestionIndexes.length === 1 ? '' : 's'} applied —
+                            saved as one new document version, not one file per suggestion.
+                          </span>
+                          <button
+                            type="button"
+                            className="arv__btn-primary"
+                            onClick={handleSaveReviewEdits}
+                            disabled={savingReviewEdits}
+                          >
+                            {savingReviewEdits ? 'Saving…' : 'Save as new document version'}
+                          </button>
                         </div>
                       )}
                     </>
@@ -2484,13 +2630,73 @@ function AgreementDetailScreen() {
             </div>
 
             <div className="arv__footer">
-              <button type="button" className="arv__btn-secondary" onClick={closeReviewAIModal} disabled={reviewingAI}>
+              <button type="button" className="arv__btn-secondary" onClick={closeReviewAIModal} disabled={reviewingAI || savingReviewEdits}>
                 Close
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {showReviewAIModal && reviewModalView === 'detail' && activeSuggestionIndex !== null && aiReview && (() => {
+        const suggestion = aiReview.suggestions[activeSuggestionIndex];
+        const applied = appliedSuggestionIndexes.includes(activeSuggestionIndex);
+        const canApply = !!suggestion.suggestedText && aiReviewAttachmentId !== 'ALL';
+        return (
+          <div className="arv__backdrop" onClick={closeReviewAIModal}>
+            <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
+              <div className="arv__header">
+                <button type="button" className="tpl__back tpl__back--modal" onClick={backToReviewList}>
+                  <BackIcon /> Back to review
+                </button>
+                <h3 className="arv__title">{suggestion.title}</h3>
+              </div>
+
+              <div className="arv__body">
+                <div className="tpl__detail-sections">
+                  <div className="tpl__detail-section">
+                    <h4 className="tpl__detail-section-title">What to do</h4>
+                    <p className="tpl__detail-text">{suggestion.detail}</p>
+                  </div>
+
+                  {suggestion.suggestedText && (
+                    <div className="tpl__detail-section tpl__detail-section--improve">
+                      <h4 className="tpl__detail-section-title">Suggested text</h4>
+                      <p className="tpl__detail-text">{suggestion.suggestedText}</p>
+                    </div>
+                  )}
+
+                  {!suggestion.suggestedText && (
+                    <p className="arv__suggestion-hint">
+                      This suggestion is about editing or removing existing wording, so there's no ready-to-insert text — apply it manually in the document.
+                    </p>
+                  )}
+
+                  {suggestion.suggestedText && aiReviewAttachmentId === 'ALL' && (
+                    <p className="arv__error">
+                      Applying suggestions needs one specific document selected — go back and pick a single document instead of "All documents combined".
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="arv__footer">
+                <button type="button" className="arv__btn-secondary" onClick={backToReviewList}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="arv__btn-primary"
+                  onClick={() => handleApplySuggestion(suggestion, activeSuggestionIndex)}
+                  disabled={!canApply || applied}
+                >
+                  {applied ? '✓ Applied' : 'Apply suggestion'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {showSignatureModal && (
         <div className="agrd__modal-backdrop" onClick={closeSignatureModal}>
