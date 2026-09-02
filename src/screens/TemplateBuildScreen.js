@@ -5,10 +5,12 @@ import {
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
   saveTemplate,
+  updateTemplate,
   listTemplates,
   deleteTemplate,
   listAgreements,
 } from '../supabase';
+import { analyzeTemplateWithAI, suggestClausesWithAI } from '../aiApi';
 import './TemplateBuildScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
@@ -52,6 +54,47 @@ const BUILT_IN_LOOKUPS = [
 function extractPlaceholders(html) {
   const matches = html.match(/\{\{([^}]+)\}\}/g) || [];
   return [...new Set(matches.map((m) => m.replace(/[{}]/g, '').trim()))];
+}
+
+// Locates `searchText` inside `root`'s text content (searching from just
+// after `afterText` when given, to disambiguate a label that repeats) and
+// returns a Range spanning exactly that text — even when it crosses
+// multiple text nodes. Used to turn an AI-suggested match into a real
+// selection we can replace with a placeholder span.
+function findTextRange(root, searchText, afterText) {
+  if (!root || !searchText) return null;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let fullText = '';
+  const nodeOffsets = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    const start = fullText.length;
+    fullText += node.nodeValue;
+    nodeOffsets.push({ node, start, end: fullText.length });
+  }
+
+  let searchStart = 0;
+  if (afterText) {
+    const idx = fullText.indexOf(afterText);
+    if (idx !== -1) searchStart = idx;
+  }
+  let matchIndex = fullText.indexOf(searchText, searchStart);
+  if (matchIndex === -1) matchIndex = fullText.indexOf(searchText);
+  if (matchIndex === -1) return null;
+  const matchEnd = matchIndex + searchText.length;
+
+  const startInfo = nodeOffsets.find((n) => matchIndex >= n.start && matchIndex <= n.end);
+  const endInfo = nodeOffsets.find((n) => matchEnd >= n.start && matchEnd <= n.end);
+  if (!startInfo || !endInfo) return null;
+
+  const range = document.createRange();
+  range.setStart(startInfo.node, matchIndex - startInfo.start);
+  range.setEnd(endInfo.node, matchEnd - endInfo.start);
+  return range;
+}
+
+function uid() {
+  return Math.random().toString(36).slice(2);
 }
 
 function BackIcon() {
@@ -112,6 +155,7 @@ function TemplateBuildScreen() {
   const [loadingTemplates, setLoadingTemplates] = useState(true);
   const [templateUsage, setTemplateUsage] = useState({});
 
+  const [editingTemplateId, setEditingTemplateId] = useState(null);
   const [meta, setMeta] = useState({ name: '', agreementType: '', agreementSubtype: '', language: 'English' });
   const [directFields, setDirectFields] = useState([]);
   const [lookupGroups, setLookupGroups] = useState([]);
@@ -126,6 +170,16 @@ function TemplateBuildScreen() {
   const [typeOptions, setTypeOptions] = useState([]);
   const [subtypeOptions, setSubtypeOptions] = useState([]);
   const [typeSubtypeMap, setTypeSubtypeMap] = useState({});
+
+  const [fieldSuggestions, setFieldSuggestions] = useState([]);
+  const [loadingFieldSuggestions, setLoadingFieldSuggestions] = useState(false);
+  const [fieldSuggestionsError, setFieldSuggestionsError] = useState('');
+
+  const [showClausesModal, setShowClausesModal] = useState(false);
+  const [clauseSuggestions, setClauseSuggestions] = useState([]);
+  const [insertedClauseIds, setInsertedClauseIds] = useState([]);
+  const [loadingClauseSuggestions, setLoadingClauseSuggestions] = useState(false);
+  const [clauseSuggestionsError, setClauseSuggestionsError] = useState('');
 
   const editableRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -174,11 +228,44 @@ function TemplateBuildScreen() {
   };
 
   const handleStartNew = () => {
+    setEditingTemplateId(null);
     setMeta({ name: '', agreementType: '', agreementSubtype: '', language: 'English' });
     setHtmlContent('');
     setFileName('');
     setError('');
+    setFieldSuggestions([]);
     setView('setup');
+  };
+
+  const handleEditTemplate = async (template) => {
+    setEditingTemplateId(template.id);
+    setMeta({
+      name: template.name,
+      agreementType: template.agreementType,
+      agreementSubtype: template.agreementSubtype,
+      language: template.language || 'English',
+    });
+    setError('');
+    setFieldSuggestions([]);
+    setFieldSuggestionsError('');
+    try {
+      const [configs, map] = await Promise.all([
+        getBuiltInFieldConfigs('agreement'),
+        getTypeSubtypeMap(),
+      ]);
+      const { directFields: df, lookupGroups: lg } = await buildFieldGroups();
+      setDirectFields(df);
+      setLookupGroups(lg);
+      if (configs.agreementType?.length) setTypeOptions(configs.agreementType);
+      if (configs.agreementSubtype?.length) setSubtypeOptions(configs.agreementSubtype);
+      setTypeSubtypeMap(map);
+    } catch (err) {
+      console.error('Failed to load agreement fields:', err);
+    }
+    if (editableRef.current) delete editableRef.current.dataset.loaded;
+    setHtmlContent(template.contentHtml || '');
+    setFileName(template.name);
+    setView('builder');
   };
 
   const handleContinueToUpload = async (e) => {
@@ -301,7 +388,11 @@ function TemplateBuildScreen() {
     try {
       const finalHtml = editableRef.current?.innerHTML || '';
       const fieldsUsed = extractPlaceholders(finalHtml);
-      await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
+      if (editingTemplateId) {
+        await updateTemplate(editingTemplateId, { ...meta, contentHtml: finalHtml, fieldsUsed });
+      } else {
+        await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
+      }
       setView('list');
     } catch (err) {
       console.error('Failed to save template:', err);
@@ -326,6 +417,86 @@ function TemplateBuildScreen() {
     setExpandedLookups((prev) => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const allFlatFields = [...directFields, ...lookupGroups.flatMap((g) => g.fields)];
+
+  const handleSuggestFields = async () => {
+    if (!editableRef.current) return;
+    setLoadingFieldSuggestions(true);
+    setFieldSuggestionsError('');
+    try {
+      const documentText = editableRef.current.innerText || '';
+      const results = await analyzeTemplateWithAI(documentText, allFlatFields);
+      setFieldSuggestions(results.map((s) => ({ ...s, id: uid() })));
+    } catch (err) {
+      console.error('AI field suggestion failed:', err);
+      setFieldSuggestionsError(err.message || 'Could not get AI suggestions. Please try again.');
+    } finally {
+      setLoadingFieldSuggestions(false);
+    }
+  };
+
+  const applyFieldSuggestion = (suggestion) => {
+    const range = findTextRange(editableRef.current, suggestion.matchText, suggestion.contextText);
+    if (!range) return false;
+    range.deleteContents();
+    const span = document.createElement('span');
+    span.className = 'tpl-placeholder';
+    span.setAttribute('contenteditable', 'false');
+    span.setAttribute('data-field', suggestion.placeholder);
+    span.textContent = `{{${suggestion.label}}}`;
+    range.insertNode(span);
+    return true;
+  };
+
+  const handleAcceptFieldSuggestion = (suggestion) => {
+    const applied = applyFieldSuggestion(suggestion);
+    if (!applied) {
+      setFieldSuggestionsError(`Couldn't locate "${suggestion.matchText}" anymore — it may have moved or already been replaced.`);
+    }
+    setFieldSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
+  };
+
+  const handleRejectFieldSuggestion = (id) => {
+    setFieldSuggestions((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  const handleAcceptAllFieldSuggestions = () => {
+    fieldSuggestions.forEach((s) => applyFieldSuggestion(s));
+    setFieldSuggestions([]);
+  };
+
+  const handleOpenClausesModal = async () => {
+    setShowClausesModal(true);
+    if (clauseSuggestions.length > 0) return;
+    setLoadingClauseSuggestions(true);
+    setClauseSuggestionsError('');
+    try {
+      const documentText = editableRef.current?.innerText || '';
+      const results = await suggestClausesWithAI(documentText, {
+        agreementType: meta.agreementType,
+        agreementSubtype: meta.agreementSubtype,
+        language: meta.language,
+      });
+      setClauseSuggestions(results.map((c) => ({ ...c, id: uid() })));
+    } catch (err) {
+      console.error('AI clause suggestion failed:', err);
+      setClauseSuggestionsError(err.message || 'Could not get AI suggestions. Please try again.');
+    } finally {
+      setLoadingClauseSuggestions(false);
+    }
+  };
+
+  const closeClausesModal = () => setShowClausesModal(false);
+
+  const handleInsertClause = (clause) => {
+    const editable = editableRef.current;
+    if (!editable) return;
+    const p = document.createElement('p');
+    p.textContent = clause.text;
+    editable.appendChild(p);
+    setInsertedClauseIds((prev) => [...prev, clause.id]);
+  };
+
   if (view === 'list') {
     return (
       <div className="tpl">
@@ -341,10 +512,16 @@ function TemplateBuildScreen() {
         ) : (
           <div className="tpl__grid">
             {templates.map((t) => (
-              <div key={t.id} className="tpl__card">
+              <div key={t.id} className="tpl__card" onClick={() => handleEditTemplate(t)}>
                 <div className="tpl__card-header">
                   <span className="tpl__card-name">{t.name}</span>
-                  <button className="tpl__card-delete" onClick={() => handleDelete(t)} aria-label="Delete template">✕</button>
+                  <button
+                    className="tpl__card-delete"
+                    onClick={(e) => { e.stopPropagation(); handleDelete(t); }}
+                    aria-label="Delete template"
+                  >
+                    ✕
+                  </button>
                 </div>
                 <div className="tpl__card-meta">
                   <span className="tpl__tag">{t.agreementType}</span>
@@ -353,6 +530,7 @@ function TemplateBuildScreen() {
                 </div>
                 <p className="tpl__card-fields">{(t.fieldsUsed || []).length} field{(t.fieldsUsed || []).length === 1 ? '' : 's'} mapped</p>
                 <p className="tpl__card-usage">Used in {templateUsage[t.id] || 0} document{(templateUsage[t.id] || 0) === 1 ? '' : 's'}</p>
+                <span className="tpl__card-edit-hint">Click to edit</span>
               </div>
             ))}
           </div>
@@ -451,9 +629,14 @@ function TemplateBuildScreen() {
           <span className="tpl__tag">{meta.agreementSubtype}</span>
           <span className="tpl__tag tpl__tag--lang">{meta.language}</span>
         </div>
-        <button className="tpl__btn-primary" onClick={handleSave} disabled={saving || !htmlContent}>
-          {saving ? 'Saving…' : 'Save template'}
-        </button>
+        <div className="tpl__topbar-actions">
+          <button className="tpl__btn-secondary" onClick={handleOpenClausesModal} disabled={!htmlContent}>
+            ✨ Suggest clauses
+          </button>
+          <button className="tpl__btn-primary" onClick={handleSave} disabled={saving || !htmlContent}>
+            {saving ? 'Saving…' : 'Save template'}
+          </button>
+        </div>
       </div>
 
       {error && <p className="tpl__error">{error}</p>}
@@ -476,9 +659,44 @@ function TemplateBuildScreen() {
             <div className="tpl__sidebar-header">
               <h3 className="tpl__sidebar-title">Drag a field into the document</h3>
               <p className="tpl__sidebar-hint">Fields come from Agreement and Template object schemas.</p>
+              <button
+                type="button"
+                className="tpl__ai-btn"
+                onClick={handleSuggestFields}
+                disabled={loadingFieldSuggestions || allFlatFields.length === 0}
+              >
+                {loadingFieldSuggestions ? 'Scanning document…' : '✨ Suggest fields with AI'}
+              </button>
+              {fieldSuggestionsError && <p className="tpl__ai-error">{fieldSuggestionsError}</p>}
             </div>
 
             <div className="tpl__sidebar-scroll">
+              {fieldSuggestions.length > 0 && (
+                <div className="tpl__ai-suggestions">
+                  <div className="tpl__ai-suggestions-header">
+                    <span>{fieldSuggestions.length} suggestion{fieldSuggestions.length === 1 ? '' : 's'}</span>
+                    <button type="button" className="tpl__ai-accept-all" onClick={handleAcceptAllFieldSuggestions}>
+                      Accept all
+                    </button>
+                  </div>
+                  {fieldSuggestions.map((s) => (
+                    <div key={s.id} className="tpl__ai-suggestion">
+                      <p className="tpl__ai-suggestion-match">“{s.matchText}”</p>
+                      <p className="tpl__ai-suggestion-label">→ {s.label}</p>
+                      {s.reason && <p className="tpl__ai-suggestion-reason">{s.reason}</p>}
+                      <div className="tpl__ai-suggestion-actions">
+                        <button type="button" className="tpl__ai-reject" onClick={() => handleRejectFieldSuggestion(s.id)}>
+                          ✕ Skip
+                        </button>
+                        <button type="button" className="tpl__ai-accept" onClick={() => handleAcceptFieldSuggestion(s)}>
+                          ✓ Insert
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               <div className="tpl__field-list">
                 {directFields.map((field) => (
                   <div
@@ -543,6 +761,59 @@ function TemplateBuildScreen() {
               onDragLeave={() => setDragOverField(false)}
               onDrop={handleDocDrop}
             />
+          </div>
+        </div>
+      )}
+
+      {showClausesModal && (
+        <div className="agrd__modal-backdrop" onClick={closeClausesModal}>
+          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">✨ Suggested clauses</h3>
+              <p className="agrd__modal-subtitle">
+                Based on this template's type ({meta.agreementType || 'unspecified'}) and what's already in the
+                document — not legal advice, a starting point to adapt.
+              </p>
+
+              {clauseSuggestionsError && <p className="agrd__error">{clauseSuggestionsError}</p>}
+
+              {loadingClauseSuggestions ? (
+                <p className="tpl__empty">Reading the document…</p>
+              ) : clauseSuggestions.length === 0 ? (
+                <p className="tpl__empty">
+                  {clauseSuggestionsError ? '' : 'No obvious gaps found — this template already covers the essentials.'}
+                </p>
+              ) : (
+                <div className="tpl__clause-list">
+                  {clauseSuggestions.map((clause) => {
+                    const inserted = insertedClauseIds.includes(clause.id);
+                    return (
+                      <div key={clause.id} className="tpl__clause">
+                        <div className="tpl__clause-header">
+                          <span className="tpl__clause-title">{clause.title}</span>
+                          <button
+                            type="button"
+                            className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
+                            onClick={() => handleInsertClause(clause)}
+                            disabled={inserted}
+                          >
+                            {inserted ? '✓ Inserted' : 'Insert'}
+                          </button>
+                        </div>
+                        {clause.reason && <p className="tpl__clause-reason">{clause.reason}</p>}
+                        <p className="tpl__clause-text">{clause.text}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeClausesModal}>
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

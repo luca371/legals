@@ -70,7 +70,6 @@ Deno.serve(async (req) => {
     const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
       model: ANTHROPIC_MODEL,
       max_tokens: 8192,
-      temperature: 0,
       system: SYSTEM_PROMPT,
       messages: [{ role: 'user', content: userMessage }],
     });

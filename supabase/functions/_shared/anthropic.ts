@@ -1,4 +1,4 @@
-export const ANTHROPIC_MODEL = 'claude-sonnet-4-6';
+export const ANTHROPIC_MODEL = 'claude-sonnet-5';
 const ANTHROPIC_VERSION = '2023-06-01';
 
 export async function callAnthropic(apiKey: string, payload: Record<string, unknown>) {

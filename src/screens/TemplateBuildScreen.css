@@ -45,7 +45,20 @@
   display: flex;
   flex-direction: column;
   gap: 10px;
+  cursor: pointer;
   transition: border-color 0.18s ease, transform 0.15s ease;
+}
+
+.tpl__card-edit-hint {
+  font-size: 0.74rem;
+  color: var(--color-accent);
+  font-weight: 500;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.tpl__card:hover .tpl__card-edit-hint {
+  opacity: 1;
 }
 
 .tpl__card:hover {
@@ -491,4 +504,219 @@
   border-radius: var(--radius-xs);
   margin: 0 1px;
   user-select: none;
+}
+
+/* ---------- Topbar / secondary button ---------- */
+
+.tpl__topbar-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.tpl__btn-secondary {
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--color-text);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.16s ease;
+}
+
+.tpl__btn-secondary:hover:not(:disabled) {
+  background: var(--color-bg);
+}
+
+.tpl__btn-secondary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---------- AI field suggestions ---------- */
+
+.tpl__ai-btn {
+  width: 100%;
+  margin-top: 12px;
+  padding: 9px 12px;
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.tpl__ai-btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.tpl__ai-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.tpl__ai-error {
+  margin: 8px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-danger);
+}
+
+.tpl__ai-suggestions {
+  padding: 12px;
+  margin-bottom: 14px;
+  background: var(--color-accent-soft);
+  border-radius: var(--radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.tpl__ai-suggestions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--color-accent);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.tpl__ai-accept-all {
+  background: transparent;
+  border: none;
+  color: var(--color-accent);
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.tpl__ai-suggestion {
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.tpl__ai-suggestion-match {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  font-style: italic;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tpl__ai-suggestion-label {
+  margin: 3px 0 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--color-accent);
+}
+
+.tpl__ai-suggestion-reason {
+  margin: 3px 0 0;
+  font-size: 0.74rem;
+  color: var(--color-text-tertiary);
+}
+
+.tpl__ai-suggestion-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.tpl__ai-reject,
+.tpl__ai-accept {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: var(--radius-xs);
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface);
+}
+
+.tpl__ai-reject {
+  color: var(--color-text-secondary);
+}
+
+.tpl__ai-reject:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+.tpl__ai-accept {
+  color: var(--color-success);
+  border-color: var(--color-success);
+}
+
+.tpl__ai-accept:hover {
+  background: var(--color-success);
+  color: #ffffff;
+}
+
+/* ---------- AI clause suggestions modal ---------- */
+
+.tpl__clause-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.tpl__clause {
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 16px;
+}
+
+.tpl__clause-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.tpl__clause-title {
+  font-weight: 600;
+  font-size: 0.92rem;
+  color: var(--color-text);
+}
+
+.tpl__clause-inserted {
+  padding: 6px 14px;
+  border-radius: var(--radius-xs);
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--color-success);
+  background: var(--color-success-soft);
+  color: var(--color-success);
+  cursor: default;
+}
+
+.tpl__clause-reason {
+  margin: 0 0 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+}
+
+.tpl__clause-text {
+  margin: 0;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
 }

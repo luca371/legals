@@ -378,6 +378,25 @@ export const saveTemplate = async (template) => {
   return data;
 };
 
+export const updateTemplate = async (id, template) => {
+  const { data, error } = await supabase
+    .from('templates')
+    .update({
+      title: template.name,
+      agreement_type: template.agreementType,
+      agreement_subtype: template.agreementSubtype,
+      language: template.language || 'English',
+      content_html: template.contentHtml || '',
+      fields: template.fieldsUsed || [],
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
 export const deleteTemplate = async (id) => {
   const { error } = await supabase.from('templates').delete().eq('id', id);
   if (error) throw error;
