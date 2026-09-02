@@ -197,7 +197,7 @@ function AccountDetailScreen() {
     if (field.type === 'dropdown') {
       return (
         <select className="accd__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)}>
-          <option value="">— Select —</option>
+          <option value="">- Select -</option>
           {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       );
@@ -311,16 +311,16 @@ function AccountDetailScreen() {
                   </div>
                   <div className="accd__view-field">
                     <span className="accd__view-label">Abbreviation</span>
-                    <span className="accd__view-value">{account.abbreviation || '—'}</span>
+                    <span className="accd__view-value">{account.abbreviation || '-'}</span>
                   </div>
                   <div className="accd__view-field accd__view-field--full">
                     <span className="accd__view-label">Registered office</span>
-                    <span className="accd__view-value">{account.registeredOffice || '—'}</span>
+                    <span className="accd__view-value">{account.registeredOffice || '-'}</span>
                   </div>
                   {customFieldDefs.map((field) => (
                     <div key={field.id} className="accd__view-field">
                       <span className="accd__view-label">{field.label}</span>
-                      <span className="accd__view-value">{(account.customFields || {})[field.id] || '—'}</span>
+                      <span className="accd__view-value">{(account.customFields || {})[field.id] || '-'}</span>
                     </div>
                   ))}
                   <div className="accd__view-field accd__view-field--full">
@@ -414,14 +414,14 @@ function AccountDetailScreen() {
                     <tbody>
                       {agreements.map((agr) => (
                         <tr key={agr.id}>
-                          <td className="accd__agr-title">{agr.title || '—'}</td>
-                          <td>{agr.agreementType || '—'}</td>
+                          <td className="accd__agr-title">{agr.title || '-'}</td>
+                          <td>{agr.agreementType || '-'}</td>
                           <td>
                             <span className={`accd__agr-status accd__agr-status--${(agr.status || 'draft').toLowerCase().replace(' ', '-')}`}>
                               {agr.status || 'Draft'}
                             </span>
                           </td>
-                          <td className="accd__agr-date">{agr.effectiveDate || '—'}</td>
+                          <td className="accd__agr-date">{agr.effectiveDate || '-'}</td>
                           <td>
                             <button
                               className="accd__agr-link"
@@ -444,7 +444,7 @@ function AccountDetailScreen() {
             <div className="accd__playbook">
               <div className="accd__playbook-header">
                 <p className="accd__playbook-hint">
-                  Playbooks are created once for the whole organization — pick below which ones apply to this
+                  Playbooks are created once for the whole organization - pick below which ones apply to this
                   client. When reviewing one of its agreements with AI, the reviewer can narrow it down further to
                   just the playbooks relevant for that specific contract.
                 </p>
@@ -459,7 +459,7 @@ function AccountDetailScreen() {
                 <p className="accd__empty">Loading…</p>
               ) : allPlaybooks.length === 0 ? (
                 <p className="accd__empty">
-                  No playbooks exist yet for your organization — create one from Settings first.
+                  No playbooks exist yet for your organization - create one from Settings first.
                 </p>
               ) : (
                 <>

@@ -132,7 +132,7 @@ function ReviewLinkScreen() {
       <CenteredMessage
         icon="✓"
         title="Changes submitted"
-        subtitle="Thank you — your changes have been submitted and the sender has been notified. This link has now been used and can't be opened again."
+        subtitle="Thank you - your changes have been submitted and the sender has been notified. This link has now been used and can't be opened again."
       />
     ) : (
       <CenteredMessage
@@ -149,7 +149,7 @@ function ReviewLinkScreen() {
           <h1 className="rvl__title">{review.agreementTitle}</h1>
           <p className="rvl__subtitle">
             Reviewing: {review.attachmentName}
-            {review.message && <> — “{review.message}”</>}
+            {review.message && <> - “{review.message}”</>}
             {review.sequence > 1 && <> · You are the next reviewer in this chain.</>}
           </p>
         </div>
@@ -189,7 +189,7 @@ function ReviewLinkScreen() {
       ) : (
         <>
           <p className="rvl__hint">
-            This is exactly what will be submitted — deletions struck through, additions underlined. Go back to keep editing, or confirm to send it.
+            This is exactly what will be submitted - deletions struck through, additions underlined. Go back to keep editing, or confirm to send it.
           </p>
           <div className="rvl__doc-wrap">
             <div

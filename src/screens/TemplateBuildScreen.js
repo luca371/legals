@@ -510,7 +510,7 @@ function TemplateBuildScreen() {
   const handleAcceptFieldSuggestion = (suggestion) => {
     const applied = applyFieldSuggestion(suggestion);
     if (!applied) {
-      setFieldSuggestionsError(`Couldn't locate "${suggestion.matchText}" anymore — it may have moved or already been replaced.`);
+      setFieldSuggestionsError(`Couldn't locate "${suggestion.matchText}" anymore - it may have moved or already been replaced.`);
     }
     setFieldSuggestions((prev) => prev.filter((s) => s.id !== suggestion.id));
   };
@@ -724,7 +724,7 @@ function TemplateBuildScreen() {
       setLibrarySearchResults(results);
     } catch (err) {
       console.error('Clause library search failed:', err);
-      setLibraryError(err.message || 'Search failed — try browsing the full list instead.');
+      setLibraryError(err.message || 'Search failed - try browsing the full list instead.');
     } finally {
       setLibrarySearching(false);
     }
@@ -835,7 +835,7 @@ function TemplateBuildScreen() {
                 <label className="tpl__label" htmlFor="agreementType">Agreement type</label>
                 {typeOptions.length > 0 ? (
                   <select id="agreementType" name="agreementType" className="tpl__input" value={meta.agreementType} onChange={handleMetaChange} required>
-                    <option value="">— Select type —</option>
+                    <option value="">- Select type -</option>
                     {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : (
@@ -855,7 +855,7 @@ function TemplateBuildScreen() {
                     required
                     disabled={typeOptions.length > 0 && !meta.agreementType}
                   >
-                    <option value="">— Select subtype —</option>
+                    <option value="">- Select subtype -</option>
                     {filteredSubtypes.map((o) => <option key={o} value={o}>{o}</option>)}
                   </select>
                 ) : (
@@ -1074,7 +1074,7 @@ function TemplateBuildScreen() {
               <h3 className="agrd__modal-title">Suggested clauses</h3>
               <p className="agrd__modal-subtitle">
                 Based on this template's type ({meta.agreementType || 'unspecified'}) and what's already in the
-                document — not legal advice, a starting point to adapt.
+                document - not legal advice, a starting point to adapt.
               </p>
 
               {clauseSuggestionsError && <p className="agrd__error">{clauseSuggestionsError}</p>}
@@ -1086,7 +1086,7 @@ function TemplateBuildScreen() {
                   <h4 className="tpl__clause-section-title">Missing clauses</h4>
                   {missingClauses.length === 0 ? (
                     <p className="tpl__empty">
-                      {clauseSuggestionsError ? '' : 'No obvious gaps found — this template already covers the essentials.'}
+                      {clauseSuggestionsError ? '' : 'No obvious gaps found - this template already covers the essentials.'}
                     </p>
                   ) : (
                     <div className="tpl__clause-list">
@@ -1126,7 +1126,7 @@ function TemplateBuildScreen() {
                   {existingClauses.length > 0 && (
                     <>
                       <h4 className="tpl__clause-section-title tpl__clause-section-title--spaced">
-                        Existing clauses — quality &amp; risk
+                        Existing clauses - quality &amp; risk
                       </h4>
                       <p className="tpl__clause-hint">Click any clause for a full breakdown.</p>
                       <div className="tpl__clause-list">
@@ -1257,7 +1257,7 @@ function TemplateBuildScreen() {
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Clause library</h3>
               <p className="agrd__modal-subtitle">
-                Reusable clauses shared across your templates — search by meaning or browse the full list.
+                Reusable clauses shared across your templates - search by meaning or browse the full list.
               </p>
 
               <form className="tpl__library-search" onSubmit={handleLibrarySearch}>
@@ -1335,7 +1335,7 @@ function TemplateBuildScreen() {
                 <p className="tpl__empty">Loading…</p>
               ) : displayedLibraryClauses.length === 0 ? (
                 <p className="tpl__empty">
-                  {librarySearchResults !== null ? 'No matching clauses found.' : 'No clauses in the library yet — add one above.'}
+                  {librarySearchResults !== null ? 'No matching clauses found.' : 'No clauses in the library yet - add one above.'}
                 </p>
               ) : (
                 <div className="tpl__clause-list">

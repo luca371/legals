@@ -181,7 +181,7 @@ function AccountsScreen() {
     if (field.type === 'dropdown') {
       return (
         <select className="acc__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)}>
-          <option value="">— Select —</option>
+          <option value="">- Select -</option>
           {(field.options || []).map((opt) => (
             <option key={opt} value={opt}>{opt}</option>
           ))}
@@ -273,8 +273,8 @@ function AccountsScreen() {
                 <tr key={acc.id}>
                   <td className="acc__td-name">{acc.name}</td>
                   <td>{acc.country}</td>
-                  <td className="acc__td-muted">{acc.abbreviation || '—'}</td>
-                  <td className="acc__td-muted">{acc.taxRegistrationNumber || '—'}</td>
+                  <td className="acc__td-muted">{acc.abbreviation || '-'}</td>
+                  <td className="acc__td-muted">{acc.taxRegistrationNumber || '-'}</td>
                   <td>
                     <span className={`acc__status ${acc.status === 'Inactive' ? 'acc__status--inactive' : 'acc__status--active'}`}>
                       {acc.status || 'Active'}
@@ -289,7 +289,7 @@ function AccountsScreen() {
                         {health.label}
                       </span>
                     ) : (
-                      <span className="acc__td-muted">—</span>
+                      <span className="acc__td-muted">-</span>
                     )}
                   </td>
                   <td>

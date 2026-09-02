@@ -84,7 +84,7 @@ function ApprovalLinkScreen() {
             setPreviewHtml(result.value);
           } catch (err) {
             console.error('Failed to preview document:', err);
-            setPreviewError('Could not preview this document — you can still download it below.');
+            setPreviewError('Could not preview this document - you can still download it below.');
           }
         }
       } catch (err) {

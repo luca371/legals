@@ -109,7 +109,7 @@ async function executeTool(name, input = {}) {
         try {
           return await semanticSearch(input.query, 'agreement');
         } catch (err) {
-          return { error: err.message || 'Semantic search failed.', hint: 'This agreement may not be indexed yet — try list_agreements instead, or ask the user to run Reindex from Settings.' };
+          return { error: err.message || 'Semantic search failed.', hint: 'This agreement may not be indexed yet - try list_agreements instead, or ask the user to run Reindex from Settings.' };
         }
       }
       case 'get_agreement_details': {
@@ -195,7 +195,7 @@ async function runConversationTurn(startMessages, onStatus) {
       .join('\n\n');
     return { text: text || "I couldn't come up with an answer for that.", messages };
   }
-  return { text: 'This question needs more lookups than usual — try being more specific.', messages };
+  return { text: 'This question needs more lookups than usual - try being more specific.', messages };
 }
 
 function AskAIScreen() {
@@ -251,7 +251,7 @@ function AskAIScreen() {
       <div className="ask__header">
         <div>
           <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
-          <p className="ask__disclaimer">By using this tool, you're interacting with our AI system — answers can be wrong, always verify anything important.</p>
+          <p className="ask__disclaimer">By using this tool, you're interacting with our AI system - answers can be wrong, always verify anything important.</p>
         </div>
         {chatLog.length > 0 && (
           <button type="button" className="ask__new-btn" onClick={handleNewConversation}>

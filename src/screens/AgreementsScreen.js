@@ -212,7 +212,7 @@ function AgreementsScreen() {
     if (field.type === 'dropdown') {
       return (
         <select className="agr__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)}>
-          <option value="">— Select —</option>
+          <option value="">- Select -</option>
           {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       );
@@ -262,12 +262,12 @@ function AgreementsScreen() {
               <tbody>
                 {filtered.map((agr) => (
                   <tr key={agr.id}>
-                    <td className="agr__td-name">{agr.title || '—'}</td>
-                    <td>{agr.accountName || '—'}</td>
-                    <td>{agr.agreementType || '—'}</td>
+                    <td className="agr__td-name">{agr.title || '-'}</td>
+                    <td>{agr.accountName || '-'}</td>
+                    <td>{agr.agreementType || '-'}</td>
                     <td><span className={`agr__status ${statusClass(agr.status)}`}>{agr.status || 'Draft'}</span></td>
-                    <td className="agr__td-muted">{agr.effectiveDate || '—'}</td>
-                    <td className="agr__td-muted">{agr.endDate || '—'}</td>
+                    <td className="agr__td-muted">{agr.effectiveDate || '-'}</td>
+                    <td className="agr__td-muted">{agr.endDate || '-'}</td>
                     <td>
                       <button className="agr__detail-btn" onClick={() => navigate(`/dashboard/agreements/${agr.id}`)} aria-label="View details">
                         <ChevronIcon />
@@ -319,7 +319,7 @@ function AgreementsScreen() {
                 <div className="agr__modal-header">
                   <h3 className="agr__modal-title">{createFlow === 'signed' ? 'Import signed agreement' : 'Import offline document'}</h3>
                   <p className="agr__modal-subtitle">
-                    Upload a .docx file{createFlow === 'signed' ? ' — the agreement will be marked as Signed.' : ', then complete the details.'}
+                    Upload a .docx file{createFlow === 'signed' ? ' - the agreement will be marked as Signed.' : ', then complete the details.'}
                   </p>
                 </div>
                 <div className="agr__upload-zone" onClick={() => fileInputRef.current?.click()}>
@@ -373,7 +373,7 @@ function AgreementsScreen() {
                     <div className="agr__field">
                       <label className="agr__label" htmlFor="accountId">Account</label>
                       <select id="accountId" name="accountId" className="agr__input" value={form.accountId} onChange={handleFormChange}>
-                        <option value="">— Select account —</option>
+                        <option value="">- Select account -</option>
                         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </div>
@@ -382,7 +382,7 @@ function AgreementsScreen() {
                       <label className="agr__label" htmlFor="agreementType">Agreement type</label>
                       {typeOptions.length > 0 ? (
                         <select id="agreementType" name="agreementType" className="agr__input" value={form.agreementType} onChange={handleFormChange}>
-                          <option value="">— Select type —</option>
+                          <option value="">- Select type -</option>
                           {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : (
@@ -401,7 +401,7 @@ function AgreementsScreen() {
                           onChange={handleFormChange}
                           disabled={typeOptions.length > 0 && !form.agreementType}
                         >
-                          <option value="">— Select subtype —</option>
+                          <option value="">- Select subtype -</option>
                           {filteredSubtypes.map((o) => <option key={o} value={o}>{o}</option>)}
                         </select>
                       ) : (

@@ -1086,7 +1086,7 @@ function AgreementDetailScreen() {
         });
       } catch (emailErr) {
         console.error('Failed to send the review email:', emailErr);
-        emailWarning = `Review link${reviewersList.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) — copy the link manually below.`;
+        emailWarning = `Review link${reviewersList.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) - copy the link manually below.`;
       }
 
       const advancedStatus = computeAdvancedStatus(agreement.status, 'In review');
@@ -1456,7 +1456,7 @@ function AgreementDetailScreen() {
 
       const replaced = findAndReplaceTextNode(container, item.originalExcerpt, item.proposedText);
       if (!replaced) {
-        alert("Couldn't locate that exact text in the document anymore — it may have moved or already been edited.");
+        alert("Couldn't locate that exact text in the document anymore - it may have moved or already been edited.");
         return;
       }
 
@@ -1599,7 +1599,7 @@ function AgreementDetailScreen() {
       return payload && { documentBase64: payload.documentBase64, documentName: att.name, fileExtension: payload.fileExtension };
     });
     if (documents.some((d) => !d)) {
-      setSignatureError('Could not read one of the selected documents — try a different attachment.');
+      setSignatureError('Could not read one of the selected documents - try a different attachment.');
       return;
     }
 
@@ -1651,7 +1651,7 @@ function AgreementDetailScreen() {
     }
     const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentIds[0]);
     if (!attachment) {
-      setSignatureError('Could not find that document — try a different attachment.');
+      setSignatureError('Could not find that document - try a different attachment.');
       return;
     }
 
@@ -1859,7 +1859,7 @@ function AgreementDetailScreen() {
     if (field.type === 'dropdown') {
       return (
         <select className="agrd__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)}>
-          <option value="">— Select —</option>
+          <option value="">- Select -</option>
           {(field.options || []).map((opt) => <option key={opt} value={opt}>{opt}</option>)}
         </select>
       );
@@ -1969,45 +1969,45 @@ function AgreementDetailScreen() {
                   <div className="agrd__view-grid">
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Title</span>
-                      <span className="agrd__view-value">{agreement.title || '—'}</span>
+                      <span className="agrd__view-value">{agreement.title || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Account</span>
-                      <span className="agrd__view-value">{agreement.accountName || '—'}</span>
+                      <span className="agrd__view-value">{agreement.accountName || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Agreement type</span>
-                      <span className="agrd__view-value">{agreement.agreementType || '—'}</span>
+                      <span className="agrd__view-value">{agreement.agreementType || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Agreement subtype</span>
-                      <span className="agrd__view-value">{agreement.agreementSubtype || '—'}</span>
+                      <span className="agrd__view-value">{agreement.agreementSubtype || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Language</span>
-                      <span className="agrd__view-value">{agreement.language || '—'}</span>
+                      <span className="agrd__view-value">{agreement.language || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Status</span>
-                      <span className="agrd__view-value">{agreement.status || '—'}</span>
+                      <span className="agrd__view-value">{agreement.status || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Start date</span>
-                      <span className="agrd__view-value">{agreement.effectiveDate || '—'}</span>
+                      <span className="agrd__view-value">{agreement.effectiveDate || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">End date</span>
-                      <span className="agrd__view-value">{agreement.endDate || '—'}</span>
+                      <span className="agrd__view-value">{agreement.endDate || '-'}</span>
                     </div>
                     {customFieldDefs.filter((f) => f.type !== 'lookup').map((field) => (
                       <div key={field.id} className="agrd__view-field">
                         <span className="agrd__view-label">{field.label}</span>
-                        <span className="agrd__view-value">{(agreement.customFields || {})[field.id] || '—'}</span>
+                        <span className="agrd__view-value">{(agreement.customFields || {})[field.id] || '-'}</span>
                       </div>
                     ))}
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Created by</span>
-                      <span className="agrd__view-value">{agreement.createdBy || '—'}</span>
+                      <span className="agrd__view-value">{agreement.createdBy || '-'}</span>
                     </div>
                   </div>
                 ) : (
@@ -2022,7 +2022,7 @@ function AgreementDetailScreen() {
                       <div className="agrd__field">
                         <label className="agrd__label" htmlFor="accountId">Account</label>
                         <select id="accountId" name="accountId" className="agrd__input" value={form.accountId} onChange={handleFormChange}>
-                          <option value="">— Select account —</option>
+                          <option value="">- Select account -</option>
                           {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
                       </div>
@@ -2031,7 +2031,7 @@ function AgreementDetailScreen() {
                         <label className="agrd__label" htmlFor="agreementType">Agreement type</label>
                         {typeOptions.length > 0 ? (
                           <select id="agreementType" name="agreementType" className="agrd__input" value={form.agreementType} onChange={handleFormChange}>
-                            <option value="">— Select type —</option>
+                            <option value="">- Select type -</option>
                             {typeOptions.map((o) => <option key={o} value={o}>{o}</option>)}
                           </select>
                         ) : (
@@ -2050,7 +2050,7 @@ function AgreementDetailScreen() {
                             onChange={handleFormChange}
                             disabled={typeOptions.length > 0 && !form.agreementType}
                           >
-                            <option value="">— Select subtype —</option>
+                            <option value="">- Select subtype -</option>
                             {filteredSubtypes.map((o) => <option key={o} value={o}>{o}</option>)}
                           </select>
                         ) : (
@@ -2397,7 +2397,7 @@ function AgreementDetailScreen() {
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Generate agreement</h3>
               <p className="agrd__modal-subtitle">
-                Showing templates for <strong>{agreement.agreementType || '—'}</strong> / <strong>{agreement.agreementSubtype || '—'}</strong>
+                Showing templates for <strong>{agreement.agreementType || '-'}</strong> / <strong>{agreement.agreementSubtype || '-'}</strong>
               </p>
 
               {generateError && <p className="agrd__error">{generateError}</p>}
@@ -2478,7 +2478,7 @@ function AgreementDetailScreen() {
 
               {nonMergeableAttachments.length > 0 && (
                 <p className="agrd__modal-hint agrd__modal-hint--top">
-                  Only Word (.docx) files can be merged — {nonMergeableAttachments.length} other file
+                  Only Word (.docx) files can be merged - {nonMergeableAttachments.length} other file
                   {nonMergeableAttachments.length === 1 ? '' : 's'} on this record can't be included.
                 </p>
               )}
@@ -2553,7 +2553,7 @@ function AgreementDetailScreen() {
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Compare versions</h3>
               <p className="agrd__modal-subtitle">
-                Side-by-side redline between any two Word (.docx) versions on this agreement — insertions underlined, deletions struck through.
+                Side-by-side redline between any two Word (.docx) versions on this agreement - insertions underlined, deletions struck through.
               </p>
 
               {compareError && <p className="agrd__error">{compareError}</p>}
@@ -2565,7 +2565,7 @@ function AgreementDetailScreen() {
                   <div className="agrd__compare-picker">
                     <span className="agrd__doc-select-label">From</span>
                     <select className="agrd__input" value={compareFromId} onChange={(e) => setCompareFromId(e.target.value)}>
-                      <option value="">— Select —</option>
+                      <option value="">- Select -</option>
                       {mergeableAttachments.map((att) => (
                         <option key={att.id} value={att.id}>{att.name}{att.version ? ` (v${att.version})` : ''}</option>
                       ))}
@@ -2575,7 +2575,7 @@ function AgreementDetailScreen() {
                   <div className="agrd__compare-picker">
                     <span className="agrd__doc-select-label">To</span>
                     <select className="agrd__input" value={compareToId} onChange={(e) => setCompareToId(e.target.value)}>
-                      <option value="">— Select —</option>
+                      <option value="">- Select -</option>
                       {mergeableAttachments.map((att) => (
                         <option key={att.id} value={att.id}>{att.name}{att.version ? ` (v${att.version})` : ''}</option>
                       ))}
@@ -2594,7 +2594,7 @@ function AgreementDetailScreen() {
 
               {compareTokens && (
                 listChangeIds(compareTokens).length === 0 ? (
-                  <p className="agrd__modal-hint agrd__modal-hint--top">These two versions are identical — no differences found.</p>
+                  <p className="agrd__modal-hint agrd__modal-hint--top">These two versions are identical - no differences found.</p>
                 ) : (
                   <div
                     className="arv__redline-preview agrd__compare-preview"
@@ -2619,7 +2619,7 @@ function AgreementDetailScreen() {
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Link to another agreement</h3>
               <p className="agrd__modal-subtitle">
-                Mark this agreement as a renewal or amendment of another one — the link shows on both records.
+                Mark this agreement as a renewal or amendment of another one - the link shows on both records.
               </p>
 
               {relationError && <p className="agrd__error">{relationError}</p>}
@@ -2638,7 +2638,7 @@ function AgreementDetailScreen() {
                   <p className="agrd__modal-hint">Loading…</p>
                 ) : (
                   <select className="agrd__input" value={relationDraftTargetId} onChange={(e) => setRelationDraftTargetId(e.target.value)}>
-                    <option value="">— Select an agreement —</option>
+                    <option value="">- Select an agreement -</option>
                     {relationPickerAgreements.map((a) => (
                       <option key={a.id} value={a.id}>{a.title}{a.accountName ? ` (${a.accountName})` : ''}</option>
                     ))}
@@ -2699,7 +2699,7 @@ function AgreementDetailScreen() {
                     <>
                       <div className="settings__reminder-days agrd__notify-days">
                         {notifyDays.length === 0 ? (
-                          <span className="agrd__modal-hint">No reminders — this agreement won't get expiry emails.</span>
+                          <span className="agrd__modal-hint">No reminders - this agreement won't get expiry emails.</span>
                         ) : (
                           notifyDays.map((d) => (
                             <span key={d} className="settings__reminder-chip">
@@ -2847,7 +2847,7 @@ function AgreementDetailScreen() {
               )}
               {reviewersList.length > 1 && (
                 <p className="agrd__modal-hint agrd__modal-hint--top">
-                  Sequential — each reviewer is only notified after the previous one submits their changes.
+                  Sequential - each reviewer is only notified after the previous one submits their changes.
                 </p>
               )}
 
@@ -2894,7 +2894,7 @@ function AgreementDetailScreen() {
               <h3 className="agrd__modal-title">Send for approval</h3>
               <p className="agrd__modal-subtitle">
                 The approver gets an emailed link where they can only view the document and approve or reject
-                it — no Legal Space account needed.
+                it - no Legal Space account needed.
               </p>
 
               {approvalError && <p className="agrd__error">{approvalError}</p>}
@@ -2986,7 +2986,7 @@ function AgreementDetailScreen() {
               )}
               {approversList.length > 1 && (
                 <p className="agrd__modal-hint agrd__modal-hint--top">
-                  Sequential — each approver is only notified after the previous one approves. If anyone rejects, the chain stops.
+                  Sequential - each approver is only notified after the previous one approves. If anyone rejects, the chain stops.
                 </p>
               )}
 
@@ -3023,7 +3023,7 @@ function AgreementDetailScreen() {
             <div className="arv__header">
               <h3 className="arv__title"><SparkleIcon /> Review with AI</h3>
               <p className="arv__subtitle">
-                A contract-manager-style quality check — not legal advice. Based only on the document text you pick below.
+                A contract-manager-style quality check - not legal advice. Based only on the document text you pick below.
                 By using this tool, you're interacting with our AI system.
               </p>
             </div>
@@ -3149,7 +3149,7 @@ function AgreementDetailScreen() {
                       {aiReview.risks?.length > 0 && (
                         <div className="arv__section">
                           <h4 className="arv__section-title arv__section-title--warn">Risks</h4>
-                          <p className="arv__suggestion-hint">Risks with a proposed rewrite are clickable — click to see the redline and apply it.</p>
+                          <p className="arv__suggestion-hint">Risks with a proposed rewrite are clickable - click to see the redline and apply it.</p>
                           <div className="arv__risk-list">
                             {aiReview.risks.map((risk, i) => {
                               const refKey = `risks-${i}`;
@@ -3244,7 +3244,7 @@ function AgreementDetailScreen() {
                       {pendingReviewEditsHtml && (
                         <div className="arv__save-banner">
                           <span>
-                            {appliedSuggestionIndexes.length + appliedRedlineRefs.length} change{appliedSuggestionIndexes.length + appliedRedlineRefs.length === 1 ? '' : 's'} applied —
+                            {appliedSuggestionIndexes.length + appliedRedlineRefs.length} change{appliedSuggestionIndexes.length + appliedRedlineRefs.length === 1 ? '' : 's'} applied -
                             saved as one new document version, not one file per change.
                           </span>
                           <button
@@ -3302,13 +3302,13 @@ function AgreementDetailScreen() {
 
                   {!suggestion.suggestedText && (
                     <p className="arv__suggestion-hint">
-                      This suggestion is about editing or removing existing wording, so there's no ready-to-insert text — apply it manually in the document.
+                      This suggestion is about editing or removing existing wording, so there's no ready-to-insert text - apply it manually in the document.
                     </p>
                   )}
 
                   {suggestion.suggestedText && aiReviewAttachmentId === 'ALL' && (
                     <p className="arv__error">
-                      Applying suggestions needs one specific document selected — go back and pick a single document instead of "All documents combined".
+                      Applying suggestions needs one specific document selected - go back and pick a single document instead of "All documents combined".
                     </p>
                   )}
                 </div>
@@ -3372,7 +3372,7 @@ function AgreementDetailScreen() {
 
                   {!canApply && (
                     <p className="arv__error">
-                      Applying redlines needs one specific document selected — go back and pick a single document instead of "All documents combined".
+                      Applying redlines needs one specific document selected - go back and pick a single document instead of "All documents combined".
                     </p>
                   )}
                 </div>
@@ -3402,7 +3402,7 @@ function AgreementDetailScreen() {
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Send for signature</h3>
               <p className="agrd__modal-subtitle">
-                Sends the document to DocuSign for e-signature. Sandbox mode — signatures aren't legally binding yet.
+                Sends the document to DocuSign for e-signature. Sandbox mode - signatures aren't legally binding yet.
                 {signersList.length > 1 && ` Make sure the document also has the matching /sig{n}/, /name{n}/, /title{n}/, /date{n}/ tags for each of the ${signersList.length} signers.`}
               </p>
 
@@ -3410,7 +3410,7 @@ function AgreementDetailScreen() {
 
               <h4 className="agrd__review-section-title">Documents</h4>
               <p className="agrd__modal-hint">
-                Select one or more — everything checked gets sent together in a single signing envelope.
+                Select one or more - everything checked gets sent together in a single signing envelope.
               </p>
               {(agreement.attachments || []).length === 0 ? (
                 <p className="agrd__modal-hint">No attachments on this agreement yet.</p>
@@ -3504,7 +3504,7 @@ function AgreementDetailScreen() {
               )}
               {signersList.length > 1 && (
                 <p className="agrd__modal-hint agrd__modal-hint--top">
-                  Sequential — each signer is only notified after the previous one signs. Drag ⠿ to reorder.
+                  Sequential - each signer is only notified after the previous one signs. Drag ⠿ to reorder.
                 </p>
               )}
 

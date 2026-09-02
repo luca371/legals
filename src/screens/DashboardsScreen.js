@@ -563,7 +563,7 @@ function DashboardsScreen() {
         <div className="dbd__kpi-card">
           <ClockIcon />
           <div>
-            <span className="dbd__kpi-value">{avgTimeToContract !== null ? `${avgTimeToContract}d` : '—'}</span>
+            <span className="dbd__kpi-value">{avgTimeToContract !== null ? `${avgTimeToContract}d` : '-'}</span>
             <span className="dbd__kpi-label">Avg. time to contract{hasApproximateTtc ? '*' : ''}</span>
           </div>
         </div>
@@ -578,7 +578,7 @@ function DashboardsScreen() {
           <ValueIcon />
           <div>
             <span className="dbd__kpi-value">
-              {totalActiveValue !== null ? totalActiveValue.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '—'}
+              {totalActiveValue !== null ? totalActiveValue.toLocaleString(undefined, { maximumFractionDigits: 0 }) : '-'}
             </span>
             <span className="dbd__kpi-label">
               {valueFieldDef ? `Active value (${valueFieldDef.label})` : 'Active contract value (no numeric field set up)'}
@@ -748,7 +748,7 @@ function DashboardsScreen() {
               <h3 className="dbd__card-title">Time to contract by type</h3>
             </div>
             {ttcByType.length === 0 ? (
-              <p className="dbd__chart-empty">Not enough data yet — needs agreements that reached "Activated".</p>
+              <p className="dbd__chart-empty">Not enough data yet - needs agreements that reached "Activated".</p>
             ) : (
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart data={ttcByType} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
@@ -761,7 +761,7 @@ function DashboardsScreen() {
               </ResponsiveContainer>
             )}
             {hasApproximateTtc && (
-              <p className="dbd__footnote">*Some values are approximate — older agreements created before status history tracking use createdAt/updatedAt as a stand-in.</p>
+              <p className="dbd__footnote">*Some values are approximate - older agreements created before status history tracking use createdAt/updatedAt as a stand-in.</p>
             )}
           </div>
 
@@ -797,7 +797,7 @@ function DashboardsScreen() {
               <h3 className="dbd__card-title">Recent activity</h3>
             </div>
             {activityFeed.length === 0 ? (
-              <p className="dbd__chart-empty">Nothing yet — activity shows up here as agreements get created, sent, and signed.</p>
+              <p className="dbd__chart-empty">Nothing yet - activity shows up here as agreements get created, sent, and signed.</p>
             ) : (
               <div className="dbd__activity-list">
                 {activityFeed.map((e) => (

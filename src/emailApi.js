@@ -22,7 +22,7 @@ export const sendApprovalEmail = async ({
     EMAILJS_TEMPLATE_ID === 'YOUR_TEMPLATE_ID' ||
     EMAILJS_PUBLIC_KEY === 'YOUR_PUBLIC_KEY'
   ) {
-    throw new Error('EmailJS is not configured yet — set the IDs in src/emailApi.js.');
+    throw new Error('EmailJS is not configured yet - set the IDs in src/emailApi.js.');
   }
 
   return emailjs.send(
@@ -51,7 +51,7 @@ export const sendActivationEmail = async ({
   ccEmail,
 }) => {
   if (ACTIVATION_TEMPLATE_ID === 'YOUR_ACTIVATION_TEMPLATE_ID') {
-    throw new Error('The activation email template is not configured yet — set ACTIVATION_TEMPLATE_ID in src/emailApi.js.');
+    throw new Error('The activation email template is not configured yet - set ACTIVATION_TEMPLATE_ID in src/emailApi.js.');
   }
 
   return emailjs.send(
@@ -85,7 +85,7 @@ export const sendReviewEmail = async ({
   ccEmail,
 }) => {
   if (REVIEW_TEMPLATE_ID === 'YOUR_REVIEW_TEMPLATE_ID') {
-    throw new Error('The review email template is not configured yet — set REVIEW_TEMPLATE_ID in src/emailApi.js.');
+    throw new Error('The review email template is not configured yet - set REVIEW_TEMPLATE_ID in src/emailApi.js.');
   }
 
   return emailjs.send(

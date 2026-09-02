@@ -215,7 +215,7 @@ function SettingsScreen() {
 
       <div className="settings__card">
         <div className="settings__card-header">
-          <h3 className="settings__card-title">Signature usage — this month</h3>
+          <h3 className="settings__card-title">Signature usage - this month</h3>
           <span className="settings__card-hint">
             {SIGNATURES_INCLUDED_PER_USER} signatures included per active user / month
           </span>
@@ -249,7 +249,7 @@ function SettingsScreen() {
             </div>
             {usage.over > 0 && (
               <p className="settings__overage-note">
-                {usage.over} signature{usage.over === 1 ? '' : 's'} over quota this month, at €{SIGNATURE_OVERAGE_PRICE} each —
+                {usage.over} signature{usage.over === 1 ? '' : 's'} over quota this month, at €{SIGNATURE_OVERAGE_PRICE} each -
                 estimated extra charge: <strong>€{usage.overageCost}</strong>.
               </p>
             )}
@@ -263,7 +263,7 @@ function SettingsScreen() {
         <div className="settings__card-header">
           <h3 className="settings__card-title">Expiration reminders</h3>
           <span className="settings__card-hint">
-            How many days before an "Activated" agreement's end date its creator gets an email reminder — runs
+            How many days before an "Activated" agreement's end date its creator gets an email reminder - runs
             automatically once a day. Each threshold only ever emails once per agreement.
           </span>
         </div>
@@ -274,7 +274,7 @@ function SettingsScreen() {
           <>
             <div className="settings__reminder-days">
               {reminderDays.length === 0 ? (
-                <span className="settings__card-hint">No reminders configured — agreements won't get expiry emails.</span>
+                <span className="settings__card-hint">No reminders configured - agreements won't get expiry emails.</span>
               ) : (
                 reminderDays.map((d) => (
                   <span key={d} className="settings__reminder-chip">
@@ -317,10 +317,10 @@ function SettingsScreen() {
 
       <div className="settings__card">
         <div className="settings__card-header">
-          <h3 className="settings__card-title">Ask AI — search index</h3>
+          <h3 className="settings__card-title">Ask AI - search index</h3>
           <span className="settings__card-hint">
             Powers "search by meaning" in Ask AI, across agreements, accounts, and templates. New and edited records
-            index automatically — use this to (re)index everything at once, e.g. before a demo.
+            index automatically - use this to (re)index everything at once, e.g. before a demo.
           </span>
         </div>
 
@@ -341,7 +341,7 @@ function SettingsScreen() {
 
         {!reindexing && reindexFinished && (
           <p className={reindexFailed > 0 ? 'settings__overage-note' : 'settings__card-hint'}>
-            Done — indexed {reindexDone - reindexFailed} of {reindexTotal} record{reindexTotal === 1 ? '' : 's'}
+            Done - indexed {reindexDone - reindexFailed} of {reindexTotal} record{reindexTotal === 1 ? '' : 's'}
             {reindexFailed > 0 ? `, ${reindexFailed} failed (check the console for details).` : '.'}
           </p>
         )}
@@ -355,7 +355,7 @@ function SettingsScreen() {
         <div className="settings__card-header">
           <h3 className="settings__card-title">Playbooks</h3>
           <span className="settings__card-hint">
-            Organization-wide compliance rulesets — assign them to accounts from that account's Playbook tab, then
+            Organization-wide compliance rulesets - assign them to accounts from that account's Playbook tab, then
             pick a subset when reviewing a specific agreement with AI.
           </span>
         </div>
@@ -397,7 +397,7 @@ function SettingsScreen() {
         {loadingPlaybooks ? (
           <p className="settings__loading">Loading…</p>
         ) : playbooks.length === 0 && editingPlaybookId === null ? (
-          <p className="settings__card-hint">No playbooks yet — add one above.</p>
+          <p className="settings__card-hint">No playbooks yet - add one above.</p>
         ) : (
           <div className="settings__playbook-list">
             {playbooks.map((pb) => (

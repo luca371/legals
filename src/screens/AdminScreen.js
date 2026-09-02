@@ -87,7 +87,7 @@ const FIELD_TYPES = [
 
 function fieldTypeDisplay(f) {
   if (f.type === 'dropdown') return `Dropdown (${(f.options || []).join(', ')})`;
-  if (f.type === 'lookup') return `Lookup to ${OBJECT_LABELS[f.lookupTarget] || '—'}`;
+  if (f.type === 'lookup') return `Lookup to ${OBJECT_LABELS[f.lookupTarget] || '-'}`;
   return FIELD_TYPES.find((t) => t.value === f.type)?.label || f.type;
 }
 
@@ -458,8 +458,8 @@ function AdminScreen() {
                       <td>{u.firstName} {u.lastName}</td>
                       <td>{u.email}</td>
                       <td>{u.role}</td>
-                      <td>{u.department || '—'}</td>
-                      <td>{u.employeeId || '—'}</td>
+                      <td>{u.department || '-'}</td>
+                      <td>{u.employeeId || '-'}</td>
                       <td>
                         <span className={`admin__status ${u.isActive === false ? 'admin__status--inactive' : 'admin__status--active'}`}>
                           {u.isActive === false ? 'Inactive' : 'Active'}
@@ -566,7 +566,7 @@ function AdminScreen() {
 
               <label className="admin__label" htmlFor="email">Email</label>
               <input id="email" name="email" type="email" className="admin__input" value={form.email} onChange={handleChange} required disabled={isEditMode} />
-              {isEditMode && <p className="admin__hint admin__hint--top">Email can't be changed here yet — it's tied to the login account.</p>}
+              {isEditMode && <p className="admin__hint admin__hint--top">Email can't be changed here yet - it's tied to the login account.</p>}
 
               <label className="admin__label" htmlFor="role">Role</label>
               <input id="role" name="role" className="admin__input" placeholder="e.g. Legal Counsel, Sales Rep" value={form.role} onChange={handleChange} required />
@@ -650,7 +650,7 @@ function AdminScreen() {
         <div className="admin__modal-backdrop" onClick={() => setEditingBuiltIn(null)}>
           <div className="admin__modal" onClick={(e) => e.stopPropagation()}>
             <div className="admin__modal-scroll">
-              <h3 className="admin__modal-title">Edit options — {editingBuiltIn.label}</h3>
+              <h3 className="admin__modal-title">Edit options - {editingBuiltIn.label}</h3>
               <p className="admin__hint" style={{ marginBottom: 16 }}>
                 These options will appear as dropdown choices when creating or editing an agreement.
               </p>
