@@ -22,7 +22,7 @@ const TOOLS = [
   {
     name: 'list_agreements',
     description:
-      "Lists agreements (contracts) with compact summaries (title, account, type, status, dates) — no document text included. Use get_agreement_details afterwards to read a specific contract's full content.",
+      "Lists agreements (contracts) with compact summaries (title, account, type, status, dates, createdBy — the email of who created it) — no document text included. There's no server-side filter for createdBy, but every returned record has it, so count/filter by creator yourself after fetching. Use get_agreement_details afterwards to read a specific contract's full content.",
     input_schema: {
       type: 'object',
       properties: {

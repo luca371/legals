@@ -100,6 +100,8 @@ async function executeTool(name, input = {}) {
           status: a.status,
           effectiveDate: a.effectiveDate,
           endDate: a.endDate,
+          createdBy: a.createdBy,
+          createdAt: a.createdAt,
         }));
       }
       case 'search_agreements_semantic': {
@@ -128,6 +130,8 @@ async function executeTool(name, input = {}) {
           status: agreement.status,
           effectiveDate: agreement.effectiveDate,
           endDate: agreement.endDate,
+          createdBy: agreement.createdBy,
+          createdAt: agreement.createdAt,
           customFields: agreement.customFields || {},
           documents,
         };
