@@ -888,6 +888,30 @@ export const updateDocusignEnvelope = async (agreementId, envelopeId, patch) => 
   if (error) throw error;
 };
 
+export const DEFAULT_REMINDER_DAYS = [30, 14, 7, 1];
+
+// How many days before an agreement's end date the expiry-reminders cron
+// job emails its creator — one row per tenant, defaults applied client-side
+// when the tenant hasn't customized it yet.
+export const getReminderSettings = async () => {
+  const tenantId = await getCurrentTenantId();
+  const { data, error } = await supabase
+    .from('tenant_settings')
+    .select('reminder_days')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) throw error;
+  return Array.isArray(data?.reminder_days) && data.reminder_days.length > 0 ? data.reminder_days : DEFAULT_REMINDER_DAYS;
+};
+
+export const updateReminderSettings = async (reminderDays) => {
+  const tenantId = await getCurrentTenantId();
+  const { error } = await supabase
+    .from('tenant_settings')
+    .upsert({ tenant_id: tenantId, reminder_days: reminderDays, updated_at: new Date().toISOString() });
+  if (error) throw error;
+};
+
 export const SIGNATURES_INCLUDED_PER_USER = 10;
 export const SIGNATURE_OVERAGE_PRICE = 2;
 

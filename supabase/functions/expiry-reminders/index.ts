@@ -5,7 +5,7 @@ import { sendEmailJs } from '../_shared/emailjs.ts';
 // Runs across every tenant, on a schedule (see the pg_cron job set up in
 // SQL) — not a per-user action, so it always uses the service role key to
 // bypass RLS rather than a caller's JWT.
-const THRESHOLDS = [30, 14, 7, 1];
+const DEFAULT_THRESHOLDS = [30, 14, 7, 1];
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -24,11 +24,23 @@ Deno.serve(async (req) => {
 
     const { data: agreements, error } = await supabase
       .from('agreements')
-      .select('id, title, account_name, end_date, status, created_by, reminders_sent')
+      .select('id, tenant_id, title, account_name, end_date, status, created_by, reminders_sent')
       .eq('status', 'Activated')
       .not('end_date', 'is', null);
 
     if (error) throw error;
+
+    const { data: tenantSettings, error: settingsError } = await supabase
+      .from('tenant_settings')
+      .select('tenant_id, reminder_days');
+    if (settingsError) throw settingsError;
+
+    const thresholdsByTenant = new Map<string, number[]>(
+      (tenantSettings || []).map((s: { tenant_id: string; reminder_days: unknown }) => [
+        s.tenant_id,
+        Array.isArray(s.reminder_days) && s.reminder_days.length > 0 ? (s.reminder_days as number[]) : DEFAULT_THRESHOLDS,
+      ])
+    );
 
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -44,8 +56,9 @@ Deno.serve(async (req) => {
       const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
       if (daysLeft < 0) continue;
 
+      const thresholds = thresholdsByTenant.get(a.tenant_id) || DEFAULT_THRESHOLDS;
       const alreadySent: number[] = Array.isArray(a.reminders_sent) ? a.reminders_sent : [];
-      const crossed = THRESHOLDS.filter((t) => daysLeft <= t && !alreadySent.includes(t));
+      const crossed = thresholds.filter((t) => daysLeft <= t && !alreadySent.includes(t));
       if (crossed.length === 0) continue;
 
       if (!a.created_by) {

@@ -9,6 +9,8 @@ import {
   createPlaybook,
   updatePlaybook,
   deletePlaybook,
+  getReminderSettings,
+  updateReminderSettings,
   SIGNATURES_INCLUDED_PER_USER,
   SIGNATURE_OVERAGE_PRICE,
 } from '../supabase';
@@ -49,6 +51,23 @@ function SettingsScreen() {
     }
   };
 
+  const [reminderDays, setReminderDays] = useState([]);
+  const [loadingReminderDays, setLoadingReminderDays] = useState(true);
+  const [newReminderDay, setNewReminderDay] = useState('');
+  const [savingReminderDays, setSavingReminderDays] = useState(false);
+  const [reminderDaysSaved, setReminderDaysSaved] = useState(false);
+
+  const loadReminderDays = async () => {
+    setLoadingReminderDays(true);
+    try {
+      setReminderDays(await getReminderSettings());
+    } catch (err) {
+      console.error('Failed to load reminder settings:', err);
+    } finally {
+      setLoadingReminderDays(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -62,7 +81,35 @@ function SettingsScreen() {
     };
     load();
     loadPlaybooks();
+    loadReminderDays();
   }, []);
+
+  const handleAddReminderDay = () => {
+    const value = parseInt(newReminderDay, 10);
+    if (!Number.isFinite(value) || value <= 0 || reminderDays.includes(value)) return;
+    setReminderDays((prev) => [...prev, value].sort((a, b) => b - a));
+    setNewReminderDay('');
+    setReminderDaysSaved(false);
+  };
+
+  const handleRemoveReminderDay = (value) => {
+    setReminderDays((prev) => prev.filter((d) => d !== value));
+    setReminderDaysSaved(false);
+  };
+
+  const handleSaveReminderDays = async () => {
+    setSavingReminderDays(true);
+    setReminderDaysSaved(false);
+    try {
+      await updateReminderSettings(reminderDays);
+      setReminderDaysSaved(true);
+    } catch (err) {
+      console.error('Failed to save reminder settings:', err);
+      alert('Could not save reminder settings. Please try again.');
+    } finally {
+      setSavingReminderDays(false);
+    }
+  };
 
   const handleStartNewPlaybook = () => {
     setEditingPlaybookId('new');
@@ -209,6 +256,62 @@ function SettingsScreen() {
           </>
         ) : (
           <p className="settings__loading">Could not load usage data.</p>
+        )}
+      </div>
+
+      <div className="settings__card">
+        <div className="settings__card-header">
+          <h3 className="settings__card-title">Expiration reminders</h3>
+          <span className="settings__card-hint">
+            How many days before an "Activated" agreement's end date its creator gets an email reminder — runs
+            automatically once a day. Each threshold only ever emails once per agreement.
+          </span>
+        </div>
+
+        {loadingReminderDays ? (
+          <p className="settings__loading">Loading…</p>
+        ) : (
+          <>
+            <div className="settings__reminder-days">
+              {reminderDays.length === 0 ? (
+                <span className="settings__card-hint">No reminders configured — agreements won't get expiry emails.</span>
+              ) : (
+                reminderDays.map((d) => (
+                  <span key={d} className="settings__reminder-chip">
+                    {d} day{d === 1 ? '' : 's'} before
+                    <button
+                      type="button"
+                      className="settings__reminder-chip-remove"
+                      onClick={() => handleRemoveReminderDay(d)}
+                      aria-label={`Remove ${d}-day reminder`}
+                    >
+                      ✕
+                    </button>
+                  </span>
+                ))
+              )}
+            </div>
+            <div className="settings__reminder-add-row">
+              <input
+                type="number"
+                min="1"
+                className="settings__playbook-input settings__reminder-add-input"
+                placeholder="e.g. 60"
+                value={newReminderDay}
+                onChange={(e) => setNewReminderDay(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddReminderDay(); } }}
+              />
+              <button type="button" className="settings__reindex-btn settings__reindex-btn--secondary" onClick={handleAddReminderDay}>
+                + Add threshold
+              </button>
+            </div>
+            <div className="settings__playbook-form-actions">
+              {reminderDaysSaved && <span className="settings__reminder-saved">✓ Saved</span>}
+              <button type="button" className="settings__reindex-btn" onClick={handleSaveReminderDays} disabled={savingReminderDays}>
+                {savingReminderDays ? 'Saving…' : 'Save reminders'}
+              </button>
+            </div>
+          </>
         )}
       </div>
 
