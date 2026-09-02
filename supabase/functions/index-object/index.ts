@@ -113,6 +113,19 @@ async function buildTemplateText(supabase: ReturnType<typeof createClient>, id: 
   return { tenantId: data.tenant_id, text: combined };
 }
 
+async function buildClauseText(supabase: ReturnType<typeof createClient>, id: string) {
+  const { data, error } = await supabase
+    .from('clause_library')
+    .select('tenant_id, title, category, body, language')
+    .eq('id', id)
+    .single();
+  if (error || !data) return null;
+
+  const combined = [data.title, data.category, data.language, data.body].filter(Boolean).join('\n').slice(0, 4000);
+
+  return { tenantId: data.tenant_id, text: combined };
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -123,8 +136,8 @@ Deno.serve(async (req) => {
     if (!objectType || !objectId) {
       return jsonResponse({ error: 'objectType and objectId are required.' }, 400);
     }
-    if (!['agreement', 'account', 'template'].includes(objectType)) {
-      return jsonResponse({ error: 'objectType must be agreement, account, or template.' }, 400);
+    if (!['agreement', 'account', 'template', 'clause'].includes(objectType)) {
+      return jsonResponse({ error: 'objectType must be agreement, account, template, or clause.' }, 400);
     }
 
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -132,9 +145,13 @@ Deno.serve(async (req) => {
       global: { headers: { Authorization: authHeader } },
     });
 
-    const builder =
-      objectType === 'agreement' ? buildAgreementText : objectType === 'account' ? buildAccountText : buildTemplateText;
-    const built = await builder(supabase, objectId);
+    const builders: Record<string, typeof buildAgreementText> = {
+      agreement: buildAgreementText,
+      account: buildAccountText,
+      template: buildTemplateText,
+      clause: buildClauseText,
+    };
+    const built = await builders[objectType](supabase, objectId);
 
     if (!built) {
       return jsonResponse({ error: `${objectType} not found or not accessible.` }, 404);

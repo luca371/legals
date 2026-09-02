@@ -4,6 +4,11 @@ import {
   listAgreements,
   listAccounts,
   listTemplates,
+  listClauseLibrary,
+  listPlaybooks,
+  createPlaybook,
+  updatePlaybook,
+  deletePlaybook,
   SIGNATURES_INCLUDED_PER_USER,
   SIGNATURE_OVERAGE_PRICE,
 } from '../supabase';
@@ -26,6 +31,24 @@ function SettingsScreen() {
   const [reindexFailed, setReindexFailed] = useState(0);
   const [reindexFinished, setReindexFinished] = useState(false);
 
+  const [playbooks, setPlaybooks] = useState([]);
+  const [loadingPlaybooks, setLoadingPlaybooks] = useState(true);
+  const [editingPlaybookId, setEditingPlaybookId] = useState(null); // null | 'new' | an id
+  const [playbookForm, setPlaybookForm] = useState({ title: '', body: '' });
+  const [savingPlaybook, setSavingPlaybook] = useState(false);
+  const [playbookError, setPlaybookError] = useState('');
+
+  const loadPlaybooks = async () => {
+    setLoadingPlaybooks(true);
+    try {
+      setPlaybooks(await listPlaybooks());
+    } catch (err) {
+      console.error('Failed to load playbooks:', err);
+    } finally {
+      setLoadingPlaybooks(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -38,7 +61,59 @@ function SettingsScreen() {
       }
     };
     load();
+    loadPlaybooks();
   }, []);
+
+  const handleStartNewPlaybook = () => {
+    setEditingPlaybookId('new');
+    setPlaybookForm({ title: '', body: '' });
+    setPlaybookError('');
+  };
+
+  const handleStartEditPlaybook = (pb) => {
+    setEditingPlaybookId(pb.id);
+    setPlaybookForm({ title: pb.title, body: pb.body });
+    setPlaybookError('');
+  };
+
+  const handleCancelPlaybookEdit = () => {
+    setEditingPlaybookId(null);
+    setPlaybookForm({ title: '', body: '' });
+    setPlaybookError('');
+  };
+
+  const handleSavePlaybook = async (e) => {
+    e.preventDefault();
+    if (!playbookForm.title.trim() || !playbookForm.body.trim()) return;
+    setSavingPlaybook(true);
+    setPlaybookError('');
+    try {
+      if (editingPlaybookId === 'new') {
+        await createPlaybook(playbookForm);
+      } else {
+        await updatePlaybook(editingPlaybookId, playbookForm);
+      }
+      setEditingPlaybookId(null);
+      setPlaybookForm({ title: '', body: '' });
+      await loadPlaybooks();
+    } catch (err) {
+      console.error('Failed to save playbook:', err);
+      setPlaybookError('Could not save the playbook. Please try again.');
+    } finally {
+      setSavingPlaybook(false);
+    }
+  };
+
+  const handleDeletePlaybook = async (id) => {
+    if (!window.confirm('Delete this playbook? Accounts it\'s assigned to will lose it too. This can\'t be undone.')) return;
+    try {
+      await deletePlaybook(id);
+      setPlaybooks((prev) => prev.filter((p) => p.id !== id));
+    } catch (err) {
+      console.error('Failed to delete playbook:', err);
+      alert('Could not delete the playbook. Please try again.');
+    }
+  };
 
   const pct = usage && usage.included > 0 ? Math.min(100, Math.round((usage.used / usage.included) * 100)) : 0;
 
@@ -48,11 +123,17 @@ function SettingsScreen() {
     setReindexDone(0);
     setReindexFailed(0);
     try {
-      const [agreements, accounts, templates] = await Promise.all([listAgreements(), listAccounts(), listTemplates()]);
+      const [agreements, accounts, templates, clauses] = await Promise.all([
+        listAgreements(),
+        listAccounts(),
+        listTemplates(),
+        listClauseLibrary(),
+      ]);
       const items = [
         ...agreements.map((a) => ({ objectType: 'agreement', id: a.id, label: a.title })),
         ...accounts.map((a) => ({ objectType: 'account', id: a.id, label: a.name })),
         ...templates.map((t) => ({ objectType: 'template', id: t.id, label: t.name })),
+        ...clauses.map((c) => ({ objectType: 'clause', id: c.id, label: c.title })),
       ];
       setReindexTotal(items.length);
 
@@ -165,6 +246,75 @@ function SettingsScreen() {
         <button type="button" className="settings__reindex-btn" onClick={handleReindexAll} disabled={reindexing}>
           {reindexing ? 'Indexing…' : 'Reindex everything'}
         </button>
+      </div>
+
+      <div className="settings__card">
+        <div className="settings__card-header">
+          <h3 className="settings__card-title">Playbooks</h3>
+          <span className="settings__card-hint">
+            Organization-wide compliance rulesets — assign them to accounts from that account's Playbook tab, then
+            pick a subset when reviewing a specific agreement with AI.
+          </span>
+        </div>
+
+        {editingPlaybookId === null ? (
+          <button type="button" className="settings__reindex-btn" onClick={handleStartNewPlaybook}>
+            + Add playbook
+          </button>
+        ) : (
+          <form className="settings__playbook-form" onSubmit={handleSavePlaybook}>
+            {playbookError && <p className="settings__overage-note">{playbookError}</p>}
+            <input
+              type="text"
+              className="settings__playbook-input"
+              placeholder="Playbook name, e.g. “Procurement rules”"
+              value={playbookForm.title}
+              onChange={(e) => setPlaybookForm((f) => ({ ...f, title: e.target.value }))}
+              required
+            />
+            <textarea
+              className="settings__playbook-input settings__playbook-textarea"
+              value={playbookForm.body}
+              onChange={(e) => setPlaybookForm((f) => ({ ...f, body: e.target.value }))}
+              placeholder="e.g.&#10;- Payment terms must not exceed Net 60&#10;- Liability cap must be at least 1x annual fees&#10;- Governing law must be Romanian law"
+              rows={8}
+              required
+            />
+            <div className="settings__playbook-form-actions">
+              <button type="button" className="settings__reindex-btn settings__reindex-btn--secondary" onClick={handleCancelPlaybookEdit}>
+                Cancel
+              </button>
+              <button type="submit" className="settings__reindex-btn" disabled={savingPlaybook}>
+                {savingPlaybook ? 'Saving…' : 'Save playbook'}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {loadingPlaybooks ? (
+          <p className="settings__loading">Loading…</p>
+        ) : playbooks.length === 0 && editingPlaybookId === null ? (
+          <p className="settings__card-hint">No playbooks yet — add one above.</p>
+        ) : (
+          <div className="settings__playbook-list">
+            {playbooks.map((pb) => (
+              <div key={pb.id} className="settings__playbook-card">
+                <div className="settings__playbook-card-header">
+                  <span className="settings__playbook-card-title">{pb.title}</span>
+                  <div className="settings__playbook-card-actions">
+                    <button type="button" className="settings__reindex-btn--link" onClick={() => handleStartEditPlaybook(pb)}>
+                      Edit
+                    </button>
+                    <button type="button" className="settings__reindex-btn--link settings__reindex-btn--danger" onClick={() => handleDeletePlaybook(pb.id)}>
+                      Delete
+                    </button>
+                  </div>
+                </div>
+                <p className="settings__playbook-card-body">{pb.body}</p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

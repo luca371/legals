@@ -1,6 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getAccount, updateAccount, deleteAccount, listAgreementsByAccount, getObjectSchema } from '../supabase';
+import {
+  getAccount,
+  updateAccount,
+  deleteAccount,
+  listAgreementsByAccount,
+  getObjectSchema,
+  listPlaybooks,
+  listAssignedPlaybookIds,
+  setAccountPlaybooks,
+} from '../supabase';
 import { indexObject } from '../embeddingsApi';
 import './AccountDetailScreen.css';
 
@@ -42,6 +51,13 @@ function AccountDetailScreen() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
+  const [allPlaybooks, setAllPlaybooks] = useState([]);
+  const [assignedPlaybookIds, setAssignedPlaybookIds] = useState([]);
+  const [loadingPlaybooks, setLoadingPlaybooks] = useState(true);
+  const [savingPlaybooks, setSavingPlaybooks] = useState(false);
+  const [playbookError, setPlaybookError] = useState('');
+  const [playbooksSaved, setPlaybooksSaved] = useState(false);
+
   const load = async () => {
     setLoading(true);
     try {
@@ -74,10 +90,24 @@ function AccountDetailScreen() {
     }
   };
 
+  const loadPlaybooks = async () => {
+    setLoadingPlaybooks(true);
+    try {
+      const [all, assigned] = await Promise.all([listPlaybooks(), listAssignedPlaybookIds(accountId)]);
+      setAllPlaybooks(all);
+      setAssignedPlaybookIds(assigned);
+    } catch (err) {
+      console.error('Failed to load playbooks:', err);
+    } finally {
+      setLoadingPlaybooks(false);
+    }
+  };
+
   useEffect(() => {
     if (!accountId) return;
     load();
     loadAgreements();
+    loadPlaybooks();
   }, [accountId]);
 
   const handleStartEdit = () => {
@@ -142,6 +172,25 @@ function AccountDetailScreen() {
     }
   };
 
+  const togglePlaybookAssigned = (id) => {
+    setAssignedPlaybookIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
+    setPlaybooksSaved(false);
+  };
+
+  const handleSavePlaybookAssignments = async () => {
+    setSavingPlaybooks(true);
+    setPlaybookError('');
+    try {
+      await setAccountPlaybooks(accountId, assignedPlaybookIds);
+      setPlaybooksSaved(true);
+    } catch (err) {
+      console.error('Failed to save playbook assignments:', err);
+      setPlaybookError('Could not save. Please try again.');
+    } finally {
+      setSavingPlaybooks(false);
+    }
+  };
+
   const renderCustomFieldInput = (field) => {
     const value = customValues[field.id] ?? '';
     if (field.type === 'dropdown') {
@@ -193,6 +242,12 @@ function AccountDetailScreen() {
               {agreements.length > 0 && (
                 <span className="accd__tab-badge">{agreements.length}</span>
               )}
+            </button>
+            <button
+              className={`accd__tab ${activeTab === 'playbook' ? 'accd__tab--active' : ''}`}
+              onClick={() => setActiveTab('playbook')}
+            >
+              Playbook
             </button>
           </div>
 
@@ -370,6 +425,60 @@ function AccountDetailScreen() {
                 </div>
               )}
             </>
+          )}
+
+          {activeTab === 'playbook' && (
+            <div className="accd__playbook">
+              <div className="accd__playbook-header">
+                <p className="accd__playbook-hint">
+                  Playbooks are created once for the whole organization — pick below which ones apply to this
+                  client. When reviewing one of its agreements with AI, the reviewer can narrow it down further to
+                  just the playbooks relevant for that specific contract.
+                </p>
+                <button type="button" className="accd__btn-secondary" onClick={() => navigate('/dashboard/settings')}>
+                  Manage playbooks
+                </button>
+              </div>
+
+              {playbookError && <p className="accd__error">{playbookError}</p>}
+
+              {loadingPlaybooks ? (
+                <p className="accd__empty">Loading…</p>
+              ) : allPlaybooks.length === 0 ? (
+                <p className="accd__empty">
+                  No playbooks exist yet for your organization — create one from Settings first.
+                </p>
+              ) : (
+                <>
+                  <div className="accd__playbook-assign-list">
+                    {allPlaybooks.map((pb) => (
+                      <label key={pb.id} className="accd__playbook-assign-row">
+                        <input
+                          type="checkbox"
+                          checked={assignedPlaybookIds.includes(pb.id)}
+                          onChange={() => togglePlaybookAssigned(pb.id)}
+                        />
+                        <div>
+                          <span className="accd__playbook-card-title">{pb.title}</span>
+                          <p className="accd__playbook-card-body">{pb.body}</p>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  <div className="accd__playbook-actions">
+                    {playbooksSaved && <span className="accd__playbook-saved">✓ Saved</span>}
+                    <button
+                      type="button"
+                      className="accd__btn-primary"
+                      onClick={handleSavePlaybookAssignments}
+                      disabled={savingPlaybooks}
+                    >
+                      {savingPlaybooks ? 'Saving…' : 'Save assignments'}
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
           )}
 
         </div>

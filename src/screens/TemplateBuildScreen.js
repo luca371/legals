@@ -9,9 +9,12 @@ import {
   listTemplates,
   deleteTemplate,
   listAgreements,
+  listClauseLibrary,
+  createClause,
+  deleteClause,
 } from '../supabase';
 import { analyzeTemplateWithAI, suggestClausesWithAI, analyzeClauseWithAI } from '../aiApi';
-import { indexObject } from '../embeddingsApi';
+import { indexObject, semanticSearch } from '../embeddingsApi';
 import './TemplateBuildScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
@@ -196,6 +199,19 @@ function TemplateBuildScreen() {
   const [clauseDetailCache, setClauseDetailCache] = useState({});
   const [loadingClauseDetail, setLoadingClauseDetail] = useState(false);
   const [clauseDetailError, setClauseDetailError] = useState('');
+  const [savedToLibraryIds, setSavedToLibraryIds] = useState([]);
+
+  const [showLibraryModal, setShowLibraryModal] = useState(false);
+  const [libraryClauses, setLibraryClauses] = useState([]);
+  const [loadingLibrary, setLoadingLibrary] = useState(false);
+  const [libraryError, setLibraryError] = useState('');
+  const [librarySearch, setLibrarySearch] = useState('');
+  const [librarySearchResults, setLibrarySearchResults] = useState(null);
+  const [librarySearching, setLibrarySearching] = useState(false);
+  const [libraryInsertedIds, setLibraryInsertedIds] = useState([]);
+  const [showAddClauseForm, setShowAddClauseForm] = useState(false);
+  const [newClause, setNewClause] = useState({ title: '', category: '', body: '', language: 'English' });
+  const [savingClause, setSavingClause] = useState(false);
 
   const editableRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -616,6 +632,118 @@ function TemplateBuildScreen() {
     setInsertedClauseIds((prev) => [...prev, clause.id]);
   };
 
+  const insertClauseTextIntoDoc = (title, text) => {
+    const editable = editableRef.current;
+    if (!editable) return;
+
+    const nextNumber = detectNextClauseNumber(editable);
+    const p = document.createElement('p');
+    p.textContent = nextNumber ? `${nextNumber}. ${title}. ${text}` : `${title}. ${text}`;
+
+    const signatureBlock = findSignatureBlock(editable);
+    if (signatureBlock) {
+      editable.insertBefore(p, signatureBlock);
+    } else {
+      editable.appendChild(p);
+    }
+  };
+
+  const handleSaveClauseToLibrary = async (clause) => {
+    try {
+      const created = await createClause({
+        title: clause.title,
+        category: meta.agreementType || '',
+        body: clause.text,
+        language: meta.language,
+      });
+      indexObject('clause', created.id).catch((err) => console.warn('Clause indexing failed:', err));
+      setSavedToLibraryIds((prev) => [...prev, clause.id]);
+    } catch (err) {
+      console.error('Failed to save clause to library:', err);
+    }
+  };
+
+  const handleOpenLibraryModal = async () => {
+    setShowLibraryModal(true);
+    setLibrarySearch('');
+    setLibrarySearchResults(null);
+    setLibraryError('');
+    setLoadingLibrary(true);
+    try {
+      const clauses = await listClauseLibrary();
+      setLibraryClauses(clauses);
+    } catch (err) {
+      console.error('Failed to load clause library:', err);
+      setLibraryError(err.message || 'Could not load the clause library.');
+    } finally {
+      setLoadingLibrary(false);
+    }
+  };
+
+  const closeLibraryModal = () => {
+    setShowLibraryModal(false);
+    setShowAddClauseForm(false);
+    setNewClause({ title: '', category: '', body: '', language: 'English' });
+  };
+
+  const handleLibrarySearch = async (e) => {
+    e.preventDefault();
+    if (!librarySearch.trim()) {
+      setLibrarySearchResults(null);
+      return;
+    }
+    setLibrarySearching(true);
+    setLibraryError('');
+    try {
+      const results = await semanticSearch(librarySearch.trim(), 'clause');
+      setLibrarySearchResults(results);
+    } catch (err) {
+      console.error('Clause library search failed:', err);
+      setLibraryError(err.message || 'Search failed — try browsing the full list instead.');
+    } finally {
+      setLibrarySearching(false);
+    }
+  };
+
+  const handleInsertLibraryClause = (clause) => {
+    insertClauseTextIntoDoc(clause.title, clause.body);
+    setLibraryInsertedIds((prev) => [...prev, clause.id]);
+  };
+
+  const handleAddClauseSubmit = async (e) => {
+    e.preventDefault();
+    if (!newClause.title.trim() || !newClause.body.trim()) return;
+    setSavingClause(true);
+    setLibraryError('');
+    try {
+      const created = await createClause(newClause);
+      indexObject('clause', created.id).catch((err) => console.warn('Clause indexing failed:', err));
+      setLibraryClauses((prev) => [
+        { id: created.id, title: newClause.title, category: newClause.category, body: newClause.body, language: newClause.language },
+        ...prev,
+      ]);
+      setShowAddClauseForm(false);
+      setNewClause({ title: '', category: '', body: '', language: 'English' });
+    } catch (err) {
+      console.error('Failed to save clause:', err);
+      setLibraryError(err.message || 'Could not save this clause.');
+    } finally {
+      setSavingClause(false);
+    }
+  };
+
+  const handleDeleteLibraryClause = async (id) => {
+    try {
+      await deleteClause(id);
+      setLibraryClauses((prev) => prev.filter((c) => c.id !== id));
+    } catch (err) {
+      console.error('Failed to delete clause:', err);
+      setLibraryError(err.message || 'Could not delete this clause.');
+    }
+  };
+
+  const displayedLibraryClauses = librarySearchResults !== null ? librarySearchResults : libraryClauses;
+
   if (view === 'list') {
     return (
       <div className="tpl">
@@ -749,6 +877,9 @@ function TemplateBuildScreen() {
           <span className="tpl__tag tpl__tag--lang">{meta.language}</span>
         </div>
         <div className="tpl__topbar-actions">
+          <button className="tpl__btn-secondary" onClick={handleOpenLibraryModal} disabled={!htmlContent}>
+            Clause library
+          </button>
           <button className="tpl__btn-secondary" onClick={handleOpenClausesModal} disabled={!htmlContent}>
             Suggest clauses
           </button>
@@ -940,14 +1071,24 @@ function TemplateBuildScreen() {
                           <div key={clause.id} className="tpl__clause">
                             <div className="tpl__clause-header">
                               <span className="tpl__clause-title">{clause.title}</span>
-                              <button
-                                type="button"
-                                className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
-                                onClick={() => handleInsertClause(clause)}
-                                disabled={inserted}
-                              >
-                                {inserted ? '✓ Inserted' : 'Insert'}
-                              </button>
+                              <div className="tpl__clause-header-actions">
+                                <button
+                                  type="button"
+                                  className="tpl__btn-secondary tpl__btn-small"
+                                  onClick={() => handleSaveClauseToLibrary(clause)}
+                                  disabled={savedToLibraryIds.includes(clause.id)}
+                                >
+                                  {savedToLibraryIds.includes(clause.id) ? '✓ Saved' : 'Save to library'}
+                                </button>
+                                <button
+                                  type="button"
+                                  className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
+                                  onClick={() => handleInsertClause(clause)}
+                                  disabled={inserted}
+                                >
+                                  {inserted ? '✓ Inserted' : 'Insert'}
+                                </button>
+                              </div>
                             </div>
                             {clause.reason && <p className="tpl__clause-reason">{clause.reason}</p>}
                             <p className="tpl__clause-text">{clause.text}</p>
@@ -1084,6 +1225,137 @@ function TemplateBuildScreen() {
           </div>
         );
       })()}
+
+      {showLibraryModal && (
+        <div className="agrd__modal-backdrop" onClick={closeLibraryModal}>
+          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Clause library</h3>
+              <p className="agrd__modal-subtitle">
+                Reusable clauses shared across your templates — search by meaning or browse the full list.
+              </p>
+
+              <form className="tpl__library-search" onSubmit={handleLibrarySearch}>
+                <input
+                  type="text"
+                  className="tpl__input"
+                  placeholder="Search clauses by meaning, e.g. “limitation of liability”"
+                  value={librarySearch}
+                  onChange={(e) => setLibrarySearch(e.target.value)}
+                />
+                <button type="submit" className="tpl__btn-secondary" disabled={librarySearching}>
+                  {librarySearching ? 'Searching…' : 'Search'}
+                </button>
+                {librarySearchResults !== null && (
+                  <button
+                    type="button"
+                    className="tpl__btn-secondary"
+                    onClick={() => { setLibrarySearch(''); setLibrarySearchResults(null); }}
+                  >
+                    Clear
+                  </button>
+                )}
+              </form>
+
+              {libraryError && <p className="agrd__error">{libraryError}</p>}
+
+              <div className="tpl__library-header">
+                <span>{displayedLibraryClauses.length} clause{displayedLibraryClauses.length === 1 ? '' : 's'}</span>
+                <button type="button" className="tpl__ai-btn" onClick={() => setShowAddClauseForm((v) => !v)}>
+                  {showAddClauseForm ? 'Cancel' : '+ Add clause'}
+                </button>
+              </div>
+
+              {showAddClauseForm && (
+                <form className="tpl__library-add-form" onSubmit={handleAddClauseSubmit}>
+                  <input
+                    type="text"
+                    className="tpl__input"
+                    placeholder="Clause title"
+                    value={newClause.title}
+                    onChange={(e) => setNewClause((c) => ({ ...c, title: e.target.value }))}
+                    required
+                  />
+                  <div className="tpl__library-add-row">
+                    <input
+                      type="text"
+                      className="tpl__input"
+                      placeholder="Category (optional)"
+                      value={newClause.category}
+                      onChange={(e) => setNewClause((c) => ({ ...c, category: e.target.value }))}
+                    />
+                    <select
+                      className="tpl__input"
+                      value={newClause.language}
+                      onChange={(e) => setNewClause((c) => ({ ...c, language: e.target.value }))}
+                    >
+                      {LANGUAGES.map((lang) => <option key={lang} value={lang}>{lang}</option>)}
+                    </select>
+                  </div>
+                  <textarea
+                    className="tpl__input tpl__library-add-body"
+                    placeholder="Clause text"
+                    value={newClause.body}
+                    onChange={(e) => setNewClause((c) => ({ ...c, body: e.target.value }))}
+                    rows={4}
+                    required
+                  />
+                  <button type="submit" className="tpl__btn-primary" disabled={savingClause}>
+                    {savingClause ? 'Saving…' : 'Save clause'}
+                  </button>
+                </form>
+              )}
+
+              {loadingLibrary ? (
+                <p className="tpl__empty">Loading…</p>
+              ) : displayedLibraryClauses.length === 0 ? (
+                <p className="tpl__empty">
+                  {librarySearchResults !== null ? 'No matching clauses found.' : 'No clauses in the library yet — add one above.'}
+                </p>
+              ) : (
+                <div className="tpl__clause-list">
+                  {displayedLibraryClauses.map((clause) => {
+                    const inserted = libraryInsertedIds.includes(clause.id);
+                    return (
+                      <div key={clause.id} className="tpl__clause">
+                        <div className="tpl__clause-header">
+                          <span className="tpl__clause-title">{clause.title}</span>
+                          <div className="tpl__clause-header-actions">
+                            <button
+                              type="button"
+                              className="tpl__clause-delete"
+                              onClick={() => handleDeleteLibraryClause(clause.id)}
+                              aria-label="Delete clause"
+                            >
+                              ✕
+                            </button>
+                            <button
+                              type="button"
+                              className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
+                              onClick={() => handleInsertLibraryClause(clause)}
+                              disabled={inserted}
+                            >
+                              {inserted ? '✓ Inserted' : 'Insert'}
+                            </button>
+                          </div>
+                        </div>
+                        {clause.category && <p className="tpl__clause-reason">{clause.category} · {clause.language}</p>}
+                        <p className="tpl__clause-text">{clause.body}</p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeLibraryModal}>
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

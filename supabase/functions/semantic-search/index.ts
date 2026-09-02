@@ -12,8 +12,8 @@ Deno.serve(async (req) => {
     if (!query || !String(query).trim()) {
       return jsonResponse({ error: 'query is required.' }, 400);
     }
-    if (objectType && !['agreement', 'account', 'template'].includes(objectType)) {
-      return jsonResponse({ error: 'objectType must be agreement, account, or template.' }, 400);
+    if (objectType && !['agreement', 'account', 'template', 'clause'].includes(objectType)) {
+      return jsonResponse({ error: 'objectType must be agreement, account, template, or clause.' }, 400);
     }
 
     const authHeader = req.headers.get('Authorization') ?? '';
@@ -37,11 +37,11 @@ Deno.serve(async (req) => {
     }
 
     // deno-lint-ignore no-explicit-any
-    const byType: Record<string, any[]> = { agreement: [], account: [], template: [] };
+    const byType: Record<string, any[]> = { agreement: [], account: [], template: [], clause: [] };
     // deno-lint-ignore no-explicit-any
     matches.forEach((m: any) => byType[m.object_type]?.push(m));
 
-    const [agreements, accounts, templates] = await Promise.all([
+    const [agreements, accounts, templates, clauses] = await Promise.all([
       byType.agreement.length
         ? supabase.from('agreements').select('id, title, account_name, agreement_type, agreement_subtype, status').in(
             'id',
@@ -60,11 +60,18 @@ Deno.serve(async (req) => {
             byType.template.map((m) => m.object_id)
           )
         : { data: [] },
+      byType.clause.length
+        ? supabase.from('clause_library').select('id, title, category, body, language').in(
+            'id',
+            byType.clause.map((m) => m.object_id)
+          )
+        : { data: [] },
     ]);
 
     const agreementsById = new Map((agreements.data || []).map((a) => [a.id, a]));
     const accountsById = new Map((accounts.data || []).map((a) => [a.id, a]));
     const templatesById = new Map((templates.data || []).map((t) => [t.id, t]));
+    const clausesById = new Map((clauses.data || []).map((c) => [c.id, c]));
 
     // deno-lint-ignore no-explicit-any
     const results = matches
@@ -97,14 +104,27 @@ Deno.serve(async (req) => {
             relevance: similarity,
           };
         }
-        const t = templatesById.get(m.object_id);
-        if (!t) return null;
+        if (m.object_type === 'template') {
+          const t = templatesById.get(m.object_id);
+          if (!t) return null;
+          return {
+            objectType: 'template',
+            id: t.id,
+            title: t.title,
+            agreementType: t.agreement_type,
+            agreementSubtype: t.agreement_subtype,
+            relevance: similarity,
+          };
+        }
+        const c = clausesById.get(m.object_id);
+        if (!c) return null;
         return {
-          objectType: 'template',
-          id: t.id,
-          title: t.title,
-          agreementType: t.agreement_type,
-          agreementSubtype: t.agreement_subtype,
+          objectType: 'clause',
+          id: c.id,
+          title: c.title,
+          category: c.category,
+          body: c.body,
+          language: c.language,
           relevance: similarity,
         };
       })

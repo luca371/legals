@@ -27,12 +27,13 @@ import {
   listReviewRequestsForAgreement,
   acceptReviewChanges,
   rejectReviewChanges,
+  listPlaybooksByAccount,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
 import { indexObject } from '../embeddingsApi';
-import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds } from '../redlineUtils';
+import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds, computeChangeTokens } from '../redlineUtils';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
 
@@ -236,6 +237,38 @@ function detectNextClauseNumberNode(root) {
   return found ? maxNum + 1 : null;
 }
 
+// Locates `searchText` verbatim inside `root`'s text content (which may
+// span several text nodes) and replaces exactly that span with
+// `replacementText` as plain text — used to apply an AI-proposed redline
+// rewrite of an existing clause onto the detached document container.
+function findAndReplaceTextNode(root, searchText, replacementText) {
+  if (!root || !searchText) return false;
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  let fullText = '';
+  const nodeOffsets = [];
+  let node;
+  while ((node = walker.nextNode())) {
+    const start = fullText.length;
+    fullText += node.nodeValue;
+    nodeOffsets.push({ node, start, end: fullText.length });
+  }
+
+  const matchIndex = fullText.indexOf(searchText);
+  if (matchIndex === -1) return false;
+  const matchEnd = matchIndex + searchText.length;
+
+  const startInfo = nodeOffsets.find((n) => matchIndex >= n.start && matchIndex <= n.end);
+  const endInfo = nodeOffsets.find((n) => matchEnd >= n.start && matchEnd <= n.end);
+  if (!startInfo || !endInfo) return false;
+
+  const range = document.createRange();
+  range.setStart(startInfo.node, matchIndex - startInfo.start);
+  range.setEnd(endInfo.node, matchEnd - endInfo.start);
+  range.deleteContents();
+  range.insertNode(document.createTextNode(replacementText));
+  return true;
+}
+
 function describeEmailError(err) {
   if (err?.text) return `${err.text}${err.status ? ` (${err.status})` : ''}`;
   if (err?.message) return err.message;
@@ -387,10 +420,14 @@ function AgreementDetailScreen() {
   const [reviewingAI, setReviewingAI] = useState(false);
   const [aiReview, setAiReview] = useState(null);
   const [reviewAIError, setReviewAIError] = useState('');
-  const [reviewModalView, setReviewModalView] = useState('list'); // 'list' | 'detail'
+  const [reviewModalView, setReviewModalView] = useState('list'); // 'list' | 'detail' | 'redline-detail'
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(null);
   const [appliedSuggestionIndexes, setAppliedSuggestionIndexes] = useState([]);
   const [pendingReviewEditsHtml, setPendingReviewEditsHtml] = useState(null);
+  const [activeRedlineRef, setActiveRedlineRef] = useState(null); // { source: 'risks' | 'playbookViolations', index }
+  const [appliedRedlineRefs, setAppliedRedlineRefs] = useState([]); // ['risks-0', 'playbookViolations-2', ...]
+  const [availablePlaybooks, setAvailablePlaybooks] = useState([]);
+  const [selectedPlaybookIds, setSelectedPlaybookIds] = useState([]);
   const [savingReviewEdits, setSavingReviewEdits] = useState(false);
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
@@ -1098,7 +1135,7 @@ function AgreementDetailScreen() {
     }
   };
 
-  const handleOpenReviewAI = () => {
+  const handleOpenReviewAI = async () => {
     setShowReviewAIModal(true);
     setReviewAIError('');
     setAiReview(null);
@@ -1106,6 +1143,10 @@ function AgreementDetailScreen() {
     setActiveSuggestionIndex(null);
     setAppliedSuggestionIndexes([]);
     setPendingReviewEditsHtml(null);
+    setActiveRedlineRef(null);
+    setAppliedRedlineRefs([]);
+    setAvailablePlaybooks([]);
+    setSelectedPlaybookIds([]);
     const attachments = agreement.attachments || [];
     if (attachments.length === 0) {
       setAiReviewAttachmentId('');
@@ -1115,6 +1156,20 @@ function AgreementDetailScreen() {
     } else {
       setAiReviewAttachmentId('ALL');
     }
+
+    if (agreement.accountId) {
+      try {
+        const playbooks = await listPlaybooksByAccount(agreement.accountId);
+        setAvailablePlaybooks(playbooks);
+        setSelectedPlaybookIds(playbooks.map((pb) => pb.id));
+      } catch (err) {
+        console.warn('Could not load account playbooks (non-blocking):', err);
+      }
+    }
+  };
+
+  const togglePlaybookSelected = (id) => {
+    setSelectedPlaybookIds((prev) => (prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]));
   };
 
   const closeReviewAIModal = () => {
@@ -1130,6 +1185,7 @@ function AgreementDetailScreen() {
   const backToReviewList = () => {
     setReviewModalView('list');
     setActiveSuggestionIndex(null);
+    setActiveRedlineRef(null);
   };
 
   const handleApplySuggestion = async (suggestion, index) => {
@@ -1166,6 +1222,38 @@ function AgreementDetailScreen() {
     }
   };
 
+  const openRedlineDetail = (source, index) => {
+    setActiveRedlineRef({ source, index });
+    setReviewModalView('redline-detail');
+  };
+
+  const handleApplyRedline = async (item, refKey) => {
+    if (appliedRedlineRefs.includes(refKey) || !item.originalExcerpt || !item.proposedText) return;
+    try {
+      let baseHtml = pendingReviewEditsHtml;
+      if (baseHtml === null) {
+        const attachment = (agreement.attachments || []).find((a) => a.id === aiReviewAttachmentId);
+        if (!attachment) return;
+        baseHtml = await attachmentToMergeHtml(attachment);
+      }
+
+      const container = document.createElement('div');
+      container.innerHTML = baseHtml;
+
+      const replaced = findAndReplaceTextNode(container, item.originalExcerpt, item.proposedText);
+      if (!replaced) {
+        alert("Couldn't locate that exact text in the document anymore — it may have moved or already been edited.");
+        return;
+      }
+
+      setPendingReviewEditsHtml(container.innerHTML);
+      setAppliedRedlineRefs((prev) => [...prev, refKey]);
+    } catch (err) {
+      console.error('Failed to apply redline:', err);
+      alert('Could not apply this change. Please try again.');
+    }
+  };
+
   const handleSaveReviewEdits = async () => {
     if (!pendingReviewEditsHtml) return;
     setSavingReviewEdits(true);
@@ -1188,6 +1276,7 @@ function AgreementDetailScreen() {
       indexObject('agreement', agreementId).catch((err) => console.warn('Background indexing failed:', err));
       setPendingReviewEditsHtml(null);
       setAppliedSuggestionIndexes([]);
+      setAppliedRedlineRefs([]);
       setShowReviewAIModal(false);
       setActiveNav('attachments');
       await load();
@@ -1508,6 +1597,9 @@ function AgreementDetailScreen() {
         return;
       }
 
+      const selectedPlaybooks = availablePlaybooks.filter((pb) => selectedPlaybookIds.includes(pb.id));
+      const playbook = selectedPlaybooks.map((pb) => `[${pb.title}]\n${pb.body}`).join('\n\n');
+
       const metadata = {
         title: agreement.title,
         accountName: agreement.accountName,
@@ -1516,6 +1608,7 @@ function AgreementDetailScreen() {
         status: agreement.status,
         effectiveDate: agreement.effectiveDate,
         endDate: agreement.endDate,
+        playbook,
       };
 
       const review = await reviewAgreementWithAI(documentText, metadata);
@@ -2503,6 +2596,24 @@ function AgreementDetailScreen() {
                         </label>
                       )}
                     </div>
+                    {availablePlaybooks.length > 0 && (
+                      <div className="arv__playbook-select">
+                        <span className="arv__doc-select-label">Playbooks to check against</span>
+                        <div className="arv__playbook-options">
+                          {availablePlaybooks.map((pb) => (
+                            <label key={pb.id} className="arv__playbook-option">
+                              <input
+                                type="checkbox"
+                                checked={selectedPlaybookIds.includes(pb.id)}
+                                onChange={() => togglePlaybookSelected(pb.id)}
+                              />
+                              <span>{pb.title}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     <button
                       type="button"
                       className="arv__btn-primary arv__run-btn"
@@ -2570,18 +2681,68 @@ function AgreementDetailScreen() {
                       {aiReview.risks?.length > 0 && (
                         <div className="arv__section">
                           <h4 className="arv__section-title arv__section-title--warn">Risks</h4>
+                          <p className="arv__suggestion-hint">Risks with a proposed rewrite are clickable — click to see the redline and apply it.</p>
                           <div className="arv__risk-list">
-                            {aiReview.risks.map((risk, i) => (
-                              <div key={i} className="arv__risk-item">
-                                <div className="arv__risk-item-top">
-                                  <span className="arv__risk-item-issue">{risk.issue}</span>
-                                  <span className={`arv__risk-pill arv__risk-pill--${(risk.severity || 'medium').toLowerCase()}`}>
-                                    {risk.severity}
-                                  </span>
-                                </div>
-                                {risk.explanation && <p className="arv__risk-item-explanation">{risk.explanation}</p>}
-                              </div>
-                            ))}
+                            {aiReview.risks.map((risk, i) => {
+                              const refKey = `risks-${i}`;
+                              const hasRedline = !!(risk.originalExcerpt && risk.proposedText);
+                              const applied = appliedRedlineRefs.includes(refKey);
+                              const Tag = hasRedline ? 'button' : 'div';
+                              return (
+                                <Tag
+                                  key={i}
+                                  type={hasRedline ? 'button' : undefined}
+                                  className={`arv__risk-item ${hasRedline ? 'arv__risk-item--clickable' : ''} ${applied ? 'arv__risk-item--applied' : ''}`}
+                                  onClick={hasRedline ? () => openRedlineDetail('risks', i) : undefined}
+                                >
+                                  <div className="arv__risk-item-top">
+                                    <span className="arv__risk-item-issue">{risk.issue}</span>
+                                    <div className="arv__risk-item-badges">
+                                      {applied && <span className="arv__applied-pill">✓ Applied</span>}
+                                      <span className={`arv__risk-pill arv__risk-pill--${(risk.severity || 'medium').toLowerCase()}`}>
+                                        {risk.severity}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {risk.explanation && <p className="arv__risk-item-explanation">{risk.explanation}</p>}
+                                </Tag>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {aiReview.playbookViolations?.length > 0 && (
+                        <div className="arv__section">
+                          <h4 className="arv__section-title arv__section-title--warn">Playbook violations</h4>
+                          <p className="arv__suggestion-hint">Checked against the playbook(s) selected for this review.</p>
+                          <div className="arv__risk-list">
+                            {aiReview.playbookViolations.map((violation, i) => {
+                              const refKey = `playbookViolations-${i}`;
+                              const hasRedline = !!(violation.originalExcerpt && violation.proposedText);
+                              const applied = appliedRedlineRefs.includes(refKey);
+                              const Tag = hasRedline ? 'button' : 'div';
+                              return (
+                                <Tag
+                                  key={i}
+                                  type={hasRedline ? 'button' : undefined}
+                                  className={`arv__risk-item ${hasRedline ? 'arv__risk-item--clickable' : ''} ${applied ? 'arv__risk-item--applied' : ''}`}
+                                  onClick={hasRedline ? () => openRedlineDetail('playbookViolations', i) : undefined}
+                                >
+                                  <div className="arv__risk-item-top">
+                                    <span className="arv__risk-item-issue">{violation.issue}</span>
+                                    <div className="arv__risk-item-badges">
+                                      {applied && <span className="arv__applied-pill">✓ Applied</span>}
+                                      <span className={`arv__risk-pill arv__risk-pill--${(violation.severity || 'medium').toLowerCase()}`}>
+                                        {violation.severity}
+                                      </span>
+                                    </div>
+                                  </div>
+                                  {violation.rule && <p className="arv__risk-item-rule">Rule: {violation.rule}</p>}
+                                  {violation.explanation && <p className="arv__risk-item-explanation">{violation.explanation}</p>}
+                                </Tag>
+                              );
+                            })}
                           </div>
                         </div>
                       )}
@@ -2615,8 +2776,8 @@ function AgreementDetailScreen() {
                       {pendingReviewEditsHtml && (
                         <div className="arv__save-banner">
                           <span>
-                            {appliedSuggestionIndexes.length} suggestion{appliedSuggestionIndexes.length === 1 ? '' : 's'} applied —
-                            saved as one new document version, not one file per suggestion.
+                            {appliedSuggestionIndexes.length + appliedRedlineRefs.length} change{appliedSuggestionIndexes.length + appliedRedlineRefs.length === 1 ? '' : 's'} applied —
+                            saved as one new document version, not one file per change.
                           </span>
                           <button
                             type="button"
@@ -2696,6 +2857,70 @@ function AgreementDetailScreen() {
                   disabled={!canApply || applied}
                 >
                   {applied ? '✓ Applied' : 'Apply suggestion'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showReviewAIModal && reviewModalView === 'redline-detail' && activeRedlineRef && aiReview && (() => {
+        const item = aiReview[activeRedlineRef.source][activeRedlineRef.index];
+        const refKey = `${activeRedlineRef.source}-${activeRedlineRef.index}`;
+        const applied = appliedRedlineRefs.includes(refKey);
+        const canApply = aiReviewAttachmentId !== 'ALL';
+        const changeTokens = computeChangeTokens(`<p>${item.originalExcerpt}</p>`, `<p>${item.proposedText}</p>`);
+        return (
+          <div className="arv__backdrop" onClick={closeReviewAIModal}>
+            <div className="arv__modal" onClick={(e) => e.stopPropagation()}>
+              <div className="arv__header">
+                <button type="button" className="tpl__back tpl__back--modal" onClick={backToReviewList}>
+                  <BackIcon /> Back to review
+                </button>
+                <h3 className="arv__title">{item.issue}</h3>
+              </div>
+
+              <div className="arv__body">
+                <div className="tpl__detail-sections">
+                  {activeRedlineRef.source === 'playbookViolations' && item.rule && (
+                    <div className="tpl__detail-section">
+                      <h4 className="tpl__detail-section-title">Playbook rule</h4>
+                      <p className="tpl__detail-text">{item.rule}</p>
+                    </div>
+                  )}
+
+                  <div className="tpl__detail-section">
+                    <h4 className="tpl__detail-section-title">Why this matters</h4>
+                    <p className="tpl__detail-text">{item.explanation}</p>
+                  </div>
+
+                  <div className="tpl__detail-section tpl__detail-section--improve">
+                    <h4 className="tpl__detail-section-title">Proposed redline</h4>
+                    <div
+                      className="arv__redline-preview"
+                      dangerouslySetInnerHTML={{ __html: renderChangeTokensToHtml(changeTokens) }}
+                    />
+                  </div>
+
+                  {!canApply && (
+                    <p className="arv__error">
+                      Applying redlines needs one specific document selected — go back and pick a single document instead of "All documents combined".
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="arv__footer">
+                <button type="button" className="arv__btn-secondary" onClick={backToReviewList}>
+                  Back
+                </button>
+                <button
+                  type="button"
+                  className="arv__btn-primary"
+                  onClick={() => handleApplyRedline(item, refKey)}
+                  disabled={!canApply || applied}
+                >
+                  {applied ? '✓ Applied' : 'Apply redline'}
                 </button>
               </div>
             </div>

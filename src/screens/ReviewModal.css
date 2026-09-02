@@ -93,6 +93,33 @@
   flex-shrink: 0;
 }
 
+.arv__playbook-select {
+  margin-bottom: 12px;
+}
+
+.arv__playbook-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.arv__playbook-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--color-text);
+  cursor: pointer;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+}
+
+.arv__playbook-option input {
+  flex-shrink: 0;
+}
+
 .arv__run-btn {
   width: 100%;
 }
@@ -297,9 +324,28 @@
 }
 
 .arv__risk-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   padding: 10px 12px;
+  font-family: var(--font-sans);
+}
+
+.arv__risk-item--clickable {
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.arv__risk-item--clickable:hover {
+  border-color: var(--color-accent);
+}
+
+.arv__risk-item--applied {
+  background: var(--color-success-soft);
+  border-color: var(--color-success);
 }
 
 .arv__risk-item-top {
@@ -308,6 +354,13 @@
   justify-content: space-between;
   gap: 10px;
   margin-bottom: 4px;
+}
+
+.arv__risk-item-badges {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 
 .arv__risk-item-issue {
@@ -321,6 +374,22 @@
   font-size: 0.82rem;
   line-height: 1.5;
   color: var(--color-text-secondary);
+}
+
+.arv__risk-item-rule {
+  margin: 0 0 4px;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--color-text-tertiary);
+}
+
+.arv__redline-preview {
+  font-size: 0.9rem;
+  line-height: 1.7;
+  color: var(--color-text);
+  background: var(--color-bg);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
 }
 
 /* ---------- Suggestion list ---------- */

@@ -229,6 +229,68 @@ export const updateAccount = (id, updates) =>
     })
     .eq('id', id);
 
+// Playbooks live at the organization level (e.g. "Procurement rules", "GDPR
+// rules") — each one gets assigned to whichever accounts it applies to, and
+// the reviewer then picks a subset of the account's assigned playbooks when
+// running Review AI on a specific agreement.
+export const listPlaybooks = async () => {
+  const { data, error } = await supabase.from('playbooks').select('*').order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((p) => ({ id: p.id, title: p.title, body: p.body, createdAt: p.created_at }));
+};
+
+export const createPlaybook = async (playbook) => {
+  const tenantId = await getCurrentTenantId();
+  const { data, error } = await supabase
+    .from('playbooks')
+    .insert({ tenant_id: tenantId, title: playbook.title, body: playbook.body })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const updatePlaybook = async (id, playbook) => {
+  const { error } = await supabase
+    .from('playbooks')
+    .update({ title: playbook.title, body: playbook.body, updated_at: new Date().toISOString() })
+    .eq('id', id);
+  if (error) throw error;
+};
+
+export const deletePlaybook = async (id) => {
+  const { error } = await supabase.from('playbooks').delete().eq('id', id);
+  if (error) throw error;
+};
+
+export const listAssignedPlaybookIds = async (accountId) => {
+  const { data, error } = await supabase.from('account_playbooks').select('playbook_id').eq('account_id', accountId);
+  if (error) throw error;
+  return data.map((r) => r.playbook_id);
+};
+
+export const setAccountPlaybooks = async (accountId, playbookIds) => {
+  const tenantId = await getCurrentTenantId();
+  const { error: deleteError } = await supabase.from('account_playbooks').delete().eq('account_id', accountId);
+  if (deleteError) throw deleteError;
+  if (playbookIds.length === 0) return;
+  const { error: insertError } = await supabase
+    .from('account_playbooks')
+    .insert(playbookIds.map((playbookId) => ({ tenant_id: tenantId, account_id: accountId, playbook_id: playbookId })));
+  if (insertError) throw insertError;
+};
+
+// Full playbook objects assigned to one account — what Review AI's
+// playbook picker is populated from.
+export const listPlaybooksByAccount = async (accountId) => {
+  const { data, error } = await supabase
+    .from('account_playbooks')
+    .select('playbook_id, playbooks(id, title, body, created_at)')
+    .eq('account_id', accountId);
+  if (error) throw error;
+  return data.map((r) => ({ id: r.playbooks.id, title: r.playbooks.title, body: r.playbooks.body, createdAt: r.playbooks.created_at }));
+};
+
 export const listAgreementsByAccount = async (accountId) => {
   const { data, error } = await supabase
     .from('agreements')
@@ -837,4 +899,45 @@ export const getSignatureUsageThisMonth = async () => {
     over,
     overageCost: over * SIGNATURE_OVERAGE_PRICE,
   };
+};
+
+export const listClauseLibrary = async () => {
+  const { data, error } = await supabase
+    .from('clause_library')
+    .select('*')
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return data.map((c) => ({
+    id: c.id,
+    title: c.title,
+    category: c.category || '',
+    body: c.body,
+    language: c.language || 'English',
+    createdBy: c.created_by,
+    createdAt: c.created_at,
+  }));
+};
+
+export const createClause = async (clause) => {
+  const tenantId = await getCurrentTenantId();
+  const user = await getCurrentUser();
+  const { data, error } = await supabase
+    .from('clause_library')
+    .insert({
+      tenant_id: tenantId,
+      title: clause.title,
+      category: clause.category || '',
+      body: clause.body,
+      language: clause.language || 'English',
+      created_by: user?.email || '',
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+};
+
+export const deleteClause = async (id) => {
+  const { error } = await supabase.from('clause_library').delete().eq('id', id);
+  if (error) throw error;
 };
