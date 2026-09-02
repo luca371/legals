@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { getAccount, updateAccount, deleteAccount, listAgreementsByAccount, getObjectSchema } from '../supabase';
+import { indexObject } from '../embeddingsApi';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -119,6 +120,7 @@ function AccountDetailScreen() {
     setSaving(true);
     try {
       await updateAccount(accountId, { ...form, customFields: customValues });
+      indexObject('account', accountId).catch((err) => console.warn('Background indexing failed:', err));
       setEditing(false);
       await load();
     } catch (err) {

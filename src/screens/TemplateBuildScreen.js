@@ -11,6 +11,7 @@ import {
   listAgreements,
 } from '../supabase';
 import { analyzeTemplateWithAI, suggestClausesWithAI, analyzeClauseWithAI } from '../aiApi';
+import { indexObject } from '../embeddingsApi';
 import './TemplateBuildScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
@@ -430,11 +431,10 @@ function TemplateBuildScreen() {
     try {
       const finalHtml = editableRef.current?.innerHTML || '';
       const fieldsUsed = extractPlaceholders(finalHtml);
-      if (editingTemplateId) {
-        await updateTemplate(editingTemplateId, { ...meta, contentHtml: finalHtml, fieldsUsed });
-      } else {
-        await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
-      }
+      const savedTemplate = editingTemplateId
+        ? await updateTemplate(editingTemplateId, { ...meta, contentHtml: finalHtml, fieldsUsed })
+        : await saveTemplate({ ...meta, contentHtml: finalHtml, fieldsUsed });
+      indexObject('template', savedTemplate.id).catch((err) => console.warn('Background indexing failed:', err));
       setView('list');
     } catch (err) {
       console.error('Failed to save template:', err);

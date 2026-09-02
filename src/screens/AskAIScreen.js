@@ -10,7 +10,7 @@ import {
   getAccount,
 } from '../supabase';
 import { sendToClaudeWithTools } from '../askAiApi';
-import { semanticSearchAgreements } from '../embeddingsApi';
+import { semanticSearch } from '../embeddingsApi';
 import './AskAIScreen.css';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -105,7 +105,7 @@ async function executeTool(name, input = {}) {
       case 'search_agreements_semantic': {
         if (!input.query) return { error: 'query is required.' };
         try {
-          return await semanticSearchAgreements(input.query);
+          return await semanticSearch(input.query, 'agreement');
         } catch (err) {
           return { error: err.message || 'Semantic search failed.', hint: 'This agreement may not be indexed yet — try list_agreements instead, or ask the user to run Reindex from Settings.' };
         }

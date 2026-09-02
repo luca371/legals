@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react';
-import { getSignatureUsageThisMonth, listAgreements, SIGNATURES_INCLUDED_PER_USER, SIGNATURE_OVERAGE_PRICE } from '../supabase';
-import { indexAgreement } from '../embeddingsApi';
+import {
+  getSignatureUsageThisMonth,
+  listAgreements,
+  listAccounts,
+  listTemplates,
+  SIGNATURES_INCLUDED_PER_USER,
+  SIGNATURE_OVERAGE_PRICE,
+} from '../supabase';
+import { indexObject } from '../embeddingsApi';
 import './SettingsScreen.css';
 
 const REINDEX_CONCURRENCY = 3;
@@ -37,18 +44,23 @@ function SettingsScreen() {
     setReindexDone(0);
     setReindexFailed(0);
     try {
-      const agreements = await listAgreements();
-      setReindexTotal(agreements.length);
+      const [agreements, accounts, templates] = await Promise.all([listAgreements(), listAccounts(), listTemplates()]);
+      const items = [
+        ...agreements.map((a) => ({ objectType: 'agreement', id: a.id, label: a.title })),
+        ...accounts.map((a) => ({ objectType: 'account', id: a.id, label: a.name })),
+        ...templates.map((t) => ({ objectType: 'template', id: t.id, label: t.name })),
+      ];
+      setReindexTotal(items.length);
 
       let cursor = 0;
       const worker = async () => {
-        while (cursor < agreements.length) {
-          const agreement = agreements[cursor];
+        while (cursor < items.length) {
+          const item = items[cursor];
           cursor += 1;
           try {
-            await indexAgreement(agreement.id);
+            await indexObject(item.objectType, item.id);
           } catch (err) {
-            console.warn(`Failed to index "${agreement.title}":`, err);
+            console.warn(`Failed to index "${item.label}":`, err);
             setReindexFailed((prev) => prev + 1);
           } finally {
             setReindexDone((prev) => prev + 1);
@@ -119,7 +131,8 @@ function SettingsScreen() {
         <div className="settings__card-header">
           <h3 className="settings__card-title">Ask AI — search index</h3>
           <span className="settings__card-hint">
-            Powers "search by meaning" in Ask AI. New and edited agreements index automatically — use this to (re)index everything at once, e.g. before a demo.
+            Powers "search by meaning" in Ask AI, across agreements, accounts, and templates. New and edited records
+            index automatically — use this to (re)index everything at once, e.g. before a demo.
           </span>
         </div>
 
@@ -140,13 +153,13 @@ function SettingsScreen() {
 
         {!reindexing && reindexFinished && (
           <p className={reindexFailed > 0 ? 'settings__overage-note' : 'settings__card-hint'}>
-            Done — indexed {reindexDone - reindexFailed} of {reindexTotal} agreement{reindexTotal === 1 ? '' : 's'}
+            Done — indexed {reindexDone - reindexFailed} of {reindexTotal} record{reindexTotal === 1 ? '' : 's'}
             {reindexFailed > 0 ? `, ${reindexFailed} failed (check the console for details).` : '.'}
           </p>
         )}
 
         <button type="button" className="settings__reindex-btn" onClick={handleReindexAll} disabled={reindexing}>
-          {reindexing ? 'Indexing…' : 'Reindex all agreements'}
+          {reindexing ? 'Indexing…' : 'Reindex everything'}
         </button>
       </div>
     </div>
