@@ -431,7 +431,7 @@ function AgreementDetailScreen() {
   const [savingReviewEdits, setSavingReviewEdits] = useState(false);
 
   const [showSignatureModal, setShowSignatureModal] = useState(false);
-  const [signatureAttachmentId, setSignatureAttachmentId] = useState('');
+  const [signatureAttachmentIds, setSignatureAttachmentIds] = useState([]);
   const [dragIndex, setDragIndex] = useState(null);
   const [signersList, setSignersList] = useState([{ name: '', email: '' }]);
   const [ccList, setCcList] = useState([]);
@@ -1295,7 +1295,11 @@ function AgreementDetailScreen() {
     setCcList([]);
     setSignatureMessage('');
     const attachments = agreement.attachments || [];
-    setSignatureAttachmentId(attachments.length === 1 ? attachments[0].id : '');
+    setSignatureAttachmentIds(attachments.length === 1 ? [attachments[0].id] : []);
+  };
+
+  const toggleSignatureAttachment = (id) => {
+    setSignatureAttachmentIds((prev) => (prev.includes(id) ? prev.filter((a) => a !== id) : [...prev, id]));
   };
 
   const closeSignatureModal = () => {
@@ -1360,8 +1364,8 @@ function AgreementDetailScreen() {
     const isValidSigner = (name, email) => name.trim() && /^\S+@\S+\.\S+$/.test(email.trim());
     const isValidEmail = (email) => /^\S+@\S+\.\S+$/.test(email.trim());
 
-    if (!signatureAttachmentId) {
-      setSignatureError('Choose a document to send.');
+    if (signatureAttachmentIds.length === 0) {
+      setSignatureError('Choose at least one document to send.');
       return;
     }
     if (signersList.length === 0 || !signersList.every((s) => isValidSigner(s.name, s.email))) {
@@ -1374,23 +1378,26 @@ function AgreementDetailScreen() {
       return;
     }
 
-    const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentId);
-    const payload = attachment && attachmentToDocusignPayload(attachment);
-    if (!payload) {
-      setSignatureError('Could not read that document — try a different attachment.');
+    const attachmentsById = new Map((agreement.attachments || []).map((a) => [a.id, a]));
+    const selectedAttachments = signatureAttachmentIds.map((id) => attachmentsById.get(id)).filter(Boolean);
+    const documents = selectedAttachments.map((att) => {
+      const payload = attachmentToDocusignPayload(att);
+      return payload && { documentBase64: payload.documentBase64, documentName: att.name, fileExtension: payload.fileExtension };
+    });
+    if (documents.some((d) => !d)) {
+      setSignatureError('Could not read one of the selected documents — try a different attachment.');
       return;
     }
 
     const signers = signersList.map((s) => ({ name: s.name.trim(), email: s.email.trim() }));
     const ccRecipients = ccToSend.map((r) => ({ name: r.name.trim(), email: r.email.trim() }));
+    const combinedName = selectedAttachments.map((a) => a.name).join(', ');
 
     setSendingSignature(true);
     setSignatureError('');
     try {
       const envelope = await sendForSignature({
-        documentBase64: payload.documentBase64,
-        documentName: attachment.name,
-        fileExtension: payload.fileExtension,
+        documents,
         signers,
         ccRecipients,
         emailSubject: `Please sign: ${agreement.title}`,
@@ -1399,7 +1406,8 @@ function AgreementDetailScreen() {
 
       await addDocusignEnvelope(agreementId, {
         envelopeId: envelope.envelopeId,
-        attachmentName: attachment.name,
+        attachmentName: combinedName,
+        documentCount: documents.length,
         signers,
         ccRecipients,
         status: envelope.status || 'sent',
@@ -1423,11 +1431,11 @@ function AgreementDetailScreen() {
   };
 
   const handleMarkSignedManually = async () => {
-    if (!signatureAttachmentId) {
-      setSignatureError('Choose a document to mark as signed.');
+    if (signatureAttachmentIds.length !== 1) {
+      setSignatureError('Choose exactly one document to mark as signed manually.');
       return;
     }
-    const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentId);
+    const attachment = (agreement.attachments || []).find((a) => a.id === signatureAttachmentIds[0]);
     if (!attachment) {
       setSignatureError('Could not find that document — try a different attachment.');
       return;
@@ -1476,7 +1484,8 @@ function AgreementDetailScreen() {
         patch.completedAt = new Date().toISOString();
 
         if (!envelope?.signedAttachmentId) {
-          const signedDoc = await getSignedDocument(envelopeId);
+          const documentId = (envelope?.documentCount || 1) > 1 ? 'combined' : undefined;
+          const signedDoc = await getSignedDocument(envelopeId, documentId);
           const baseName = (envelope?.attachmentName || 'document').replace(/\.[^./]+$/, '');
           const signedAttachment = {
             id: `att_${Date.now()}`,
@@ -2940,7 +2949,10 @@ function AgreementDetailScreen() {
 
               {signatureError && <p className="agrd__error">{signatureError}</p>}
 
-              <h4 className="agrd__review-section-title">Document</h4>
+              <h4 className="agrd__review-section-title">Documents</h4>
+              <p className="agrd__modal-hint">
+                Select one or more — everything checked gets sent together in a single signing envelope.
+              </p>
               {(agreement.attachments || []).length === 0 ? (
                 <p className="agrd__modal-hint">No attachments on this agreement yet.</p>
               ) : (
@@ -2948,14 +2960,12 @@ function AgreementDetailScreen() {
                   {agreement.attachments.map((att) => (
                     <label
                       key={att.id}
-                      className={`agrd__template-option ${signatureAttachmentId === att.id ? 'agrd__template-option--selected' : ''}`}
+                      className={`agrd__template-option ${signatureAttachmentIds.includes(att.id) ? 'agrd__template-option--selected' : ''}`}
                     >
                       <input
-                        type="radio"
-                        name="signatureAttachmentId"
-                        value={att.id}
-                        checked={signatureAttachmentId === att.id}
-                        onChange={() => setSignatureAttachmentId(att.id)}
+                        type="checkbox"
+                        checked={signatureAttachmentIds.includes(att.id)}
+                        onChange={() => toggleSignatureAttachment(att.id)}
                       />
                       <div className="agrd__template-option-info">
                         <span className="agrd__template-option-name">{att.name}{att.version && <span className="agrd__version-badge">v{att.version}</span>}</span>
@@ -2970,9 +2980,9 @@ function AgreementDetailScreen() {
                 type="button"
                 className="agrd__attachment-btn"
                 onClick={handleMarkSignedManually}
-                disabled={!signatureAttachmentId || sendingSignature || markingManualSignature}
+                disabled={signatureAttachmentIds.length !== 1 || sendingSignature || markingManualSignature}
               >
-                {markingManualSignature ? 'Marking as signed…' : 'Signed on paper? Mark as signed manually'}
+                {markingManualSignature ? 'Marking as signed…' : 'Signed on paper? Mark as signed manually (select exactly one document)'}
               </button>
 
               {signersList.map((signer, index) => (
@@ -3070,7 +3080,7 @@ function AgreementDetailScreen() {
                 type="button"
                 className="agrd__btn-primary"
                 onClick={handleSendForSignature}
-                disabled={!signatureAttachmentId || !signersList[0]?.email.trim() || sendingSignature || markingManualSignature}
+                disabled={signatureAttachmentIds.length === 0 || !signersList[0]?.email.trim() || sendingSignature || markingManualSignature}
               >
                 {sendingSignature ? 'Sending…' : 'Send for signature'}
               </button>

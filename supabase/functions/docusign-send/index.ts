@@ -7,10 +7,13 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const { documentBase64, documentName, fileExtension, signers, ccRecipients, emailSubject, emailMessage } = await req.json();
+    const { documents, signers, ccRecipients, emailSubject, emailMessage } = await req.json();
 
-    if (!documentBase64 || !Array.isArray(signers) || signers.length === 0) {
-      return jsonResponse({ error: 'documentBase64 and at least one signer are required.' }, 400);
+    if (!Array.isArray(documents) || documents.length === 0 || documents.some((d: { documentBase64?: string }) => !d.documentBase64)) {
+      return jsonResponse({ error: 'At least one document (with documentBase64) is required.' }, 400);
+    }
+    if (!Array.isArray(signers) || signers.length === 0) {
+      return jsonResponse({ error: 'At least one signer is required.' }, 400);
     }
     if (signers.some((s: { email?: string; name?: string }) => !s.email || !s.name)) {
       return jsonResponse({ error: 'Every signer needs a name and email.' }, 400);
@@ -28,9 +31,7 @@ Deno.serve(async (req) => {
     const envelope = await sendEnvelopeForSignature({
       accountId: Deno.env.get('DOCUSIGN_ACCOUNT_ID'),
       accessToken,
-      documentBase64,
-      documentName,
-      fileExtension,
+      documents,
       signers,
       ccRecipients,
       emailSubject,

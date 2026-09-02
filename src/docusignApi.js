@@ -1,23 +1,7 @@
 import { invokeFunction } from './functionsClient';
 
-export async function sendForSignature({
-  documentBase64,
-  documentName,
-  fileExtension,
-  signers,
-  ccRecipients,
-  emailSubject,
-  emailMessage,
-}) {
-  return invokeFunction('docusign-send', {
-    documentBase64,
-    documentName,
-    fileExtension,
-    signers,
-    ccRecipients,
-    emailSubject,
-    emailMessage,
-  });
+export async function sendForSignature({ documents, signers, ccRecipients, emailSubject, emailMessage }) {
+  return invokeFunction('docusign-send', { documents, signers, ccRecipients, emailSubject, emailMessage });
 }
 
 export async function getSignatureStatus(envelopeId) {

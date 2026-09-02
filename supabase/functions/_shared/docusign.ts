@@ -49,9 +49,7 @@ export async function getAccessToken({ integrationKey, userId, privateKey }: Doc
 export async function sendEnvelopeForSignature({
   accountId,
   accessToken,
-  documentBase64,
-  documentName,
-  fileExtension,
+  documents,
   signers,
   ccRecipients,
   emailSubject,
@@ -59,9 +57,7 @@ export async function sendEnvelopeForSignature({
 }: {
   accountId?: string;
   accessToken: string;
-  documentBase64: string;
-  documentName?: string;
-  fileExtension?: string;
+  documents: Array<{ documentBase64: string; documentName?: string; fileExtension?: string }>;
   signers: Array<{ email: string; name: string }>;
   ccRecipients?: Array<{ email: string; name: string }>;
   emailSubject?: string;
@@ -69,6 +65,9 @@ export async function sendEnvelopeForSignature({
 }) {
   if (!Array.isArray(signers) || signers.length === 0) {
     throw new Error('At least one signer is required.');
+  }
+  if (!Array.isArray(documents) || documents.length === 0) {
+    throw new Error('At least one document is required.');
   }
 
   const signerRecipients = signers.map((signer, index) => {
@@ -123,16 +122,14 @@ export async function sendEnvelopeForSignature({
     }));
 
   const envelopeDefinition = {
-    emailSubject: emailSubject || `Please sign: ${documentName || 'document'}`,
+    emailSubject: emailSubject || `Please sign: ${documents[0]?.documentName || 'document'}`,
     emailBlurb: emailMessage || '',
-    documents: [
-      {
-        documentBase64,
-        name: documentName || 'document',
-        fileExtension: fileExtension || 'pdf',
-        documentId: '1',
-      },
-    ],
+    documents: documents.map((doc, index) => ({
+      documentBase64: doc.documentBase64,
+      name: doc.documentName || `document ${index + 1}`,
+      fileExtension: doc.fileExtension || 'pdf',
+      documentId: String(index + 1),
+    })),
     recipients: {
       signers: signerRecipients,
       ...(ccRecipientEntries.length > 0 ? { carbonCopies: ccRecipientEntries } : {}),
