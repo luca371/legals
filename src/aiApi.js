@@ -1,20 +1,12 @@
-import { supabase } from './supabase';
+import { invokeFunction } from './functionsClient';
 
 export async function analyzeTemplateWithAI(documentText, fields) {
-  const { data, error } = await supabase.functions.invoke('ai-builder', {
-    body: { documentText, fields },
-  });
-
-  if (error) throw new Error(error.message || 'AI Builder request failed.');
+  const data = await invokeFunction('ai-builder', { documentText, fields });
   return data?.suggestions || [];
 }
 
 export async function suggestClausesWithAI(documentText, metadata) {
-  const { data, error } = await supabase.functions.invoke('suggest-clauses', {
-    body: { documentText, metadata },
-  });
-
-  if (error) throw new Error(error.message || 'Suggest clauses request failed.');
+  const data = await invokeFunction('suggest-clauses', { documentText, metadata });
   return {
     missingClauses: data?.missingClauses || [],
     existingClauses: data?.existingClauses || [],

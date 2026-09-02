@@ -1,10 +1,5 @@
-import { supabase } from './supabase';
+import { invokeFunction } from './functionsClient';
 
 export async function sendToClaudeWithTools(messages) {
-  const { data, error } = await supabase.functions.invoke('ask-ai', {
-    body: { messages },
-  });
-
-  if (error) throw new Error(error.message || 'Ask AI request failed.');
-  return data;
+  return invokeFunction('ask-ai', { messages });
 }

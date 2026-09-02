@@ -1,10 +1,5 @@
-import { supabase } from './supabase';
+import { invokeFunction } from './functionsClient';
 
 export async function reviewAgreementWithAI(documentText, metadata) {
-  const { data, error } = await supabase.functions.invoke('review-agreement', {
-    body: { documentText, metadata },
-  });
-
-  if (error) throw new Error(error.message || 'Review request failed.');
-  return data;
+  return invokeFunction('review-agreement', { documentText, metadata });
 }

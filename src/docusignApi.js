@@ -1,4 +1,4 @@
-import { supabase } from './supabase';
+import { invokeFunction } from './functionsClient';
 
 export async function sendForSignature({
   documentBase64,
@@ -9,28 +9,21 @@ export async function sendForSignature({
   emailSubject,
   emailMessage,
 }) {
-  const { data, error } = await supabase.functions.invoke('docusign-send', {
-    body: { documentBase64, documentName, fileExtension, signers, ccRecipients, emailSubject, emailMessage },
+  return invokeFunction('docusign-send', {
+    documentBase64,
+    documentName,
+    fileExtension,
+    signers,
+    ccRecipients,
+    emailSubject,
+    emailMessage,
   });
-
-  if (error) throw new Error(error.message || 'DocuSign send failed.');
-  return data;
 }
 
 export async function getSignatureStatus(envelopeId) {
-  const { data, error } = await supabase.functions.invoke('docusign-status', {
-    body: { envelopeId },
-  });
-
-  if (error) throw new Error(error.message || 'DocuSign status check failed.');
-  return data;
+  return invokeFunction('docusign-status', { envelopeId });
 }
 
 export async function getSignedDocument(envelopeId, documentId) {
-  const { data, error } = await supabase.functions.invoke('docusign-document', {
-    body: { envelopeId, documentId },
-  });
-
-  if (error) throw new Error(error.message || 'DocuSign document fetch failed.');
-  return data;
+  return invokeFunction('docusign-document', { envelopeId, documentId });
 }

@@ -92,7 +92,18 @@ export const createUserAsAdmin = async (userData) => {
     body: userData,
   });
 
-  if (error) throw new Error(error.message || 'Failed to create user.');
+  if (error) {
+    let message = error.message;
+    if (error.context && typeof error.context.json === 'function') {
+      try {
+        const parsed = await error.context.json();
+        if (parsed?.error) message = parsed.error;
+      } catch {
+        // response body wasn't JSON — keep the generic message
+      }
+    }
+    throw new Error(message || 'Failed to create user.');
+  }
   return data.userId;
 };
 

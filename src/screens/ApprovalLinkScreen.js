@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import mammoth from 'mammoth';
-import { getApprovalRequest, decideApprovalRequest, getNextApprovalInBatch, supabase } from '../supabase';
+import { getApprovalRequest, decideApprovalRequest, getNextApprovalInBatch } from '../supabase';
 import { sendApprovalEmail } from '../emailApi';
+import { invokeFunction } from '../functionsClient';
 import './ApprovalLinkScreen.css';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -124,7 +125,7 @@ function ApprovalLinkScreen() {
               approvalLink: `${window.location.origin}/approve/${next.id}`,
             });
           } else {
-            await supabase.functions.invoke('finalize-approval', { body: { approvalId } });
+            await invokeFunction('finalize-approval', { approvalId });
           }
         } catch (chainErr) {
           console.error('Could not advance the approval chain:', chainErr);
