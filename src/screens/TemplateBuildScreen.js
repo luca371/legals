@@ -216,6 +216,7 @@ function TemplateBuildScreen() {
   const editableRef = useRef(null);
   const fileInputRef = useRef(null);
   const draggedFieldRef = useRef(null);
+  const caretRangeRef = useRef(null);
 
   const filteredSubtypes = meta.agreementType && Object.keys(typeSubtypeMap).length > 0
     ? (typeSubtypeMap[meta.agreementType] || subtypeOptions)
@@ -524,6 +525,7 @@ function TemplateBuildScreen() {
   };
 
   const handleOpenClausesModal = async () => {
+    captureCaretRange();
     setShowClausesModal(true);
     if (hasRunClauseAnalysis) return;
     setLoadingClauseSuggestions(true);
@@ -615,6 +617,42 @@ function TemplateBuildScreen() {
     return found ? maxNum + 1 : null;
   };
 
+  // Remembers where the cursor was in the document the moment a clause
+  // modal was opened, so "Insert" lands the new clause right there instead
+  // of always at the end — captured on open because clicking a button
+  // inside the modal doesn't itself move the browser's text selection.
+  const captureCaretRange = () => {
+    const editable = editableRef.current;
+    const sel = window.getSelection();
+    if (editable && sel && sel.rangeCount > 0) {
+      const range = sel.getRangeAt(0);
+      if (editable.contains(range.startContainer)) {
+        caretRangeRef.current = range.cloneRange();
+        return;
+      }
+    }
+    caretRangeRef.current = null;
+  };
+
+  // Inserts `node` right after the top-level block (p/li/div) that contains
+  // the given caret range. Returns true if it could, so callers can fall
+  // back to the signature-block placement when there's no valid caret.
+  const insertNodeAfterCaretBlock = (editable, node, range) => {
+    if (!range || !editable.contains(range.startContainer)) return false;
+    let blockEl = range.startContainer.nodeType === 3 ? range.startContainer.parentElement : range.startContainer;
+    while (blockEl && blockEl.parentElement !== editable) {
+      blockEl = blockEl.parentElement;
+    }
+    if (!blockEl || blockEl.parentElement !== editable) return false;
+    blockEl.parentElement.insertBefore(node, blockEl.nextSibling);
+    // So a second "Insert" click (without refocusing the document) lands
+    // after this new clause rather than stacking in reverse order.
+    const nextRange = document.createRange();
+    nextRange.selectNode(node);
+    caretRangeRef.current = nextRange;
+    return true;
+  };
+
   const handleInsertClause = (clause) => {
     const editable = editableRef.current;
     if (!editable) return;
@@ -623,11 +661,13 @@ function TemplateBuildScreen() {
     const p = document.createElement('p');
     p.textContent = nextNumber ? `${nextNumber}. ${clause.title}. ${clause.text}` : `${clause.title}. ${clause.text}`;
 
-    const signatureBlock = findSignatureBlock(editable);
-    if (signatureBlock) {
-      editable.insertBefore(p, signatureBlock);
-    } else {
-      editable.appendChild(p);
+    if (!insertNodeAfterCaretBlock(editable, p, caretRangeRef.current)) {
+      const signatureBlock = findSignatureBlock(editable);
+      if (signatureBlock) {
+        editable.insertBefore(p, signatureBlock);
+      } else {
+        editable.appendChild(p);
+      }
     }
     setInsertedClauseIds((prev) => [...prev, clause.id]);
   };
@@ -640,11 +680,13 @@ function TemplateBuildScreen() {
     const p = document.createElement('p');
     p.textContent = nextNumber ? `${nextNumber}. ${title}. ${text}` : `${title}. ${text}`;
 
-    const signatureBlock = findSignatureBlock(editable);
-    if (signatureBlock) {
-      editable.insertBefore(p, signatureBlock);
-    } else {
-      editable.appendChild(p);
+    if (!insertNodeAfterCaretBlock(editable, p, caretRangeRef.current)) {
+      const signatureBlock = findSignatureBlock(editable);
+      if (signatureBlock) {
+        editable.insertBefore(p, signatureBlock);
+      } else {
+        editable.appendChild(p);
+      }
     }
   };
 
@@ -664,6 +706,7 @@ function TemplateBuildScreen() {
   };
 
   const handleOpenLibraryModal = async () => {
+    captureCaretRange();
     setShowLibraryModal(true);
     setLibrarySearch('');
     setLibrarySearchResults(null);
