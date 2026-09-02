@@ -30,6 +30,7 @@ import {
   listPlaybooksByAccount,
   listAgreements,
   listAgreementsRelatedTo,
+  getReminderSettings,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
@@ -68,6 +69,15 @@ function AttachmentsIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agrd__nav-icon">
       <path d="M21 11.5l-9.5 9.5a6 6 0 0 1-8.5-8.5l9.5-9.5a4 4 0 0 1 5.5 5.5l-9.5 9.5a2 2 0 0 1-2.8-2.8l8.5-8.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function BellIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agrd__bell-icon">
+      <path d="M18 8a6 6 0 1 0-12 0c0 7-3 9-3 9h18s-3-2-3-9" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -378,6 +388,15 @@ function AgreementDetailScreen() {
   const [loadingRelationPicker, setLoadingRelationPicker] = useState(false);
   const [savingRelation, setSavingRelation] = useState(false);
   const [relationError, setRelationError] = useState('');
+
+  const [showNotifyModal, setShowNotifyModal] = useState(false);
+  const [notifyMode, setNotifyMode] = useState('default'); // 'default' | 'custom'
+  const [notifyDays, setNotifyDays] = useState([]);
+  const [tenantDefaultDays, setTenantDefaultDays] = useState([]);
+  const [newNotifyDay, setNewNotifyDay] = useState('');
+  const [loadingNotify, setLoadingNotify] = useState(false);
+  const [savingNotify, setSavingNotify] = useState(false);
+  const [notifyError, setNotifyError] = useState('');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -879,6 +898,59 @@ function AgreementDetailScreen() {
       setRelationError('Could not remove this link. Please try again.');
     } finally {
       setSavingRelation(false);
+    }
+  };
+
+  const openNotifyModal = async () => {
+    setShowNotifyModal(true);
+    setNotifyError('');
+    setLoadingNotify(true);
+    try {
+      const defaults = await getReminderSettings();
+      setTenantDefaultDays(defaults);
+      if (agreement.reminderDaysOverride) {
+        setNotifyMode('custom');
+        setNotifyDays(agreement.reminderDaysOverride);
+      } else {
+        setNotifyMode('default');
+        setNotifyDays(defaults);
+      }
+    } catch (err) {
+      console.error('Failed to load reminder settings:', err);
+      setNotifyError('Could not load reminder settings.');
+    } finally {
+      setLoadingNotify(false);
+    }
+  };
+
+  const closeNotifyModal = () => {
+    if (savingNotify) return;
+    setShowNotifyModal(false);
+  };
+
+  const handleAddNotifyDay = () => {
+    const value = parseInt(newNotifyDay, 10);
+    if (!Number.isFinite(value) || value <= 0 || notifyDays.includes(value)) return;
+    setNotifyDays((prev) => [...prev, value].sort((a, b) => b - a));
+    setNewNotifyDay('');
+  };
+
+  const handleRemoveNotifyDay = (value) => {
+    setNotifyDays((prev) => prev.filter((d) => d !== value));
+  };
+
+  const handleSaveNotify = async () => {
+    setSavingNotify(true);
+    setNotifyError('');
+    try {
+      await updateAgreement(agreementId, { reminderDaysOverride: notifyMode === 'custom' ? notifyDays : null });
+      setShowNotifyModal(false);
+      await load();
+    } catch (err) {
+      console.error('Failed to save reminder settings:', err);
+      setNotifyError('Could not save this. Please try again.');
+    } finally {
+      setSavingNotify(false);
     }
   };
 
@@ -1807,6 +1879,15 @@ function AgreementDetailScreen() {
 
       <div className="agrd__title-row">
         <h2 className="agrd__title">{agreement.title}</h2>
+        <button
+          type="button"
+          className={`agrd__bell-btn ${agreement.reminderDaysOverride ? 'agrd__bell-btn--custom' : ''}`}
+          onClick={openNotifyModal}
+          title={agreement.reminderDaysOverride ? 'Custom expiry reminders set for this agreement' : 'Set expiry reminders for this agreement'}
+          aria-label="Set expiry reminders"
+        >
+          <BellIcon />
+        </button>
       </div>
 
       <div className="agrd__pipeline">
@@ -2566,6 +2647,90 @@ function AgreementDetailScreen() {
               </button>
               <button type="button" className="agrd__btn-primary" onClick={handleSaveRelation} disabled={!relationDraftTargetId || savingRelation}>
                 {savingRelation ? 'Saving…' : 'Save link'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showNotifyModal && (
+        <div className="agrd__modal-backdrop" onClick={closeNotifyModal}>
+          <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
+            <div className="agrd__modal-scroll">
+              <h3 className="agrd__modal-title">Expiry reminders</h3>
+              <p className="agrd__modal-subtitle">
+                When to email {agreement.createdBy || 'the creator'} before this agreement's end date.
+              </p>
+
+              {notifyError && <p className="agrd__error">{notifyError}</p>}
+
+              {loadingNotify ? (
+                <p className="agrd__modal-hint">Loading…</p>
+              ) : (
+                <>
+                  <label className="agrd__template-option">
+                    <input type="radio" name="notifyMode" checked={notifyMode === 'default'} onChange={() => setNotifyMode('default')} />
+                    <div className="agrd__template-option-info">
+                      <span className="agrd__template-option-name">Use organization default</span>
+                      <span className="agrd__template-option-lang">
+                        {tenantDefaultDays.length > 0 ? tenantDefaultDays.map((d) => `${d}d`).join(', ') : 'No reminders configured'}
+                      </span>
+                    </div>
+                  </label>
+                  <label className="agrd__template-option">
+                    <input type="radio" name="notifyMode" checked={notifyMode === 'custom'} onChange={() => setNotifyMode('custom')} />
+                    <div className="agrd__template-option-info">
+                      <span className="agrd__template-option-name">Custom for this agreement only</span>
+                    </div>
+                  </label>
+
+                  {notifyMode === 'custom' && (
+                    <>
+                      <div className="settings__reminder-days agrd__notify-days">
+                        {notifyDays.length === 0 ? (
+                          <span className="agrd__modal-hint">No reminders — this agreement won't get expiry emails.</span>
+                        ) : (
+                          notifyDays.map((d) => (
+                            <span key={d} className="settings__reminder-chip">
+                              {d} day{d === 1 ? '' : 's'} before
+                              <button
+                                type="button"
+                                className="settings__reminder-chip-remove"
+                                onClick={() => handleRemoveNotifyDay(d)}
+                                aria-label={`Remove ${d}-day reminder`}
+                              >
+                                ✕
+                              </button>
+                            </span>
+                          ))
+                        )}
+                      </div>
+                      <div className="settings__reminder-add-row">
+                        <input
+                          type="number"
+                          min="1"
+                          className="settings__playbook-input settings__reminder-add-input"
+                          placeholder="e.g. 60"
+                          value={newNotifyDay}
+                          onChange={(e) => setNewNotifyDay(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddNotifyDay(); } }}
+                        />
+                        <button type="button" className="agrd__btn-secondary" onClick={handleAddNotifyDay}>
+                          + Add threshold
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </>
+              )}
+            </div>
+
+            <div className="agrd__modal-actions">
+              <button type="button" className="agrd__btn-secondary" onClick={closeNotifyModal} disabled={savingNotify}>
+                Cancel
+              </button>
+              <button type="button" className="agrd__btn-primary" onClick={handleSaveNotify} disabled={savingNotify || loadingNotify}>
+                {savingNotify ? 'Saving…' : 'Save'}
               </button>
             </div>
           </div>

@@ -341,6 +341,7 @@ export const listAgreements = async () => {
     reviewSessions: a.review_sessions || [],
     relatedAgreementId: a.related_agreement_id || null,
     relationType: a.relation_type || null,
+    reminderDaysOverride: a.reminder_days_override || null,
     createdBy: a.created_by,
     createdAt: a.created_at,
     updatedAt: a.updated_at,
@@ -369,6 +370,7 @@ export const getAgreement = async (id) => {
     docusignEnvelopes: data.docusign_envelopes || [],
     relatedAgreementId: data.related_agreement_id || null,
     relationType: data.relation_type || null,
+    reminderDaysOverride: data.reminder_days_override || null,
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -423,6 +425,7 @@ export const updateAgreement = async (id, updates) => {
   if (updates.customFields !== undefined) payload.custom_fields = updates.customFields;
   if (updates.relatedAgreementId !== undefined) payload.related_agreement_id = updates.relatedAgreementId;
   if (updates.relationType !== undefined) payload.relation_type = updates.relationType;
+  if (updates.reminderDaysOverride !== undefined) payload.reminder_days_override = updates.reminderDaysOverride;
   const { data, error } = await supabase.from('agreements').update(payload).eq('id', id).select().single();
   if (error) throw error;
   return data;

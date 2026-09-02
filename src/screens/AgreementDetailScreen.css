@@ -1297,3 +1297,40 @@
   cursor: pointer;
   text-decoration: underline;
 }
+
+/* ---------- Expiry reminders bell ---------- */
+
+.agrd__bell-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  background: transparent;
+  border: 1px solid var(--color-border);
+  border-radius: 50%;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.agrd__bell-btn:hover {
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.agrd__bell-btn--custom {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: var(--color-accent-soft);
+}
+
+.agrd__bell-icon {
+  width: 16px;
+  height: 16px;
+}
+
+.agrd__notify-days {
+  margin-top: 12px;
+}

@@ -24,7 +24,7 @@ Deno.serve(async (req) => {
 
     const { data: agreements, error } = await supabase
       .from('agreements')
-      .select('id, tenant_id, title, account_name, end_date, status, created_by, reminders_sent')
+      .select('id, tenant_id, title, account_name, end_date, status, created_by, reminders_sent, reminder_days_override')
       .eq('status', 'Activated')
       .not('end_date', 'is', null);
 
@@ -56,7 +56,11 @@ Deno.serve(async (req) => {
       const daysLeft = Math.ceil((endDate.getTime() - today.getTime()) / 86400000);
       if (daysLeft < 0) continue;
 
-      const thresholds = thresholdsByTenant.get(a.tenant_id) || DEFAULT_THRESHOLDS;
+      // null override = use the tenant default; a (possibly empty) array
+      // means this agreement has its own custom list, including "none".
+      const thresholds = Array.isArray(a.reminder_days_override)
+        ? a.reminder_days_override
+        : thresholdsByTenant.get(a.tenant_id) || DEFAULT_THRESHOLDS;
       const alreadySent: number[] = Array.isArray(a.reminders_sent) ? a.reminders_sent : [];
       const crossed = thresholds.filter((t) => daysLeft <= t && !alreadySent.includes(t));
       if (crossed.length === 0) continue;
