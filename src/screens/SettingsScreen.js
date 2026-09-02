@@ -10,7 +10,11 @@ import {
 import { indexObject } from '../embeddingsApi';
 import './SettingsScreen.css';
 
-const REINDEX_CONCURRENCY = 3;
+// Sequential, not parallel — Voyage throttles accounts with no payment
+// method on file to 3 requests/minute, and firing several at once just
+// burns through that budget instantly. The edge function itself retries
+// on 429 too, but avoiding the burst in the first place is better.
+const REINDEX_CONCURRENCY = 1;
 
 function SettingsScreen() {
   const [usage, setUsage] = useState(null);
