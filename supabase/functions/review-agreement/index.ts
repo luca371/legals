@@ -36,7 +36,7 @@ The JSON object must have exactly these fields:
   "playbookViolations": [{"rule": "<the playbook rule this violates, verbatim or close to it>", "issue": "<short label>", "severity": "low"|"medium"|"high", "explanation": "<1-2 sentences>", "originalExcerpt": "<verbatim text to replace, or null>", "proposedText": "<rewritten replacement in the document's language, or null>"}]
 }
 
-"categories" must have exactly 4 entries, one per category above, in that order. Keep "strengths" to at most 5 items. Keep "risks" and "suggestions" to at most 6 items each, ordered by importance (most important first). "playbookViolations" must be an empty array if no playbook was given or the document doesn't violate any of its rules.`;
+"categories" must have exactly 4 entries, one per category above, in that order. Keep "strengths" to at most 5 items. Keep "risks", "suggestions", and "playbookViolations" to at most 6 items each, ordered by importance (most important first). "playbookViolations" must be an empty array if no playbook was given or the document doesn't violate any of its rules. Keep every "originalExcerpt" as short as possible — the minimum span of text that actually needs to change, never a whole paragraph — so the full response comfortably fits well within the token budget.`;
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -59,10 +59,15 @@ Deno.serve(async (req) => {
 
     const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
       model: ANTHROPIC_MODEL,
-      max_tokens: 8192,
+      max_tokens: 16000,
       system: systemPrompt,
       messages: [{ role: 'user', content: userMessage }],
     });
+
+    if (data.stop_reason === 'max_tokens') {
+      console.error('Review AI: response was truncated at max_tokens. Raw text was:\n', (data.content || []).find((c: { type: string }) => c.type === 'text')?.text);
+      throw new Error('The AI review was too long and got cut off — try reviewing a shorter document, or fewer playbooks at once.');
+    }
 
     const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
     if (!textBlock) throw new Error('No text response from Claude.');
