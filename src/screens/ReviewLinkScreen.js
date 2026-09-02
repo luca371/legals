@@ -11,7 +11,7 @@ function CenteredMessage({ icon, title, subtitle }) {
   return (
     <div className="rvl">
       <div className="rvl__center-card">
-        <div className="rvl__center-icon">{icon}</div>
+        {icon && <div className="rvl__center-icon">{icon}</div>}
         <h1 className="rvl__center-title">{title}</h1>
         <p className="rvl__center-subtitle">{subtitle}</p>
       </div>
@@ -106,13 +106,12 @@ function ReviewLinkScreen() {
   };
 
   if (loading) {
-    return <CenteredMessage icon="⏳" title="Loading…" subtitle="Fetching the document for review." />;
+    return <CenteredMessage title="Loading…" subtitle="Fetching the document for review." />;
   }
 
   if (notFound) {
     return (
       <CenteredMessage
-        icon="🔗"
         title="Link not found"
         subtitle="This review link doesn't exist or has been removed."
       />
@@ -122,7 +121,6 @@ function ReviewLinkScreen() {
   if (expired) {
     return (
       <CenteredMessage
-        icon="⌛"
         title="This link has expired"
         subtitle={`Review links expire ${LINK_EXPIRY_DAYS} days after they're sent. Ask the sender for a new one.`}
       />
@@ -138,7 +136,6 @@ function ReviewLinkScreen() {
       />
     ) : (
       <CenteredMessage
-        icon="🔒"
         title="This link has already been used"
         subtitle="This review link is only valid for one submission. If you need to make further changes, ask the sender for a new link."
       />
