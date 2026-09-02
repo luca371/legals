@@ -2939,7 +2939,7 @@ function AgreementDetailScreen() {
 
       {showSignatureModal && (
         <div className="agrd__modal-backdrop" onClick={closeSignatureModal}>
-          <div className="agrd__modal" onClick={(e) => e.stopPropagation()}>
+          <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
             <div className="agrd__modal-scroll">
               <h3 className="agrd__modal-title">Send for signature</h3>
               <p className="agrd__modal-subtitle">
@@ -2986,12 +2986,31 @@ function AgreementDetailScreen() {
               </button>
 
               {signersList.map((signer, index) => (
-                <div key={index} className="agrd__recipient-row">
+                <div
+                  key={index}
+                  className={`agrd__recipient-row ${dragIndex === index ? 'agrd__recipient-row--dragging' : ''}`}
+                  onDragOver={handleDragOverRow}
+                  onDrop={handleDropReorder(setSignersList, index)}
+                >
                   <h4 className="agrd__review-section-title">
-                    Signer {index + 1}
-                    {index > 0 && <span className="agrd__modal-hint"> (signs after Signer {index})</span>}
+                    Signer {signersList.length > 1 ? index + 1 : ''}
+                    {signersList.length > 1 && index > 0 && (
+                      <span className="agrd__modal-hint"> (signs after Signer {index})</span>
+                    )}
                   </h4>
                   <div className="agrd__recipient-fields">
+                    {signersList.length > 1 && (
+                      <span
+                        className="agrd__drag-handle"
+                        draggable
+                        onDragStart={handleDragStart(index)}
+                        onDragEnd={handleDragEnd}
+                        aria-label={`Drag to reorder signer ${index + 1}`}
+                        title="Drag to reorder"
+                      >
+                        ⠿
+                      </span>
+                    )}
                     <input
                       type="text"
                       className="agrd__input"
@@ -3023,6 +3042,11 @@ function AgreementDetailScreen() {
                 <button type="button" className="agrd__attachment-btn" onClick={addSignerRow}>
                   + Add a signer
                 </button>
+              )}
+              {signersList.length > 1 && (
+                <p className="agrd__modal-hint agrd__modal-hint--top">
+                  Sequential — each signer is only notified after the previous one signs. Drag ⠿ to reorder.
+                </p>
               )}
 
               <h4 className="agrd__review-section-title">
