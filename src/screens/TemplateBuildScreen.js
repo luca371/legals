@@ -176,10 +176,12 @@ function TemplateBuildScreen() {
   const [fieldSuggestionsError, setFieldSuggestionsError] = useState('');
 
   const [showClausesModal, setShowClausesModal] = useState(false);
-  const [clauseSuggestions, setClauseSuggestions] = useState([]);
+  const [missingClauses, setMissingClauses] = useState([]);
+  const [existingClauses, setExistingClauses] = useState([]);
   const [insertedClauseIds, setInsertedClauseIds] = useState([]);
   const [loadingClauseSuggestions, setLoadingClauseSuggestions] = useState(false);
   const [clauseSuggestionsError, setClauseSuggestionsError] = useState('');
+  const [hasRunClauseAnalysis, setHasRunClauseAnalysis] = useState(false);
 
   const editableRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -234,6 +236,10 @@ function TemplateBuildScreen() {
     setFileName('');
     setError('');
     setFieldSuggestions([]);
+    setMissingClauses([]);
+    setExistingClauses([]);
+    setHasRunClauseAnalysis(false);
+    setInsertedClauseIds([]);
     setView('setup');
   };
 
@@ -248,6 +254,10 @@ function TemplateBuildScreen() {
     setError('');
     setFieldSuggestions([]);
     setFieldSuggestionsError('');
+    setMissingClauses([]);
+    setExistingClauses([]);
+    setHasRunClauseAnalysis(false);
+    setInsertedClauseIds([]);
     try {
       const [configs, map] = await Promise.all([
         getBuiltInFieldConfigs('agreement'),
@@ -467,7 +477,7 @@ function TemplateBuildScreen() {
 
   const handleOpenClausesModal = async () => {
     setShowClausesModal(true);
-    if (clauseSuggestions.length > 0) return;
+    if (hasRunClauseAnalysis) return;
     setLoadingClauseSuggestions(true);
     setClauseSuggestionsError('');
     try {
@@ -477,7 +487,9 @@ function TemplateBuildScreen() {
         agreementSubtype: meta.agreementSubtype,
         language: meta.language,
       });
-      setClauseSuggestions(results.map((c) => ({ ...c, id: uid() })));
+      setMissingClauses(results.missingClauses.map((c) => ({ ...c, id: uid() })));
+      setExistingClauses(results.existingClauses.map((c) => ({ ...c, id: uid() })));
+      setHasRunClauseAnalysis(true);
     } catch (err) {
       console.error('AI clause suggestion failed:', err);
       setClauseSuggestionsError(err.message || 'Could not get AI suggestions. Please try again.');
@@ -488,12 +500,56 @@ function TemplateBuildScreen() {
 
   const closeClausesModal = () => setShowClausesModal(false);
 
+  // A signature block is either an actual docusign.* placeholder chip
+  // (dropped in from the field sidebar) or, failing that, the first
+  // paragraph that reads like the start of a signature section — new
+  // clauses go right before whichever of those comes first, never after.
+  const findSignatureBlock = (root) => {
+    if (!root) return null;
+    const sigChip = root.querySelector('.tpl-placeholder[data-field^="docusign."]');
+    let target = sigChip;
+    if (!target) {
+      const blocks = Array.from(root.querySelectorAll('p, div, li'));
+      target = blocks.find((el) => /in witness whereof|signature|signed\s+by|semn(at|ătur)/i.test(el.textContent || '')) || null;
+    }
+    if (!target) return null;
+    let topLevel = target;
+    while (topLevel.parentElement && topLevel.parentElement !== root) {
+      topLevel = topLevel.parentElement;
+    }
+    return topLevel.parentElement === root ? topLevel : null;
+  };
+
+  // If the document numbers its clauses ("1. Definitions", "2. Term", …),
+  // new clauses continue that numbering instead of starting a fresh "1.".
+  const detectNextClauseNumber = (root) => {
+    if (!root) return null;
+    let maxNum = 0;
+    let found = false;
+    root.querySelectorAll('p, li').forEach((el) => {
+      const match = (el.textContent || '').trim().match(/^(\d+)[.)]\s+\S/);
+      if (match) {
+        found = true;
+        maxNum = Math.max(maxNum, parseInt(match[1], 10));
+      }
+    });
+    return found ? maxNum + 1 : null;
+  };
+
   const handleInsertClause = (clause) => {
     const editable = editableRef.current;
     if (!editable) return;
+
+    const nextNumber = detectNextClauseNumber(editable);
     const p = document.createElement('p');
-    p.textContent = clause.text;
-    editable.appendChild(p);
+    p.textContent = nextNumber ? `${nextNumber}. ${clause.title}. ${clause.text}` : `${clause.title}. ${clause.text}`;
+
+    const signatureBlock = findSignatureBlock(editable);
+    if (signatureBlock) {
+      editable.insertBefore(p, signatureBlock);
+    } else {
+      editable.appendChild(p);
+    }
     setInsertedClauseIds((prev) => [...prev, clause.id]);
   };
 
@@ -631,7 +687,7 @@ function TemplateBuildScreen() {
         </div>
         <div className="tpl__topbar-actions">
           <button className="tpl__btn-secondary" onClick={handleOpenClausesModal} disabled={!htmlContent}>
-            ✨ Suggest clauses
+            Suggest clauses
           </button>
           <button className="tpl__btn-primary" onClick={handleSave} disabled={saving || !htmlContent}>
             {saving ? 'Saving…' : 'Save template'}
@@ -665,7 +721,7 @@ function TemplateBuildScreen() {
                 onClick={handleSuggestFields}
                 disabled={loadingFieldSuggestions || allFlatFields.length === 0}
               >
-                {loadingFieldSuggestions ? 'Scanning document…' : '✨ Suggest fields with AI'}
+                {loadingFieldSuggestions ? 'Scanning document…' : 'Suggest fields with AI'}
               </button>
               {fieldSuggestionsError && <p className="tpl__ai-error">{fieldSuggestionsError}</p>}
             </div>
@@ -769,7 +825,7 @@ function TemplateBuildScreen() {
         <div className="agrd__modal-backdrop" onClick={closeClausesModal}>
           <div className="agrd__modal agrd__modal--wide" onClick={(e) => e.stopPropagation()}>
             <div className="agrd__modal-scroll">
-              <h3 className="agrd__modal-title">✨ Suggested clauses</h3>
+              <h3 className="agrd__modal-title">Suggested clauses</h3>
               <p className="agrd__modal-subtitle">
                 Based on this template's type ({meta.agreementType || 'unspecified'}) and what's already in the
                 document — not legal advice, a starting point to adapt.
@@ -779,33 +835,67 @@ function TemplateBuildScreen() {
 
               {loadingClauseSuggestions ? (
                 <p className="tpl__empty">Reading the document…</p>
-              ) : clauseSuggestions.length === 0 ? (
-                <p className="tpl__empty">
-                  {clauseSuggestionsError ? '' : 'No obvious gaps found — this template already covers the essentials.'}
-                </p>
               ) : (
-                <div className="tpl__clause-list">
-                  {clauseSuggestions.map((clause) => {
-                    const inserted = insertedClauseIds.includes(clause.id);
-                    return (
-                      <div key={clause.id} className="tpl__clause">
-                        <div className="tpl__clause-header">
-                          <span className="tpl__clause-title">{clause.title}</span>
-                          <button
-                            type="button"
-                            className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
-                            onClick={() => handleInsertClause(clause)}
-                            disabled={inserted}
-                          >
-                            {inserted ? '✓ Inserted' : 'Insert'}
-                          </button>
-                        </div>
-                        {clause.reason && <p className="tpl__clause-reason">{clause.reason}</p>}
-                        <p className="tpl__clause-text">{clause.text}</p>
+                <>
+                  <h4 className="tpl__clause-section-title">Missing clauses</h4>
+                  {missingClauses.length === 0 ? (
+                    <p className="tpl__empty">
+                      {clauseSuggestionsError ? '' : 'No obvious gaps found — this template already covers the essentials.'}
+                    </p>
+                  ) : (
+                    <div className="tpl__clause-list">
+                      {missingClauses.map((clause) => {
+                        const inserted = insertedClauseIds.includes(clause.id);
+                        return (
+                          <div key={clause.id} className="tpl__clause">
+                            <div className="tpl__clause-header">
+                              <span className="tpl__clause-title">{clause.title}</span>
+                              <button
+                                type="button"
+                                className={inserted ? 'tpl__clause-inserted' : 'tpl__ai-accept'}
+                                onClick={() => handleInsertClause(clause)}
+                                disabled={inserted}
+                              >
+                                {inserted ? '✓ Inserted' : 'Insert'}
+                              </button>
+                            </div>
+                            {clause.reason && <p className="tpl__clause-reason">{clause.reason}</p>}
+                            <p className="tpl__clause-text">{clause.text}</p>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {existingClauses.length > 0 && (
+                    <>
+                      <h4 className="tpl__clause-section-title tpl__clause-section-title--spaced">
+                        Existing clauses — quality &amp; risk
+                      </h4>
+                      <div className="tpl__clause-list">
+                        {existingClauses.map((clause) => (
+                          <div key={clause.id} className="tpl__clause">
+                            <div className="tpl__clause-header">
+                              <span className="tpl__clause-title">{clause.title}</span>
+                              <div className="tpl__clause-scores">
+                                <span className={`tpl__risk-badge tpl__risk-badge--${(clause.risk || 'medium').toLowerCase()}`}>
+                                  {clause.risk || 'medium'} risk
+                                </span>
+                                <span className="tpl__score-badge">{clause.score}/10</span>
+                              </div>
+                            </div>
+                            {clause.assessment && <p className="tpl__clause-reason">{clause.assessment}</p>}
+                            {clause.improvement && (
+                              <p className="tpl__clause-improvement">
+                                <strong>Improve:</strong> {clause.improvement}
+                              </p>
+                            )}
+                          </div>
+                        ))}
                       </div>
-                    );
-                  })}
-                </div>
+                    </>
+                  )}
+                </>
               )}
             </div>
 

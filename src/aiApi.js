@@ -15,5 +15,8 @@ export async function suggestClausesWithAI(documentText, metadata) {
   });
 
   if (error) throw new Error(error.message || 'Suggest clauses request failed.');
-  return data?.suggestions || [];
+  return {
+    missingClauses: data?.missingClauses || [],
+    existingClauses: data?.existingClauses || [],
+  };
 }
