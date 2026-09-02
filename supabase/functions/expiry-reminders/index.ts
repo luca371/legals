@@ -54,18 +54,24 @@ Deno.serve(async (req) => {
       }
 
       try {
+        const appBaseUrl = (Deno.env.get('APP_BASE_URL') ?? '').replace(/\/$/, '');
         await sendEmailJs({
           serviceId: Deno.env.get('EMAILJS_SERVICE_ID') ?? '',
-          templateId: Deno.env.get('EMAILJS_EXPIRY_TEMPLATE_ID') ?? '',
+          // Reuses the same generic template as review emails — EmailJS's
+          // free plan caps templates at 2, so this isn't a dedicated one.
+          templateId: Deno.env.get('EMAILJS_REVIEW_TEMPLATE_ID') ?? '',
           publicKey: Deno.env.get('EMAILJS_PUBLIC_KEY') ?? '',
           privateKey: Deno.env.get('EMAILJS_PRIVATE_KEY') ?? undefined,
           templateParams: {
             to_email: a.created_by,
             to_name: a.created_by,
-            agreement_title: a.title || '',
-            account_name: a.account_name || '',
-            days_left: String(daysLeft),
-            end_date: a.end_date,
+            from_name: 'Legal Space',
+            subject_line: `Contract expiring in ${daysLeft} day${daysLeft === 1 ? '' : 's'}: ${a.title || ''}`,
+            intro_text: `"${a.title || 'This agreement'}"${a.account_name ? ` (${a.account_name})` : ''} is set to expire on ${a.end_date}, in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`,
+            detail_line: 'Renew, amend, or let it lapse — just make sure someone looks at it before then.',
+            cta_label: 'View agreement',
+            cta_link: appBaseUrl ? `${appBaseUrl}/dashboard/agreements/${a.id}` : '',
+            cc_email: '',
           },
         });
         sent += 1;

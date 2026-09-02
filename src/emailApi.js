@@ -70,6 +70,11 @@ export const sendActivationEmail = async ({
   );
 };
 
+// REVIEW_TEMPLATE_ID is a generic template (EmailJS free plan only allows 2)
+// — also reused for expiry reminders on the server side. Its placeholders
+// are subject_line/intro_text/detail_line/cta_label/cta_link, not
+// review-specific fields, so any future email type can reuse it too by
+// just filling those in differently, no new template needed.
 export const sendReviewEmail = async ({
   toEmail,
   toName,
@@ -90,9 +95,11 @@ export const sendReviewEmail = async ({
       to_email: toEmail,
       to_name: toName || toEmail,
       from_name: fromName || 'Legal Space',
-      agreement_title: agreementTitle || '',
-      message: message || '',
-      review_link: reviewLink,
+      subject_line: `Review requested: ${agreementTitle || 'a document'}`,
+      intro_text: `${fromName || 'Someone'} has asked you to review "${agreementTitle || 'a document'}".`,
+      detail_line: message || '',
+      cta_label: 'Open for review',
+      cta_link: reviewLink,
       cc_email: ccEmail || '',
     },
     { publicKey: EMAILJS_PUBLIC_KEY }
