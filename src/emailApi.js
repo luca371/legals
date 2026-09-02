@@ -1,9 +1,11 @@
 import emailjs from '@emailjs/browser';
 
-const EMAILJS_SERVICE_ID = 'service_vnyvtke';
+const EMAILJS_SERVICE_ID = 'service_fkxyweh';
 const EMAILJS_TEMPLATE_ID = 'template_rk4qeo4';
-const EMAILJS_PUBLIC_KEY = 'XxhyAZmbDbStZ2m4E';
-const ACTIVATION_TEMPLATE_ID = 'template_mh5uqob';
+const EMAILJS_PUBLIC_KEY = 'gQPPeWWJNRodsCFds';
+// Not created in the new EmailJS account yet — activation emails will fail
+// with "template not found" until this is set to a real template id there.
+const ACTIVATION_TEMPLATE_ID = 'YOUR_ACTIVATION_TEMPLATE_ID';
 const REVIEW_TEMPLATE_ID = 'template_wxn3x0l';
 
 export const sendApprovalEmail = async ({
