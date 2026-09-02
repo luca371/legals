@@ -1,16 +1,67 @@
 import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 
-const SYSTEM_PROMPT = `You are a contract-quality reviewer embedded in "Legal Space", a contract lifecycle management tool. You are given an agreement's metadata and the text of its attached document(s). Review it the way an experienced contract manager (not a lawyer) would when sanity-checking a contract before it goes out — completeness, clarity, internal consistency, and whether it covers the clauses you'd normally expect for this type of agreement.
+const SYSTEM_PROMPT = `You are the senior contract-quality reviewer embedded in "Legal Space", a contract lifecycle management tool — the kind of review an experienced contract manager (not a lawyer) gives before a contract goes out: thorough, specific, and genuinely useful, not a generic checklist. You are given an agreement's metadata and the text of its attached document(s).
 
-You are NOT providing legal advice, and you should not present your output as such — keep suggestions at the level of "a contract manager would flag this," not definitive legal conclusions. If the document text is missing, empty, or clearly not a real contract, say so plainly in "summary" and give a low score rather than inventing an assessment.
+You are NOT providing legal advice, and you should not present your output as such — keep everything at the level of "an experienced contract manager would flag this," not a definitive legal conclusion. If the document text is missing, empty, or clearly not a real contract, say so plainly in "summary", give a low overallScore, and return empty arrays rather than inventing an assessment.
+
+Do a genuinely deep read — go clause by clause, not just a skim. Base everything only on the actual text provided — never invent clauses, terms, or facts that aren't there.
+
+Assess FOUR categories, each scored 1-10:
+- "Completeness" — does it cover the clauses you'd normally expect for this type/subtype of agreement?
+- "Clarity" — is the language precise and unambiguous, or vague/contradictory in places?
+- "Balance" — are obligations, risk, and remedies reasonably balanced between the parties, or is it one-sided?
+- "Enforceability" — anything that reads as vague, missing a defined term, or likely unenforceable as written?
+
+Then list:
+- strengths: what's genuinely well done.
+- risks: specific issues, each with a severity. Point to the actual clause/section when you can.
+- suggestions: specific, actionable fixes — not generic advice like "consult a lawyer".
 
 Think it through first, then give your final answer as a JSON object wrapped exactly like this, on its own at the end: <answer>{...}</answer>
 
 The JSON object must have exactly these fields:
-{"score": <integer 1-10, 10 being excellent>, "summary": "<2-3 sentence overall assessment>", "strengths": ["<short point>", ...], "gaps": ["<short point — missing or weak areas>", ...], "suggestions": ["<short, actionable point>", ...]}
+{
+  "overallScore": <integer 1-10>,
+  "riskLevel": "low"|"medium"|"high",
+  "summary": "<3-4 sentence executive summary — the kind you'd put at the top of a review memo>",
+  "categories": [{"name": "Completeness"|"Clarity"|"Balance"|"Enforceability", "score": <1-10>, "note": "<one sentence, specific to this document>"}],
+  "strengths": ["<specific, short point>", ...],
+  "risks": [{"issue": "<short label>", "severity": "low"|"medium"|"high", "explanation": "<1-2 sentences, specific — cite the clause/section if possible>"}],
+  "suggestions": [{"title": "<short label>", "detail": "<1-2 sentences, concrete and actionable>"}]
+}
 
-Keep each array to at most 5 items, each a single short sentence. Base everything only on the actual text provided — never invent clauses or facts that aren't there.`;
+"categories" must have exactly 4 entries, one per category above, in that order. Keep "strengths" to at most 5 items. Keep "risks" and "suggestions" to at most 6 items each, ordered by importance (most important first).`;
+
+Deno.serve(async (req) => {
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: corsHeaders });
+  }
+
+  try {
+    const { documentText, metadata } = await req.json();
+    if (!documentText || !String(documentText).trim()) {
+      return jsonResponse({ error: 'documentText is required.' }, 400);
+    }
+
+    const userMessage = `Agreement metadata (JSON):\n${JSON.stringify(metadata || {})}\n\nDocument text:\n"""\n${documentText}\n"""`;
+
+    const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
+      model: ANTHROPIC_MODEL,
+      max_tokens: 8192,
+      system: SYSTEM_PROMPT,
+      messages: [{ role: 'user', content: userMessage }],
+    });
+
+    const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
+    if (!textBlock) throw new Error('No text response from Claude.');
+
+    return jsonResponse(parseReview(textBlock.text));
+  } catch (err) {
+    console.error('Review AI error:', err);
+    return jsonResponse({ error: err instanceof Error ? err.message : 'Review failed.' }, 500);
+  }
+});
 
 function parseReview(rawText: string) {
   const answerMatch = rawText.match(/<answer>([\s\S]*?)<\/answer>/);
@@ -37,40 +88,12 @@ function parseReview(rawText: string) {
   }
 
   return {
-    score: Number(review.score) || 0,
+    overallScore: Number(review.overallScore) || 0,
+    riskLevel: review.riskLevel || 'medium',
     summary: review.summary || '',
+    categories: Array.isArray(review.categories) ? review.categories : [],
     strengths: Array.isArray(review.strengths) ? review.strengths : [],
-    gaps: Array.isArray(review.gaps) ? review.gaps : [],
+    risks: Array.isArray(review.risks) ? review.risks : [],
     suggestions: Array.isArray(review.suggestions) ? review.suggestions : [],
   };
 }
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response('ok', { headers: corsHeaders });
-  }
-
-  try {
-    const { documentText, metadata } = await req.json();
-    if (!documentText || !String(documentText).trim()) {
-      return jsonResponse({ error: 'documentText is required.' }, 400);
-    }
-
-    const userMessage = `Agreement metadata (JSON):\n${JSON.stringify(metadata || {})}\n\nDocument text:\n"""\n${documentText}\n"""`;
-
-    const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
-      model: ANTHROPIC_MODEL,
-      max_tokens: 4096,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
-    });
-
-    const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
-    if (!textBlock) throw new Error('No text response from Claude.');
-
-    return jsonResponse(parseReview(textBlock.text));
-  } catch (err) {
-    console.error('Review AI error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Review failed.' }, 500);
-  }
-});

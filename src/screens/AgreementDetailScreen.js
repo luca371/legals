@@ -2404,12 +2404,37 @@ function AgreementDetailScreen() {
                     <>
                       <div className="arv__score-row">
                         <div
-                          className={`arv__score-badge arv__score-badge--${aiReview.score >= 8 ? 'good' : aiReview.score >= 5 ? 'mid' : 'low'}`}
+                          className={`arv__score-badge arv__score-badge--${aiReview.overallScore >= 8 ? 'good' : aiReview.overallScore >= 5 ? 'mid' : 'low'}`}
                         >
-                          {aiReview.score}<span className="arv__score-max">/10</span>
+                          {aiReview.overallScore}<span className="arv__score-max">/10</span>
                         </div>
-                        <p className="arv__summary">{aiReview.summary}</p>
+                        <div className="arv__score-row-text">
+                          <span className={`arv__risk-pill arv__risk-pill--${(aiReview.riskLevel || 'medium').toLowerCase()}`}>
+                            {aiReview.riskLevel} risk
+                          </span>
+                          <p className="arv__summary">{aiReview.summary}</p>
+                        </div>
                       </div>
+
+                      {aiReview.categories?.length > 0 && (
+                        <div className="arv__categories">
+                          {aiReview.categories.map((cat) => (
+                            <div key={cat.name} className="arv__category">
+                              <div className="arv__category-top">
+                                <span className="arv__category-name">{cat.name}</span>
+                                <span className="arv__category-score">{cat.score}/10</span>
+                              </div>
+                              <div className="arv__category-bar-track">
+                                <div
+                                  className={`arv__category-bar-fill arv__category-bar-fill--${cat.score >= 8 ? 'good' : cat.score >= 5 ? 'mid' : 'low'}`}
+                                  style={{ width: `${cat.score * 10}%` }}
+                                />
+                              </div>
+                              {cat.note && <p className="arv__category-note">{cat.note}</p>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
 
                       {aiReview.strengths.length > 0 && (
                         <div className="arv__section">
@@ -2420,21 +2445,36 @@ function AgreementDetailScreen() {
                         </div>
                       )}
 
-                      {aiReview.gaps.length > 0 && (
+                      {aiReview.risks?.length > 0 && (
                         <div className="arv__section">
-                          <h4 className="arv__section-title arv__section-title--warn">Gaps</h4>
-                          <ul className="arv__list">
-                            {aiReview.gaps.map((item, i) => <li key={i}>{item}</li>)}
-                          </ul>
+                          <h4 className="arv__section-title arv__section-title--warn">Risks</h4>
+                          <div className="arv__risk-list">
+                            {aiReview.risks.map((risk, i) => (
+                              <div key={i} className="arv__risk-item">
+                                <div className="arv__risk-item-top">
+                                  <span className="arv__risk-item-issue">{risk.issue}</span>
+                                  <span className={`arv__risk-pill arv__risk-pill--${(risk.severity || 'medium').toLowerCase()}`}>
+                                    {risk.severity}
+                                  </span>
+                                </div>
+                                {risk.explanation && <p className="arv__risk-item-explanation">{risk.explanation}</p>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
 
-                      {aiReview.suggestions.length > 0 && (
+                      {aiReview.suggestions?.length > 0 && (
                         <div className="arv__section">
                           <h4 className="arv__section-title">Suggestions</h4>
-                          <ul className="arv__list">
-                            {aiReview.suggestions.map((item, i) => <li key={i}>{item}</li>)}
-                          </ul>
+                          <div className="arv__suggestion-list">
+                            {aiReview.suggestions.map((s, i) => (
+                              <div key={i} className="arv__suggestion-item">
+                                <p className="arv__suggestion-title">{s.title}</p>
+                                {s.detail && <p className="arv__suggestion-detail">{s.detail}</p>}
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </>
