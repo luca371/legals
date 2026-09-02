@@ -304,7 +304,7 @@
 }
 
 .agrd__recipient-row {
-  margin-bottom: 6px;
+  margin-bottom: 16px;
   border-radius: var(--radius-md);
   transition: background 0.12s var(--ease);
 }
@@ -591,14 +591,15 @@
 
 .agrd__version-badge {
   display: inline-block;
-  margin-left: 8px;
-  padding: 1px 8px;
+  margin-left: 10px;
+  padding: 2px 9px;
   background: var(--color-accent-soft);
   color: var(--color-accent);
   font-size: 0.7rem;
   font-weight: 600;
   border-radius: var(--radius-xl);
   vertical-align: middle;
+  white-space: nowrap;
 }
 
 .agrd__attachment-size {
@@ -625,6 +626,14 @@
   text-decoration: none;
   display: inline-flex;
   align-items: center;
+}
+
+/* Standalone "add another row" / follow-up action buttons that sit below
+   a list rather than inline in a row — .agrd__attachment-btn is shared
+   with the inline Preview/Download/Remove row, which must NOT get this
+   margin or it throws off their vertical centering. */
+.agrd__attachment-btn--block {
+  margin-top: 14px;
 }
 
 .agrd__attachment-btn:hover {
@@ -944,7 +953,7 @@
 .agrd__modal-hint {
   font-size: 0.88rem;
   color: var(--color-text-tertiary);
-  margin: 0;
+  margin: 0 0 12px;
 }
 
 .agrd__template-list {
@@ -956,8 +965,8 @@
 .agrd__template-option {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 14px;
+  gap: 14px;
+  padding: 14px 16px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius-md);
   cursor: pointer;
@@ -983,13 +992,15 @@
   align-items: center;
   justify-content: space-between;
   flex: 1;
-  gap: 10px;
+  gap: 16px;
+  min-width: 0;
 }
 
 .agrd__template-option-name {
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--color-text);
+  overflow-wrap: anywhere;
 }
 
 .agrd__template-option-lang {
@@ -1003,7 +1014,7 @@
 }
 
 .agrd__modal--wide {
-  max-width: 560px;
+  max-width: 660px;
 }
 
 .agrd__modal-hint--top {
@@ -1013,7 +1024,7 @@
 .agrd__merge-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .agrd__merge-option {

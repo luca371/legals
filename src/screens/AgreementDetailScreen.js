@@ -2830,7 +2830,7 @@ function AgreementDetailScreen() {
                 </div>
               ))}
               {reviewersList.length < 10 && (
-                <button type="button" className="agrd__attachment-btn" onClick={addReviewerRow}>
+                <button type="button" className="agrd__attachment-btn agrd__attachment-btn--block" onClick={addReviewerRow}>
                   + Add another reviewer
                 </button>
               )}
@@ -2969,7 +2969,7 @@ function AgreementDetailScreen() {
                 </div>
               ))}
               {approversList.length < 10 && (
-                <button type="button" className="agrd__attachment-btn" onClick={addApproverRow}>
+                <button type="button" className="agrd__attachment-btn agrd__attachment-btn--block" onClick={addApproverRow}>
                   + Add another approver
                 </button>
               )}
@@ -3426,7 +3426,7 @@ function AgreementDetailScreen() {
 
               <button
                 type="button"
-                className="agrd__attachment-btn"
+                className="agrd__attachment-btn agrd__attachment-btn--block"
                 onClick={handleMarkSignedManually}
                 disabled={signatureAttachmentIds.length !== 1 || sendingSignature || markingManualSignature}
               >
@@ -3487,7 +3487,7 @@ function AgreementDetailScreen() {
                 </div>
               ))}
               {signersList.length < 10 && (
-                <button type="button" className="agrd__attachment-btn" onClick={addSignerRow}>
+                <button type="button" className="agrd__attachment-btn agrd__attachment-btn--block" onClick={addSignerRow}>
                   + Add a signer
                 </button>
               )}
@@ -3529,7 +3529,7 @@ function AgreementDetailScreen() {
                 </div>
               ))}
               {ccList.length < 10 && (
-                <button type="button" className="agrd__attachment-btn" onClick={addCcRow}>
+                <button type="button" className="agrd__attachment-btn agrd__attachment-btn--block" onClick={addCcRow}>
                   + Add a recipient in copy
                 </button>
               )}
