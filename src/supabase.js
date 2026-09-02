@@ -142,6 +142,49 @@ export const getCurrentUser = async () => {
   return session?.user ?? null;
 };
 
+// Fire-and-forget by design (like indexObject) - a failed audit write should
+// never block the action it's logging. Only covers actions taken by a
+// logged-in tenant user; anonymous actions on public approval/review links
+// have no tenant session to attribute the entry to, so those aren't logged.
+export const logAuditEvent = async (action, objectType, objectId, objectLabel, details = {}) => {
+  try {
+    const tenantId = await getCurrentTenantId();
+    if (!tenantId) return;
+    const user = await getCurrentUser();
+    const { error } = await supabase.from('audit_log').insert({
+      tenant_id: tenantId,
+      actor_email: user?.email || '',
+      action,
+      object_type: objectType,
+      object_id: objectId || null,
+      object_label: objectLabel || '',
+      details,
+    });
+    if (error) console.warn('Failed to log audit event:', error);
+  } catch (err) {
+    console.warn('Failed to log audit event:', err);
+  }
+};
+
+export const listAuditLog = async (limit = 500) => {
+  const { data, error } = await supabase
+    .from('audit_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data.map((r) => ({
+    id: r.id,
+    actorEmail: r.actor_email,
+    action: r.action,
+    objectType: r.object_type,
+    objectId: r.object_id,
+    objectLabel: r.object_label,
+    details: r.details || {},
+    createdAt: r.created_at,
+  }));
+};
+
 export const listAccounts = async () => {
   const { data, error } = await supabase
     .from('accounts')
@@ -204,16 +247,19 @@ export const createAccount = async (account) => {
     .select()
     .single();
   if (error) throw error;
+  logAuditEvent('created', 'account', data.id, data.name);
   return data;
 };
 
 export const deleteAccount = async (id) => {
+  const existing = await supabase.from('accounts').select('name').eq('id', id).maybeSingle();
   const { error } = await supabase.from('accounts').delete().eq('id', id);
   if (error) throw error;
+  logAuditEvent('deleted', 'account', id, existing.data?.name || '');
 };
 
-export const updateAccount = (id, updates) =>
-  supabase
+export const updateAccount = async (id, updates) => {
+  const { error } = await supabase
     .from('accounts')
     .update({
       name: updates.name,
@@ -228,6 +274,9 @@ export const updateAccount = (id, updates) =>
       updated_at: new Date().toISOString(),
     })
     .eq('id', id);
+  if (error) throw error;
+  logAuditEvent('updated', 'account', id, updates.name || '');
+};
 
 // Playbooks live at the organization level (e.g. "Procurement rules", "GDPR
 // rules") — each one gets assigned to whichever accounts it applies to, and
@@ -427,6 +476,7 @@ export const createAgreement = async (agreement) => {
     .select()
     .single();
   if (error) throw error;
+  logAuditEvent('created', 'agreement', data.id, data.title);
   return data;
 };
 
@@ -443,6 +493,13 @@ export const updateAgreement = async (id, updates) => {
   if (updates.reminderDaysOverride !== undefined) payload.reminder_days_override = updates.reminderDaysOverride;
   const { data, error } = await supabase.from('agreements').update(payload).eq('id', id).select().single();
   if (error) throw error;
+  logAuditEvent(
+    updates.status !== undefined ? 'status_changed' : 'updated',
+    'agreement',
+    id,
+    data.title,
+    updates.status !== undefined ? { status: updates.status } : {}
+  );
   return data;
 };
 
@@ -544,6 +601,7 @@ export const createReviewRequest = async ({
     .select()
     .single();
   if (error) throw error;
+  logAuditEvent('sent_for_review', 'agreement', agreementId, agreementTitle, { reviewerEmail });
   return data.id;
 };
 
@@ -717,18 +775,23 @@ export const generateAgreementFromTemplate = (templateHtml, formValues) => {
 };
 
 export const deleteAgreement = async (id) => {
+  const existing = await supabase.from('agreements').select('title').eq('id', id).maybeSingle();
   const { error } = await supabase.from('agreements').delete().eq('id', id);
   if (error) throw error;
+  logAuditEvent('deleted', 'agreement', id, existing.data?.title || '');
 };
 
 export const updateAgreementStatus = (id, status) =>
   updateAgreement(id, { status });
 
-export const generateAgreementDocument = (id, { templateId, status }) =>
-  supabase
+export const generateAgreementDocument = async (id, { templateId, status, agreementTitle }) => {
+  const { error } = await supabase
     .from('agreements')
     .update({ template_id: templateId, status, updated_at: new Date().toISOString() })
     .eq('id', id);
+  if (error) throw error;
+  logAuditEvent('status_changed', 'agreement', id, agreementTitle || '', { status });
+};
 
 export const addAgreementAttachment = async (agreementId, attachment) => {
   const agreement = await getAgreement(agreementId);
@@ -802,6 +865,7 @@ export const createApprovalRequest = async ({
     .select()
     .single();
   if (error) throw error;
+  logAuditEvent('sent_for_approval', 'agreement', agreementId, agreementTitle, { approverEmail });
   return data.id;
 };
 
@@ -901,6 +965,13 @@ export const addDocusignEnvelope = async (agreementId, envelope) => {
     .update({ docusign_envelopes: docusignEnvelopes, updated_at: new Date().toISOString() })
     .eq('id', agreementId);
   if (error) throw error;
+  logAuditEvent(
+    envelope.manual ? 'marked_signed_manually' : 'sent_for_signature',
+    'agreement',
+    agreementId,
+    agreement.title,
+    { signers: (envelope.signers || []).map((s) => s.email) }
+  );
 };
 
 export const updateDocusignEnvelope = async (agreementId, envelopeId, patch) => {
@@ -914,6 +985,9 @@ export const updateDocusignEnvelope = async (agreementId, envelopeId, patch) => 
     .update({ docusign_envelopes: docusignEnvelopes, updated_at: new Date().toISOString() })
     .eq('id', agreementId);
   if (error) throw error;
+  if (patch.status === 'completed') {
+    logAuditEvent('signed', 'agreement', agreementId, agreement.title);
+  }
 };
 
 export const DEFAULT_REMINDER_DAYS = [30, 14, 7, 1];

@@ -11,6 +11,7 @@ import {
   deletePlaybook,
   getReminderSettings,
   updateReminderSettings,
+  listAuditLog,
   SIGNATURES_INCLUDED_PER_USER,
   SIGNATURE_OVERAGE_PRICE,
 } from '../supabase';
@@ -22,6 +23,23 @@ import './SettingsScreen.css';
 // burns through that budget instantly. The edge function itself retries
 // on 429 too, but avoiding the burst in the first place is better.
 const REINDEX_CONCURRENCY = 1;
+
+const AUDIT_ACTION_LABELS = {
+  created: 'Created',
+  updated: 'Updated',
+  deleted: 'Deleted',
+  viewed: 'Viewed',
+  status_changed: 'Status changed',
+  sent_for_signature: 'Sent for signature',
+  marked_signed_manually: 'Marked as signed manually',
+  signed: 'Signed',
+  sent_for_approval: 'Sent for approval',
+  sent_for_review: 'Sent for review',
+};
+
+function formatAuditAction(action) {
+  return AUDIT_ACTION_LABELS[action] || action;
+}
 
 function SettingsScreen() {
   const [usage, setUsage] = useState(null);
@@ -68,6 +86,23 @@ function SettingsScreen() {
     }
   };
 
+  const [auditLog, setAuditLog] = useState([]);
+  const [loadingAuditLog, setLoadingAuditLog] = useState(true);
+  const [auditLogError, setAuditLogError] = useState('');
+
+  const loadAuditLog = async () => {
+    setLoadingAuditLog(true);
+    setAuditLogError('');
+    try {
+      setAuditLog(await listAuditLog());
+    } catch (err) {
+      console.error('Failed to load audit log:', err);
+      setAuditLogError('Could not load the audit log.');
+    } finally {
+      setLoadingAuditLog(false);
+    }
+  };
+
   useEffect(() => {
     const load = async () => {
       setLoading(true);
@@ -82,7 +117,29 @@ function SettingsScreen() {
     load();
     loadPlaybooks();
     loadReminderDays();
+    loadAuditLog();
   }, []);
+
+  const handleExportAuditLog = () => {
+    const header = ['Date', 'Actor', 'Action', 'Object type', 'Object', 'Details'];
+    const rows = auditLog.map((e) => [
+      e.createdAt ? new Date(e.createdAt).toISOString() : '',
+      e.actorEmail || '',
+      e.action,
+      e.objectType,
+      e.objectLabel || '',
+      JSON.stringify(e.details || {}),
+    ]);
+    const escapeCell = (cell) => `"${String(cell).replace(/"/g, '""')}"`;
+    const csv = [header, ...rows].map((row) => row.map(escapeCell).join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `audit-log-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
 
   const handleAddReminderDay = () => {
     const value = parseInt(newReminderDay, 10);
@@ -417,6 +474,57 @@ function SettingsScreen() {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <div className="settings__card">
+        <div className="settings__card-header">
+          <h3 className="settings__card-title">Audit log</h3>
+          <span className="settings__card-hint">
+            Who viewed, created, edited, sent, or signed a record - covers actions by logged-in users; anonymous
+            actions on public approval/review links aren't attributed to anyone and so aren't logged here.
+          </span>
+        </div>
+
+        {auditLogError && <p className="settings__overage-note">{auditLogError}</p>}
+
+        {loadingAuditLog ? (
+          <p className="settings__loading">Loading…</p>
+        ) : auditLog.length === 0 ? (
+          <p className="settings__card-hint">No activity logged yet.</p>
+        ) : (
+          <>
+            <button type="button" className="settings__reindex-btn" onClick={handleExportAuditLog}>
+              Export CSV
+            </button>
+            <div className="settings__audit-table-wrap">
+              <table className="settings__audit-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Actor</th>
+                    <th>Action</th>
+                    <th>Object</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {auditLog.slice(0, 100).map((e) => (
+                    <tr key={e.id}>
+                      <td className="settings__audit-date">{e.createdAt ? new Date(e.createdAt).toLocaleString() : ''}</td>
+                      <td>{e.actorEmail || '-'}</td>
+                      <td>
+                        <span className="settings__audit-action">{formatAuditAction(e.action)}</span>
+                      </td>
+                      <td>{e.objectLabel || e.objectType}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {auditLog.length > 100 && (
+              <p className="settings__card-hint">Showing the 100 most recent - use Export CSV for the full list.</p>
+            )}
+          </>
         )}
       </div>
     </div>

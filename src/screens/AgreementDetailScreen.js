@@ -32,6 +32,7 @@ import {
   listAgreementsRelatedTo,
   getReminderSettings,
   saveAgreementReviewSummary,
+  logAuditEvent,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
@@ -561,6 +562,15 @@ function AgreementDetailScreen() {
     load();
   }, [agreementId]);
 
+  // Logged once per page visit (not on every load() refresh after an
+  // action) - agreement.title becomes available once `load` finishes.
+  const loggedViewRef = useRef(null);
+  useEffect(() => {
+    if (!agreement || loggedViewRef.current === agreementId) return;
+    loggedViewRef.current = agreementId;
+    logAuditEvent('viewed', 'agreement', agreementId, agreement.title);
+  }, [agreement, agreementId]);
+
   const pipelineIndex = PIPELINE_STATUSES.indexOf(agreement?.status || 'Draft');
 
   const handleStartEdit = () => {
@@ -684,6 +694,7 @@ function AgreementDetailScreen() {
       await generateAgreementDocument(agreementId, {
         templateId: template.id,
         status: computeAdvancedStatus(agreement.status, 'Generated') || agreement.status,
+        agreementTitle: agreement.title,
       });
       indexObject('agreement', agreementId).catch((err) => console.warn('Background indexing failed:', err));
 
