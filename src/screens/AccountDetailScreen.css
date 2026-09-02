@@ -558,3 +558,21 @@
   padding: 10px 12px;
   white-space: pre-wrap;
 }
+
+/* ---------- Health summary ---------- */
+
+.accd__health {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 14px 16px;
+  margin-bottom: 16px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.accd__health-stat {
+  font-size: 0.82rem;
+  color: var(--color-text-tertiary);
+}

@@ -31,6 +31,7 @@ import {
   listAgreements,
   listAgreementsRelatedTo,
   getReminderSettings,
+  saveAgreementReviewSummary,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
@@ -1835,6 +1836,16 @@ function AgreementDetailScreen() {
 
       const review = await reviewAgreementWithAI(documentText, metadata);
       setAiReview(review);
+
+      const reviewSummary = {
+        riskLevel: review.riskLevel || 'medium',
+        highRiskCount: (review.risks || []).filter((r) => r.severity === 'high').length,
+        playbookViolationCount: (review.playbookViolations || []).length,
+        reviewedAt: new Date().toISOString(),
+      };
+      saveAgreementReviewSummary(agreementId, reviewSummary).catch((err) =>
+        console.warn('Could not save review summary for account health score:', err)
+      );
     } catch (err) {
       console.error('AI review failed:', err);
       setReviewAIError(err.message || 'Something went wrong while reviewing the agreement.');

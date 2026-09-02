@@ -1,7 +1,8 @@
 import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { listAccounts, createAccount, deleteAccount, getObjectSchema } from '../supabase';
+import { listAccounts, createAccount, deleteAccount, getObjectSchema, listAgreements } from '../supabase';
 import { indexObject } from '../embeddingsApi';
+import { computeHealthByAccount } from '../healthScore';
 import './AccountsScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -40,6 +41,7 @@ function AccountsScreen() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [customFieldDefs, setCustomFieldDefs] = useState([]);
+  const [healthByAccount, setHealthByAccount] = useState(new Map());
 
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -70,9 +72,19 @@ function AccountsScreen() {
     }
   };
 
+  const loadHealth = async () => {
+    try {
+      const agreements = await listAgreements();
+      setHealthByAccount(computeHealthByAccount(agreements));
+    } catch (err) {
+      console.error('Failed to load account health scores (non-blocking):', err);
+    }
+  };
+
   useEffect(() => {
     loadAccounts();
     loadSchema();
+    loadHealth();
   }, []);
 
   const countryOptions = useMemo(() => {
@@ -250,11 +262,14 @@ function AccountsScreen() {
                 <th>ID</th>
                 <th>Tax ID</th>
                 <th>Status</th>
+                <th>Health</th>
                 <th>Details</th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((acc) => (
+              {filtered.map((acc) => {
+                const health = healthByAccount.get(acc.id);
+                return (
                 <tr key={acc.id}>
                   <td className="acc__td-name">{acc.name}</td>
                   <td>{acc.country}</td>
@@ -266,6 +281,18 @@ function AccountsScreen() {
                     </span>
                   </td>
                   <td>
+                    {health ? (
+                      <span
+                        className={`acc__health-pill acc__health-pill--${health.label === 'Good' ? 'good' : health.label === 'At risk' ? 'bad' : 'warn'}`}
+                        title={`${health.activeCount} active · ${health.expiringSoonCount} expiring soon · ${health.highRiskCount} high risk · ${health.playbookViolationCount} playbook violations`}
+                      >
+                        {health.label}
+                      </span>
+                    ) : (
+                      <span className="acc__td-muted">—</span>
+                    )}
+                  </td>
+                  <td>
                     <button
                       className="acc__detail-btn"
                       onClick={() => navigate(`/dashboard/accounts/${acc.id}`)}
@@ -275,7 +302,8 @@ function AccountsScreen() {
                     </button>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
         </div>

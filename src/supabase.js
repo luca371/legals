@@ -312,6 +312,7 @@ export const listAgreementsByAccount = async (accountId) => {
     templateId: a.template_id,
     contentHtml: a.content_html,
     customFields: a.custom_fields || {},
+    lastAiReview: a.last_ai_review || null,
     createdBy: a.created_by,
     createdAt: a.created_at,
   }));
@@ -342,6 +343,7 @@ export const listAgreements = async () => {
     relatedAgreementId: a.related_agreement_id || null,
     relationType: a.relation_type || null,
     reminderDaysOverride: a.reminder_days_override || null,
+    lastAiReview: a.last_ai_review || null,
     createdBy: a.created_by,
     createdAt: a.created_at,
     updatedAt: a.updated_at,
@@ -371,6 +373,7 @@ export const getAgreement = async (id) => {
     relatedAgreementId: data.related_agreement_id || null,
     relationType: data.relation_type || null,
     reminderDaysOverride: data.reminder_days_override || null,
+    lastAiReview: data.last_ai_review || null,
     createdBy: data.created_by,
     createdAt: data.created_at,
     updatedAt: data.updated_at,
@@ -386,6 +389,17 @@ export const listAgreementsRelatedTo = async (agreementId) => {
     .eq('related_agreement_id', agreementId);
   if (error) throw error;
   return data.map((a) => ({ id: a.id, title: a.title, relationType: a.relation_type }));
+};
+
+// A compact summary of the latest Review AI run, persisted so account
+// health scores can be computed without re-running AI review on every
+// account list load. { riskLevel, highRiskCount, playbookViolationCount, reviewedAt }
+export const saveAgreementReviewSummary = async (agreementId, summary) => {
+  const { error } = await supabase
+    .from('agreements')
+    .update({ last_ai_review: summary, updated_at: new Date().toISOString() })
+    .eq('id', agreementId);
+  if (error) throw error;
 };
 
 export const createAgreement = async (agreement) => {

@@ -220,6 +220,30 @@
   color: var(--color-text-secondary);
 }
 
+.acc__health-pill {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-xl);
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: default;
+}
+
+.acc__health-pill--good {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.acc__health-pill--warn {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.acc__health-pill--bad {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
 .acc__detail-btn {
   display: flex;
   align-items: center;

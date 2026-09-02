@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getAccount,
@@ -11,6 +11,7 @@ import {
   setAccountPlaybooks,
 } from '../supabase';
 import { indexObject } from '../embeddingsApi';
+import { computeAccountHealth } from '../healthScore';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -206,6 +207,8 @@ function AccountDetailScreen() {
     return <input type="text" className="accd__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)} />;
   };
 
+  const health = useMemo(() => computeAccountHealth(agreements), [agreements]);
+
   if (loading) return <p className="accd__empty">Loading…</p>;
 
   if (notFound) {
@@ -262,6 +265,16 @@ function AccountDetailScreen() {
               </>
             )}
           </div>
+        </div>
+
+        <div className="accd__health">
+          <span className={`acc__health-pill acc__health-pill--${health.label === 'Good' ? 'good' : health.label === 'At risk' ? 'bad' : 'warn'}`}>
+            {health.label} · {health.score}/100
+          </span>
+          <span className="accd__health-stat">{health.activeCount} active</span>
+          <span className="accd__health-stat">{health.expiringSoonCount} expiring soon</span>
+          <span className="accd__health-stat">{health.highRiskCount} high risk</span>
+          <span className="accd__health-stat">{health.playbookViolationCount} playbook violations</span>
         </div>
 
         <div className="accd__tab-content">
