@@ -13,6 +13,13 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Deployed with --no-verify-jwt (this is invoked by pg_cron, not a
+    // logged-in user) — gated instead by a shared secret only pg_cron knows.
+    const cronSecret = Deno.env.get('CRON_SECRET');
+    if (!cronSecret || req.headers.get('x-cron-secret') !== cronSecret) {
+      return jsonResponse({ error: 'Unauthorized.' }, 401);
+    }
+
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
     const { data: agreements, error } = await supabase
