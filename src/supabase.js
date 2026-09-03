@@ -200,7 +200,13 @@ export const listAskAiConversations = async () => {
 export const getAskAiConversation = async (id) => {
   const { data, error } = await supabase.from('ask_ai_conversations').select('*').eq('id', id).single();
   if (error) throw error;
-  return { id: data.id, title: data.title, chatLog: data.chat_log || [], history: data.history || [] };
+  return {
+    id: data.id,
+    title: data.title,
+    chatLog: data.chat_log || [],
+    history: data.history || [],
+    linkedIds: data.linked_ids || [],
+  };
 };
 
 export const saveAskAiConversation = async ({ id, title, chatLog, history }) => {
@@ -226,6 +232,28 @@ export const saveAskAiConversation = async ({ id, title, chatLog, history }) => 
 export const deleteAskAiConversation = async (id) => {
   const { error } = await supabase.from('ask_ai_conversations').delete().eq('id', id);
   if (error) throw error;
+};
+
+// Symmetric - linking A to B also links B to A, so either chat's "linked
+// chats" list shows the other, no matter which side you started from.
+export const linkAskAiConversations = async (idA, idB) => {
+  const [convA, convB] = await Promise.all([getAskAiConversation(idA), getAskAiConversation(idB)]);
+  const linksA = [...new Set([...convA.linkedIds, idB])];
+  const linksB = [...new Set([...convB.linkedIds, idA])];
+  const { error: errorA } = await supabase.from('ask_ai_conversations').update({ linked_ids: linksA }).eq('id', idA);
+  if (errorA) throw errorA;
+  const { error: errorB } = await supabase.from('ask_ai_conversations').update({ linked_ids: linksB }).eq('id', idB);
+  if (errorB) throw errorB;
+};
+
+export const unlinkAskAiConversations = async (idA, idB) => {
+  const [convA, convB] = await Promise.all([getAskAiConversation(idA), getAskAiConversation(idB)]);
+  const linksA = convA.linkedIds.filter((id) => id !== idB);
+  const linksB = convB.linkedIds.filter((id) => id !== idA);
+  const { error: errorA } = await supabase.from('ask_ai_conversations').update({ linked_ids: linksA }).eq('id', idA);
+  if (errorA) throw errorA;
+  const { error: errorB } = await supabase.from('ask_ai_conversations').update({ linked_ids: linksB }).eq('id', idB);
+  if (errorB) throw errorB;
 };
 
 export const listAccounts = async () => {

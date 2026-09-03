@@ -12,6 +12,8 @@ import {
   getAskAiConversation,
   saveAskAiConversation,
   deleteAskAiConversation,
+  linkAskAiConversations,
+  unlinkAskAiConversations,
 } from '../supabase';
 import { sendToClaudeWithTools } from '../askAiApi';
 import { semanticSearch } from '../embeddingsApi';
@@ -235,6 +237,10 @@ function AskAIScreen() {
   const [showHistory, setShowHistory] = useState(false);
   const [loadingConversation, setLoadingConversation] = useState(false);
 
+  const [linkedIds, setLinkedIds] = useState([]);
+  const [showLinkPicker, setShowLinkPicker] = useState(false);
+  const [linking, setLinking] = useState(false);
+
   const loadConversations = async () => {
     setLoadingConversations(true);
     try {
@@ -308,6 +314,7 @@ function AskAIScreen() {
     setConversationId(null);
     setConversationTitle('');
     setShowHistory(false);
+    setLinkedIds([]);
   };
 
   const handleOpenConversation = async (id) => {
@@ -319,6 +326,7 @@ function AskAIScreen() {
       setHistory(conv.history);
       setConversationId(conv.id);
       setConversationTitle(conv.title);
+      setLinkedIds(conv.linkedIds);
     } catch (err) {
       console.error('Failed to load conversation:', err);
     } finally {
@@ -333,9 +341,36 @@ function AskAIScreen() {
       await deleteAskAiConversation(id);
       setConversations((prev) => prev.filter((c) => c.id !== id));
       if (id === conversationId) handleNewConversation();
+      else setLinkedIds((prev) => prev.filter((linkedId) => linkedId !== id));
     } catch (err) {
       console.error('Failed to delete conversation:', err);
       alert('Could not delete this conversation. Please try again.');
+    }
+  };
+
+  const handleLinkConversation = async (targetId) => {
+    if (!conversationId) return;
+    setLinking(true);
+    try {
+      await linkAskAiConversations(conversationId, targetId);
+      setLinkedIds((prev) => [...new Set([...prev, targetId])]);
+      setShowLinkPicker(false);
+    } catch (err) {
+      console.error('Failed to link conversations:', err);
+      alert('Could not link these conversations. Please try again.');
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlinkConversation = async (targetId) => {
+    if (!conversationId) return;
+    try {
+      await unlinkAskAiConversations(conversationId, targetId);
+      setLinkedIds((prev) => prev.filter((id) => id !== targetId));
+    } catch (err) {
+      console.error('Failed to unlink conversations:', err);
+      alert('Could not unlink these conversations. Please try again.');
     }
   };
 
@@ -389,6 +424,57 @@ function AskAIScreen() {
           )}
         </div>
       </div>
+
+      {conversationId && (
+        <div className="ask__linked-row">
+          <span className="ask__linked-label">Linked chats:</span>
+          {linkedIds.length === 0 ? (
+            <span className="ask__linked-empty">None yet</span>
+          ) : (
+            linkedIds.map((id) => {
+              const linked = conversations.find((c) => c.id === id);
+              return (
+                <span key={id} className="ask__linked-chip">
+                  <button type="button" className="ask__linked-chip-title" onClick={() => handleOpenConversation(id)}>
+                    {linked?.title || 'Untitled'}
+                  </button>
+                  <button
+                    type="button"
+                    className="ask__linked-chip-remove"
+                    onClick={() => handleUnlinkConversation(id)}
+                    aria-label="Unlink conversation"
+                  >
+                    ✕
+                  </button>
+                </span>
+              );
+            })
+          )}
+          <div className="ask__link-wrap">
+            <button type="button" className="ask__linked-add" onClick={() => setShowLinkPicker((v) => !v)}>
+              + Link to another chat
+            </button>
+            {showLinkPicker && (
+              <div className="ask__history-panel">
+                {conversations.filter((c) => c.id !== conversationId && !linkedIds.includes(c.id)).length === 0 ? (
+                  <p className="ask__history-empty">No other chats to link.</p>
+                ) : (
+                  conversations
+                    .filter((c) => c.id !== conversationId && !linkedIds.includes(c.id))
+                    .map((c) => (
+                      <div key={c.id} className="ask__history-item" onClick={() => !linking && handleLinkConversation(c.id)}>
+                        <div className="ask__history-item-info">
+                          <span className="ask__history-item-title">{c.title || 'Untitled'}</span>
+                          <span className="ask__history-item-time">{formatRelativeTime(c.updatedAt)}</span>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       <div className="ask__log" ref={scrollRef}>
         {loadingConversation ? (
