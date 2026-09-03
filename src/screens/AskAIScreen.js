@@ -8,6 +8,10 @@ import {
   listAgreementsByAccount,
   getAgreement,
   getAccount,
+  listAskAiConversations,
+  getAskAiConversation,
+  saveAskAiConversation,
+  deleteAskAiConversation,
 } from '../supabase';
 import { sendToClaudeWithTools } from '../askAiApi';
 import { semanticSearch } from '../embeddingsApi';
@@ -39,6 +43,24 @@ const MARKDOWN_COMPONENTS = {
 
 function uid() {
   return Math.random().toString(36).slice(2);
+}
+
+function deriveTitle(question) {
+  const trimmed = question.trim().replace(/\s+/g, ' ');
+  return trimmed.length > 60 ? `${trimmed.slice(0, 60)}…` : trimmed;
+}
+
+function formatRelativeTime(isoString) {
+  if (!isoString) return '';
+  const diffMs = Date.now() - new Date(isoString).getTime();
+  const diffMin = Math.round(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.round(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.round(diffHr / 24);
+  if (diffDay < 30) return `${diffDay}d ago`;
+  return new Date(isoString).toLocaleDateString();
 }
 
 function base64ToArrayBuffer(base64) {
@@ -206,6 +228,28 @@ function AskAIScreen() {
   const [statusText, setStatusText] = useState('');
   const scrollRef = useRef(null);
 
+  const [conversationId, setConversationId] = useState(null);
+  const [conversationTitle, setConversationTitle] = useState('');
+  const [conversations, setConversations] = useState([]);
+  const [loadingConversations, setLoadingConversations] = useState(true);
+  const [showHistory, setShowHistory] = useState(false);
+  const [loadingConversation, setLoadingConversation] = useState(false);
+
+  const loadConversations = async () => {
+    setLoadingConversations(true);
+    try {
+      setConversations(await listAskAiConversations());
+    } catch (err) {
+      console.error('Failed to load Ask AI history:', err);
+    } finally {
+      setLoadingConversations(false);
+    }
+  };
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [chatLog, statusText]);
@@ -214,14 +258,31 @@ function AskAIScreen() {
     const question = (overrideText ?? input).trim();
     if (!question || sending) return;
     setInput('');
-    setChatLog((prev) => [...prev, { id: uid(), role: 'user', text: question }]);
+    const nextChatLog = [...chatLog, { id: uid(), role: 'user', text: question }];
+    setChatLog(nextChatLog);
     setSending(true);
     setStatusText('Thinking…');
     try {
       const startMessages = [...history, { role: 'user', content: question }];
       const { text, messages } = await runConversationTurn(startMessages, setStatusText);
       setHistory(messages);
-      setChatLog((prev) => [...prev, { id: uid(), role: 'assistant', text }]);
+      const finalChatLog = [...nextChatLog, { id: uid(), role: 'assistant', text }];
+      setChatLog(finalChatLog);
+
+      const title = conversationTitle || deriveTitle(question);
+      if (!conversationTitle) setConversationTitle(title);
+      try {
+        const savedId = await saveAskAiConversation({
+          id: conversationId,
+          title,
+          chatLog: finalChatLog,
+          history: messages,
+        });
+        if (!conversationId) setConversationId(savedId);
+        loadConversations();
+      } catch (err) {
+        console.warn('Could not save conversation history:', err);
+      }
     } catch (err) {
       console.error('Ask AI failed:', err);
       setChatLog((prev) => [
@@ -244,6 +305,38 @@ function AskAIScreen() {
   const handleNewConversation = () => {
     setChatLog([]);
     setHistory([]);
+    setConversationId(null);
+    setConversationTitle('');
+    setShowHistory(false);
+  };
+
+  const handleOpenConversation = async (id) => {
+    setLoadingConversation(true);
+    setShowHistory(false);
+    try {
+      const conv = await getAskAiConversation(id);
+      setChatLog(conv.chatLog);
+      setHistory(conv.history);
+      setConversationId(conv.id);
+      setConversationTitle(conv.title);
+    } catch (err) {
+      console.error('Failed to load conversation:', err);
+    } finally {
+      setLoadingConversation(false);
+    }
+  };
+
+  const handleDeleteConversation = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm('Delete this conversation? This can\'t be undone.')) return;
+    try {
+      await deleteAskAiConversation(id);
+      setConversations((prev) => prev.filter((c) => c.id !== id));
+      if (id === conversationId) handleNewConversation();
+    } catch (err) {
+      console.error('Failed to delete conversation:', err);
+      alert('Could not delete this conversation. Please try again.');
+    }
   };
 
   return (
@@ -253,15 +346,54 @@ function AskAIScreen() {
           <p className="ask__subtitle">Ask about any account, agreement, or contract clause across the organization.</p>
           <p className="ask__disclaimer">By using this tool, you're interacting with our AI system - answers can be wrong, always verify anything important.</p>
         </div>
-        {chatLog.length > 0 && (
-          <button type="button" className="ask__new-btn" onClick={handleNewConversation}>
-            New conversation
-          </button>
-        )}
+        <div className="ask__header-actions">
+          <div className="ask__history-wrap">
+            <button type="button" className="ask__new-btn" onClick={() => setShowHistory((v) => !v)}>
+              History{conversations.length > 0 ? ` (${conversations.length})` : ''}
+            </button>
+            {showHistory && (
+              <div className="ask__history-panel">
+                {loadingConversations ? (
+                  <p className="ask__history-empty">Loading…</p>
+                ) : conversations.length === 0 ? (
+                  <p className="ask__history-empty">No past conversations yet.</p>
+                ) : (
+                  conversations.map((c) => (
+                    <div
+                      key={c.id}
+                      className={`ask__history-item ${c.id === conversationId ? 'ask__history-item--active' : ''}`}
+                      onClick={() => handleOpenConversation(c.id)}
+                    >
+                      <div className="ask__history-item-info">
+                        <span className="ask__history-item-title">{c.title || 'Untitled'}</span>
+                        <span className="ask__history-item-time">{formatRelativeTime(c.updatedAt)}</span>
+                      </div>
+                      <button
+                        type="button"
+                        className="ask__history-item-delete"
+                        onClick={(e) => handleDeleteConversation(c.id, e)}
+                        aria-label="Delete conversation"
+                      >
+                        ✕
+                      </button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+          {chatLog.length > 0 && (
+            <button type="button" className="ask__new-btn" onClick={handleNewConversation}>
+              New conversation
+            </button>
+          )}
+        </div>
       </div>
 
       <div className="ask__log" ref={scrollRef}>
-        {chatLog.length === 0 ? (
+        {loadingConversation ? (
+          <p className="ask__history-empty">Loading conversation…</p>
+        ) : chatLog.length === 0 ? (
           <div className="ask__empty">
             <p className="ask__empty-title">Try asking something like:</p>
             <div className="ask__suggestions">

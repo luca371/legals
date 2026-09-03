@@ -185,6 +185,49 @@ export const listAuditLog = async (limit = 500) => {
   }));
 };
 
+// Ask AI conversation history, private per user (RLS keys off auth.uid(),
+// not tenant) - each user only ever sees their own past chats, even
+// teammates in the same tenant.
+export const listAskAiConversations = async () => {
+  const { data, error } = await supabase
+    .from('ask_ai_conversations')
+    .select('id, title, updated_at')
+    .order('updated_at', { ascending: false });
+  if (error) throw error;
+  return data.map((c) => ({ id: c.id, title: c.title, updatedAt: c.updated_at }));
+};
+
+export const getAskAiConversation = async (id) => {
+  const { data, error } = await supabase.from('ask_ai_conversations').select('*').eq('id', id).single();
+  if (error) throw error;
+  return { id: data.id, title: data.title, chatLog: data.chat_log || [], history: data.history || [] };
+};
+
+export const saveAskAiConversation = async ({ id, title, chatLog, history }) => {
+  const tenantId = await getCurrentTenantId();
+  const user = await getCurrentUser();
+  if (id) {
+    const { error } = await supabase
+      .from('ask_ai_conversations')
+      .update({ title, chat_log: chatLog, history, updated_at: new Date().toISOString() })
+      .eq('id', id);
+    if (error) throw error;
+    return id;
+  }
+  const { data, error } = await supabase
+    .from('ask_ai_conversations')
+    .insert({ tenant_id: tenantId, user_id: user?.id, title, chat_log: chatLog, history })
+    .select('id')
+    .single();
+  if (error) throw error;
+  return data.id;
+};
+
+export const deleteAskAiConversation = async (id) => {
+  const { error } = await supabase.from('ask_ai_conversations').delete().eq('id', id);
+  if (error) throw error;
+};
+
 export const listAccounts = async () => {
   const { data, error } = await supabase
     .from('accounts')
