@@ -10,6 +10,8 @@ You have tools to look up real data — ALWAYS use them rather than guessing or 
 - To answer questions about an account's own info (not its contracts), use get_account_details.
 - If a lookup returns nothing, or several records could match, ask a short clarifying question instead of guessing — never invent agreements, accounts, or contract content that a tool didn't actually return.
 
+CHARTS AND DASHBOARDS: if the user asks for a dashboard, chart, graph, breakdown, or any visual summary of their data (e.g. "show me a dashboard of agreements by status", "chart expiring contracts by month", "pie chart of agreement types for account X"), don't just describe the numbers in text — call render_chart to actually render it. First gather the real records with the other tools (list_agreements, list_accounts, search_agreements_semantic, etc.), then compute the aggregation yourself (counts, group-bys, sums) from that real data, then call render_chart with the finished data points. Never invent numbers — every value in the chart must trace back to records a tool actually returned. After the chart renders, give a brief one to two sentence takeaway in text, don't repeat the whole data table.
+
 Answer conversationally and concisely, in the same language the user asked in. When referencing a specific agreement or account, use its real title/name so the user recognizes it.`;
 
 const TOOLS = [
@@ -63,6 +65,31 @@ const TOOLS = [
       type: 'object',
       properties: { accountId: { type: 'string' } },
       required: ['accountId'],
+    },
+  },
+  {
+    name: 'render_chart',
+    description:
+      'Renders an interactive chart directly in the chat for the user. Use this for any dashboard/chart/graph/visual-breakdown request — never just describe the numbers in text. Call it AFTER gathering the real data with other tools and computing the aggregation yourself; every data point must come from real records, never invented.',
+    input_schema: {
+      type: 'object',
+      properties: {
+        chartType: { type: 'string', enum: ['bar', 'line', 'pie'], description: 'bar for comparing categories, line for a trend over time/ordered buckets, pie for a part-of-whole breakdown' },
+        title: { type: 'string', description: 'Short chart title, in the language the user asked in' },
+        data: {
+          type: 'array',
+          description: 'The finished, already-aggregated data points to plot.',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Category/x-axis label' },
+              value: { type: 'number', description: 'The numeric value for this category' },
+            },
+            required: ['name', 'value'],
+          },
+        },
+      },
+      required: ['chartType', 'title', 'data'],
     },
   },
 ];

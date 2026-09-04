@@ -218,6 +218,26 @@
   border-bottom-left-radius: 4px;
 }
 
+.ask__bubble--chart {
+  width: 100%;
+  max-width: 560px;
+}
+
+.ask__chart {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  padding: 14px 12px 6px;
+  margin-bottom: 10px;
+}
+
+.ask__chart-title {
+  margin: 0 0 6px 6px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
 .ask__bubble--status {
   display: flex;
   align-items: center;

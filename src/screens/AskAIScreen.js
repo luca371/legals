@@ -3,6 +3,20 @@ import mammoth from 'mammoth';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+} from 'recharts';
+import {
   listAccounts,
   listAgreements,
   listAgreementsByAccount,
@@ -42,6 +56,45 @@ const MARKDOWN_COMPONENTS = {
     </div>
   ),
 };
+
+const CHART_COLORS = ['#0071e3', '#5e5ce6', '#00b8a9', '#f6a723', '#ef5b5b', '#8e5cf7', '#2fb67c', '#ff8fa3'];
+
+function ChartBubble({ chart }) {
+  if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) return null;
+  return (
+    <div className="ask__chart">
+      <p className="ask__chart-title">{chart.title}</p>
+      <ResponsiveContainer width="100%" height={240}>
+        {chart.chartType === 'line' ? (
+          <LineChart data={chart.data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
+            <Line type="monotone" dataKey="value" stroke="#0071e3" strokeWidth={2.5} dot={{ r: 3 }} />
+          </LineChart>
+        ) : chart.chartType === 'pie' ? (
+          <PieChart>
+            <Pie data={chart.data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+              {chart.data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+            </Pie>
+            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
+          </PieChart>
+        ) : (
+          <BarChart data={chart.data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
+            <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={50} />
+            <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
+            <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
+            <Bar dataKey="value" radius={[6, 6, 0, 0]}>
+              {chart.data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+            </Bar>
+          </BarChart>
+        )}
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 function uid() {
   return Math.random().toString(36).slice(2);
@@ -169,6 +222,11 @@ async function executeTool(name, input = {}) {
           agreements: agreements.map((a) => ({ id: a.id, title: a.title, status: a.status, agreementType: a.agreementType })),
         };
       }
+      case 'render_chart':
+        // Rendering itself happens client-side in runConversationTurn (it
+        // needs to hand the spec back to the chat bubble, not just to the
+        // API history) - this just acknowledges the call to Claude.
+        return { ok: true, renderedToUser: true };
       default:
         return { error: `Unknown tool: ${name}` };
     }
@@ -186,6 +244,7 @@ function describeTools(blocks) {
       case 'search_agreements_semantic': return 'searching by meaning';
       case 'get_agreement_details': return 'reading a contract';
       case 'get_account_details': return 'looking up an account';
+      case 'render_chart': return 'building the chart';
       default: return 'looking something up';
     }
   });
@@ -194,6 +253,7 @@ function describeTools(blocks) {
 
 async function runConversationTurn(startMessages, onStatus) {
   let messages = startMessages;
+  let chart = null;
   for (let round = 0; round < MAX_TOOL_ROUNDS; round += 1) {
     onStatus(round === 0 ? 'Thinking…' : 'Thinking some more…');
     const response = await sendToClaudeWithTools(messages);
@@ -202,6 +262,8 @@ async function runConversationTurn(startMessages, onStatus) {
     if (response.stop_reason === 'tool_use') {
       const toolBlocks = response.content.filter((b) => b.type === 'tool_use');
       onStatus(describeTools(toolBlocks));
+      const chartBlock = toolBlocks.find((b) => b.name === 'render_chart');
+      if (chartBlock) chart = chartBlock.input;
       const results = await Promise.all(
         toolBlocks.map(async (b) => ({
           type: 'tool_result',
@@ -217,7 +279,7 @@ async function runConversationTurn(startMessages, onStatus) {
       .filter((b) => b.type === 'text')
       .map((b) => b.text)
       .join('\n\n');
-    return { text: text || "I couldn't come up with an answer for that.", messages };
+    return { text: text || "I couldn't come up with an answer for that.", messages, chart };
   }
   return { text: 'This question needs more lookups than usual - try being more specific.', messages };
 }
@@ -270,9 +332,9 @@ function AskAIScreen() {
     setStatusText('Thinking…');
     try {
       const startMessages = [...history, { role: 'user', content: question }];
-      const { text, messages } = await runConversationTurn(startMessages, setStatusText);
+      const { text, messages, chart } = await runConversationTurn(startMessages, setStatusText);
       setHistory(messages);
-      const finalChatLog = [...nextChatLog, { id: uid(), role: 'assistant', text }];
+      const finalChatLog = [...nextChatLog, { id: uid(), role: 'assistant', text, chart: chart || null }];
       setChatLog(finalChatLog);
 
       const title = conversationTitle || deriveTitle(question);
@@ -493,7 +555,8 @@ function AskAIScreen() {
         ) : (
           chatLog.map((msg) => (
             <div key={msg.id} className={`ask__bubble-row ask__bubble-row--${msg.role}`}>
-              <div className={`ask__bubble ask__bubble--${msg.role}`}>
+              <div className={`ask__bubble ask__bubble--${msg.role} ${msg.chart ? 'ask__bubble--chart' : ''}`}>
+                {msg.chart && <ChartBubble chart={msg.chart} />}
                 {msg.role === 'assistant' ? (
                   <div className="ask__markdown">
                     <ReactMarkdown remarkPlugins={[remarkGfm]} components={MARKDOWN_COMPONENTS}>
