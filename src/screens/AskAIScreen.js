@@ -58,15 +58,62 @@ const MARKDOWN_COMPONENTS = {
 };
 
 const CHART_COLORS = ['#0071e3', '#5e5ce6', '#00b8a9', '#f6a723', '#ef5b5b', '#8e5cf7', '#2fb67c', '#ff8fa3'];
+const ALL_FILTER_VALUE = '__all__';
+
+// Groups `records` by `categoryField`, summing `valueField` per group (or
+// counting records when there's no valueField) — pure client-side
+// aggregation, so changing a filter never needs another AI round-trip.
+function aggregateRecords(records, categoryField, valueField) {
+  const totals = new Map();
+  records.forEach((r) => {
+    const key = r[categoryField] ?? 'Unspecified';
+    const amount = valueField ? Number(r[valueField]) || 0 : 1;
+    totals.set(key, (totals.get(key) || 0) + amount);
+  });
+  return Array.from(totals, ([name, value]) => ({ name: String(name), value }));
+}
 
 function ChartBubble({ chart }) {
-  if (!chart || !Array.isArray(chart.data) || chart.data.length === 0) return null;
+  const isRecordsMode = Array.isArray(chart?.records);
+  const filterFields = isRecordsMode ? (chart.filterFields || []) : [];
+  const [activeFilters, setActiveFilters] = useState({});
+
+  if (!chart) return null;
+
+  let data;
+  if (isRecordsMode) {
+    const filtered = chart.records.filter((r) =>
+      filterFields.every((f) => !activeFilters[f] || activeFilters[f] === ALL_FILTER_VALUE || r[f] === activeFilters[f])
+    );
+    data = aggregateRecords(filtered, chart.categoryField, chart.valueField);
+  } else {
+    data = Array.isArray(chart.data) ? chart.data : [];
+  }
+  if (data.length === 0) return null;
+
+  const filterOptions = (field) => [...new Set(chart.records.map((r) => r[field]).filter((v) => v !== undefined && v !== null))];
+
   return (
     <div className="ask__chart">
       <p className="ask__chart-title">{chart.title}</p>
+      {filterFields.length > 0 && (
+        <div className="ask__chart-filters">
+          {filterFields.map((field) => (
+            <select
+              key={field}
+              className="ask__chart-filter"
+              value={activeFilters[field] || ALL_FILTER_VALUE}
+              onChange={(e) => setActiveFilters((prev) => ({ ...prev, [field]: e.target.value }))}
+            >
+              <option value={ALL_FILTER_VALUE}>All {field}</option>
+              {filterOptions(field).map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          ))}
+        </div>
+      )}
       <ResponsiveContainer width="100%" height={240}>
         {chart.chartType === 'line' ? (
-          <LineChart data={chart.data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
+          <LineChart data={data} margin={{ top: 8, right: 16, left: -12, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
@@ -75,19 +122,19 @@ function ChartBubble({ chart }) {
           </LineChart>
         ) : chart.chartType === 'pie' ? (
           <PieChart>
-            <Pie data={chart.data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
-              {chart.data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+            <Pie data={data} dataKey="value" nameKey="name" innerRadius={50} outerRadius={80} paddingAngle={2}>
+              {data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
             </Pie>
             <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
           </PieChart>
         ) : (
-          <BarChart data={chart.data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+          <BarChart data={data} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#e8e8ed" />
             <XAxis dataKey="name" tick={{ fontSize: 11, fill: '#6e6e73' }} interval={0} angle={-20} textAnchor="end" height={50} />
             <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: '#6e6e73' }} />
             <Tooltip contentStyle={{ borderRadius: 10, border: '1px solid rgba(0, 0, 0, 0.08)', fontSize: 12 }} />
             <Bar dataKey="value" radius={[6, 6, 0, 0]}>
-              {chart.data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
+              {data.map((entry, index) => <Cell key={entry.name} fill={CHART_COLORS[index % CHART_COLORS.length]} />)}
             </Bar>
           </BarChart>
         )}
