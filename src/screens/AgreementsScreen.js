@@ -91,6 +91,7 @@ function AgreementsScreen() {
   const [extracting, setExtracting] = useState(false);
   const [extractedFields, setExtractedFields] = useState(false);
   const fileInputRef = useRef(null);
+  const extractSessionRef = useRef(0);
 
   const filteredSubtypes = useMemo(() => {
     if (!form.agreementType) return subtypeOptions;
@@ -146,6 +147,7 @@ function AgreementsScreen() {
   };
 
   const handleCloseCreate = () => {
+    extractSessionRef.current += 1;
     setShowCreate(false);
     setCreateStep('choose');
     setCreateFlow(null);
@@ -180,7 +182,14 @@ function AgreementsScreen() {
   // never blocks the upload step, and never overwrites anything the user
   // has already typed.
   const handleAutoExtractFields = async (arrayBuffer) => {
+    const session = ++extractSessionRef.current;
     setExtracting(true);
+    // Don't let a slow AI call hold the user hostage - after 30s, unblock
+    // Next regardless. The extraction keeps running in the background and
+    // still fills the form if/when it finishes, just no longer blocking.
+    const timeoutId = setTimeout(() => {
+      if (extractSessionRef.current === session) setExtracting(false);
+    }, 30000);
     try {
       const textResult = await mammoth.extractRawText({ arrayBuffer });
       const documentText = (textResult.value || '').trim();
@@ -195,6 +204,7 @@ function AgreementsScreen() {
           .filter((f) => f.type !== 'lookup')
           .map((f) => ({ id: f.id, label: f.label, type: f.type, options: f.options })),
       });
+      if (extractSessionRef.current !== session) return;
 
       setForm((prev) => ({
         ...prev,
@@ -212,7 +222,8 @@ function AgreementsScreen() {
     } catch (err) {
       console.warn('AI field extraction failed (non-blocking):', err);
     } finally {
-      setExtracting(false);
+      clearTimeout(timeoutId);
+      if (extractSessionRef.current === session) setExtracting(false);
     }
   };
 
