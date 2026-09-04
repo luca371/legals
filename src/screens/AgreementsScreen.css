@@ -353,9 +353,27 @@
 
 .agr__upload-hint--ai,
 .agr__modal-subtitle--ai {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--color-accent);
   font-weight: 500;
   margin-top: 10px;
+}
+
+.agr__ai-spinner {
+  display: inline-block;
+  width: 13px;
+  height: 13px;
+  flex-shrink: 0;
+  border: 2px solid var(--color-accent-soft);
+  border-top-color: var(--color-accent);
+  border-radius: 50%;
+  animation: agr-spin 0.8s linear infinite;
+}
+
+@keyframes agr-spin {
+  to { transform: rotate(360deg); }
 }
 
 .agr__upload-done {

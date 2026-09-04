@@ -396,10 +396,16 @@ function AgreementsScreen() {
                   )}
                 </div>
                 {uploadError && <p className="agr__form-error agr__form-error--upload">{uploadError}</p>}
-                {extracting && <p className="agr__upload-hint agr__upload-hint--ai">✨ Reading your document with AI to pre-fill the details…</p>}
+                {extracting && (
+                  <p className="agr__upload-hint agr__upload-hint--ai">
+                    <span className="agr__ai-spinner" /> Reading your document with AI to pre-fill the details…
+                  </p>
+                )}
                 <div className="agr__modal-actions">
                   <button className="agr__btn-secondary" onClick={() => setCreateStep('choose')}>Back</button>
-                  <button className="agr__btn-primary" disabled={!uploadedFile} onClick={() => setCreateStep('form')}>Next</button>
+                  <button className="agr__btn-primary" disabled={!uploadedFile || extracting} onClick={() => setCreateStep('form')}>
+                    {extracting ? 'Analyzing…' : 'Next'}
+                  </button>
                 </div>
               </>
             )}
@@ -409,8 +415,7 @@ function AgreementsScreen() {
                 <div className="agr__modal-header">
                   <h3 className="agr__modal-title">Agreement details</h3>
                   {createFlow === 'signed' && <p className="agr__modal-subtitle">Status will be set to <strong>Signed</strong> automatically.</p>}
-                  {extracting && <p className="agr__modal-subtitle agr__modal-subtitle--ai">✨ Still reading your document with AI…</p>}
-                  {!extracting && extractedFields && <p className="agr__modal-subtitle agr__modal-subtitle--ai">✨ Some fields were filled in automatically from your document — please review before saving.</p>}
+                  {extractedFields && <p className="agr__modal-subtitle agr__modal-subtitle--ai">Some fields were filled in automatically from your document - please review before saving.</p>}
                 </div>
                 <div className="agr__modal-scroll">
                   {formError && <p className="agr__form-error">{formError}</p>}
