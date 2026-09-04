@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import AskELabel from '../components/AskELabel';
 import { logout } from '../supabase';
 import './DashboardLayout.css';
 
@@ -9,7 +10,7 @@ const SECTION_LABELS = {
   accounts: 'Accounts',
   dashboards: 'Dashboards',
   templates: 'Template build',
-  'ask-ai': 'Ask AI',
+  'ask-ai': <AskELabel />,
   settings: 'Settings',
   admin: 'Admin',
 };

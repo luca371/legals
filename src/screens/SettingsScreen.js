@@ -16,6 +16,7 @@ import {
   SIGNATURE_OVERAGE_PRICE,
 } from '../supabase';
 import { indexObject } from '../embeddingsApi';
+import AskELabel from '../components/AskELabel';
 import './SettingsScreen.css';
 
 // Sequential, not parallel — Voyage throttles accounts with no payment
@@ -374,9 +375,9 @@ function SettingsScreen() {
 
       <div className="settings__card">
         <div className="settings__card-header">
-          <h3 className="settings__card-title">Ask AI - search index</h3>
+          <h3 className="settings__card-title"><AskELabel /> - search index</h3>
           <span className="settings__card-hint">
-            Powers "search by meaning" in Ask AI, across agreements, accounts, and templates. New and edited records
+            Powers "search by meaning" in <AskELabel />, across agreements, accounts, and templates. New and edited records
             index automatically - use this to (re)index everything at once, e.g. before a demo.
           </span>
         </div>

@@ -1,4 +1,5 @@
 import { NavLink } from 'react-router-dom';
+import AskELabel from './AskELabel';
 import './Sidebar.css';
 
 const NAV_ITEMS = [
@@ -6,7 +7,7 @@ const NAV_ITEMS = [
   { path: '/dashboard/accounts', label: 'Accounts', icon: IconAccounts },
   { path: '/dashboard/dashboards', label: 'Dashboards', icon: IconDashboards },
   { path: '/dashboard/templates', label: 'Template build', icon: IconTemplates },
-  { path: '/dashboard/ask-ai', label: 'Ask AI', icon: IconAskAI },
+  { path: '/dashboard/ask-ai', label: 'Ask E', labelNode: <AskELabel />, icon: IconAskAI },
   { path: '/dashboard/settings', label: 'Settings', icon: IconSettings },
 ];
 
@@ -32,7 +33,7 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
       </div>
 
       <nav className="sidebar__nav">
-        {NAV_ITEMS.map(({ path, label, icon: Icon }) => (
+        {NAV_ITEMS.map(({ path, label, labelNode, icon: Icon }) => (
           <NavLink
             key={path}
             to={path}
@@ -42,7 +43,7 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
             }
           >
             <Icon className="sidebar__icon" />
-            <span className="sidebar__label">{label}</span>
+            <span className="sidebar__label">{labelNode || label}</span>
           </NavLink>
         ))}
       </nav>
