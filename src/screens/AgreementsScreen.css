@@ -351,6 +351,13 @@
   margin: 0;
 }
 
+.agr__upload-hint--ai,
+.agr__modal-subtitle--ai {
+  color: var(--color-accent);
+  font-weight: 500;
+  margin-top: 10px;
+}
+
 .agr__upload-done {
   font-weight: 600;
   color: var(--color-success);

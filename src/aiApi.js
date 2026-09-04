@@ -16,3 +16,19 @@ export async function suggestClausesWithAI(documentText, metadata) {
 export async function analyzeClauseWithAI(clauseTitle, clauseText, metadata) {
   return invokeFunction('analyze-clause', { clauseTitle, clauseText, metadata });
 }
+
+export async function extractAgreementFieldsWithAI({
+  documentText,
+  accounts,
+  agreementTypeOptions,
+  agreementSubtypeOptions,
+  customFieldDefs,
+}) {
+  return invokeFunction('extract-agreement-fields', {
+    documentText,
+    accounts,
+    agreementTypeOptions,
+    agreementSubtypeOptions,
+    customFieldDefs,
+  });
+}

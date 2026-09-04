@@ -2,6 +2,7 @@ import { useEffect, useState, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import mammoth from 'mammoth';
 import { indexObject } from '../embeddingsApi';
+import { extractAgreementFieldsWithAI } from '../aiApi';
 import {
   listAgreements,
   createAgreement,
@@ -87,6 +88,8 @@ function AgreementsScreen() {
   const [uploadedFile, setUploadedFile] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [extracting, setExtracting] = useState(false);
+  const [extractedFields, setExtractedFields] = useState(false);
   const fileInputRef = useRef(null);
 
   const filteredSubtypes = useMemo(() => {
@@ -139,6 +142,7 @@ function AgreementsScreen() {
     setUploadedFile(null);
     setFormError('');
     setUploadError('');
+    setExtractedFields(false);
   };
 
   const handleCloseCreate = () => {
@@ -158,14 +162,57 @@ function AgreementsScreen() {
     if (!file.name.toLowerCase().endsWith('.docx')) { setUploadError('Please upload a .docx file.'); return; }
     setUploading(true);
     setUploadError('');
+    setExtractedFields(false);
     try {
       const arrayBuffer = await file.arrayBuffer();
       const result = await mammoth.convertToHtml({ arrayBuffer });
       setUploadedFile({ name: file.name, contentHtml: result.value });
+      handleAutoExtractFields(arrayBuffer);
     } catch (err) {
       setUploadError('Could not read this file. Try saving it again from Word and re-uploading.');
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Runs in the background right after upload (offline/signed flows only)
+  // so the form is already filled in by the time the user clicks "Next" -
+  // never blocks the upload step, and never overwrites anything the user
+  // has already typed.
+  const handleAutoExtractFields = async (arrayBuffer) => {
+    setExtracting(true);
+    try {
+      const textResult = await mammoth.extractRawText({ arrayBuffer });
+      const documentText = (textResult.value || '').trim();
+      if (!documentText) return;
+
+      const extracted = await extractAgreementFieldsWithAI({
+        documentText,
+        accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
+        agreementTypeOptions: typeOptions,
+        agreementSubtypeOptions: subtypeOptions,
+        customFieldDefs: customFieldDefs
+          .filter((f) => f.type !== 'lookup')
+          .map((f) => ({ id: f.id, label: f.label, type: f.type, options: f.options })),
+      });
+
+      setForm((prev) => ({
+        ...prev,
+        title: prev.title || extracted.title || '',
+        accountId: prev.accountId || extracted.accountId || '',
+        accountName: prev.accountId ? prev.accountName : (accounts.find((a) => a.id === extracted.accountId)?.name || prev.accountName),
+        agreementType: prev.agreementType || extracted.agreementType || '',
+        agreementSubtype: prev.agreementSubtype || extracted.agreementSubtype || '',
+        language: extracted.language || prev.language,
+        effectiveDate: prev.effectiveDate || extracted.effectiveDate || '',
+        endDate: prev.endDate || extracted.endDate || '',
+      }));
+      setCustomValues((prev) => ({ ...(extracted.customFields || {}), ...prev }));
+      setExtractedFields(true);
+    } catch (err) {
+      console.warn('AI field extraction failed (non-blocking):', err);
+    } finally {
+      setExtracting(false);
     }
   };
 
@@ -349,6 +396,7 @@ function AgreementsScreen() {
                   )}
                 </div>
                 {uploadError && <p className="agr__form-error agr__form-error--upload">{uploadError}</p>}
+                {extracting && <p className="agr__upload-hint agr__upload-hint--ai">✨ Reading your document with AI to pre-fill the details…</p>}
                 <div className="agr__modal-actions">
                   <button className="agr__btn-secondary" onClick={() => setCreateStep('choose')}>Back</button>
                   <button className="agr__btn-primary" disabled={!uploadedFile} onClick={() => setCreateStep('form')}>Next</button>
@@ -361,6 +409,8 @@ function AgreementsScreen() {
                 <div className="agr__modal-header">
                   <h3 className="agr__modal-title">Agreement details</h3>
                   {createFlow === 'signed' && <p className="agr__modal-subtitle">Status will be set to <strong>Signed</strong> automatically.</p>}
+                  {extracting && <p className="agr__modal-subtitle agr__modal-subtitle--ai">✨ Still reading your document with AI…</p>}
+                  {!extracting && extractedFields && <p className="agr__modal-subtitle agr__modal-subtitle--ai">✨ Some fields were filled in automatically from your document — please review before saving.</p>}
                 </div>
                 <div className="agr__modal-scroll">
                   {formError && <p className="agr__form-error">{formError}</p>}
