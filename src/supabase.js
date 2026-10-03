@@ -27,6 +27,13 @@ export const sendPasswordReset = (email) =>
 export const updatePassword = (newPassword) =>
   supabase.auth.updateUser({ password: newPassword });
 
+// Only used if the "Reset Password" email template is ever switched (needs
+// custom SMTP) to link with ?token_hash=...&type=recovery instead of the
+// default hash-fragment tokens — verifyOtp exchanges that token_hash for a
+// session.
+export const verifyPasswordResetToken = (tokenHash, type = 'recovery') =>
+  supabase.auth.verifyOtp({ token_hash: tokenHash, type });
+
 export const getSession = async () => {
   const { data } = await supabase.auth.getSession();
   return data.session;
