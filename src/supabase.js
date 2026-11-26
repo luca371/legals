@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { invokeFunction } from './functionsClient';
 
 const supabaseUrl = process.env.REACT_APP_SUPABASE_URL;
 const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY;
@@ -34,6 +35,19 @@ export const updatePassword = (newPassword) =>
 export const verifyPasswordResetToken = (tokenHash, type = 'recovery') =>
   supabase.auth.verifyOtp({ token_hash: tokenHash, type });
 
+// What two-factor step the signed-in user still needs: 'ok', 'verify' (has an
+// authenticator, session not yet verified) or 'enroll' (an admin without one).
+export const getMfaStep = async (isAdmin) => {
+  const { data, error } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel();
+  if (error) {
+    console.error('Could not read two-factor status:', error);
+    return isAdmin ? 'verify' : 'ok';
+  }
+  if (data.currentLevel === 'aal2') return 'ok';
+  if (data.nextLevel === 'aal2') return 'verify';
+  return isAdmin ? 'enroll' : 'ok';
+};
+
 export const getSession = async () => {
   const { data } = await supabase.auth.getSession();
   return data.session;
@@ -47,18 +61,24 @@ export const onAuthStateChange = (callback) => {
 };
 
 export const getUserStatus = async (user) => {
-  if (!user) return { isAdmin: false, isActive: true };
+  if (!user) return { isAdmin: false, profile: 'reader', isActive: true };
 
   const { data, error } = await supabase
     .from('users')
-    .select('is_admin, is_active, is_deleted')
+    .select('profile, is_admin, is_active, is_deleted')
     .eq('id', user.id)
     .single();
 
-  if (error || !data) return { isAdmin: false, isActive: true };
+  if (error || !data) return { isAdmin: false, profile: 'reader', isActive: true };
+
+  // profile is the source of truth; is_admin covers a database not yet migrated.
+  const profile = ['admin', 'writer', 'reader'].includes(data.profile)
+    ? data.profile
+    : data.is_admin === true ? 'admin' : 'reader';
 
   return {
-    isAdmin: data.is_admin === true,
+    isAdmin: profile === 'admin',
+    profile,
     isActive: data.is_active !== false && data.is_deleted !== true,
   };
 };
@@ -87,6 +107,7 @@ export const listUsers = async () => {
     lastName: u.last_name,
     email: u.email,
     role: u.role,
+    profile: u.profile || (u.is_admin ? 'admin' : 'reader'),
     department: u.department,
     employeeId: u.employee_id,
     isActive: u.is_active,
@@ -121,6 +142,8 @@ export const updateUserProfile = (uid, updates) =>
       first_name: updates.firstName,
       last_name: updates.lastName,
       role: updates.role,
+      // Only sent when the admin actually picked one; the database trigger keeps is_admin in step.
+      ...(updates.profile ? { profile: updates.profile } : {}),
       department: updates.department || '',
       employee_id: updates.employeeId || '',
       updated_at: new Date().toISOString(),
@@ -153,7 +176,52 @@ export const getCurrentUser = async () => {
 // never block the action it's logging. Only covers actions taken by a
 // logged-in tenant user; anonymous actions on public approval/review links
 // have no tenant session to attribute the entry to, so those aren't logged.
+const VIEW_LOG_WINDOW_MS = 30 * 60 * 1000;
+
+// Opening the same record over and over (or refreshing) should not flood the
+// log: a view is recorded at most once per 30 minutes per record and browser.
+const viewedRecently = (objectType, objectId) => {
+  try {
+    const key = `esovia_viewed_${objectType}_${objectId}`;
+    const last = Number(localStorage.getItem(key) || 0);
+    if (Date.now() - last < VIEW_LOG_WINDOW_MS) return true;
+    localStorage.setItem(key, String(Date.now()));
+  } catch {
+    // storage blocked: fall back to logging every view
+  }
+  return false;
+};
+
+// Compares the row as it was with the values about to be saved and describes
+// the differences, so the audit log can say what changed, not just that
+// something did. `fields` maps a label to { before, after } values.
+const describeChanges = (fields) => {
+  const normalize = (v) => (v === undefined || v === null || v === '' ? null : v);
+  const same = (a, b) => JSON.stringify(normalize(a)) === JSON.stringify(normalize(b));
+  const short = (v) => {
+    const text = normalize(v) === null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
+    return text.length > 80 ? `${text.slice(0, 77)}...` : text;
+  };
+  const changes = [];
+  for (const [field, { before, after, longText, keyed }] of Object.entries(fields)) {
+    if (same(before, after)) continue;
+    if (longText) {
+      changes.push({ field, edited: true });
+    } else if (keyed) {
+      const b = before || {};
+      const a = after || {};
+      for (const key of new Set([...Object.keys(b), ...Object.keys(a)])) {
+        if (!same(b[key], a[key])) changes.push({ field: `${field}: ${key}`, from: short(b[key]), to: short(a[key]) });
+      }
+    } else {
+      changes.push({ field, from: short(before), to: short(after) });
+    }
+  }
+  return changes;
+};
+
 export const logAuditEvent = async (action, objectType, objectId, objectLabel, details = {}) => {
+  if (action === 'viewed' && objectId && viewedRecently(objectType, objectId)) return;
   try {
     const tenantId = await getCurrentTenantId();
     if (!tenantId) return;
@@ -337,6 +405,11 @@ export const deleteAccount = async (id) => {
 };
 
 export const updateAccount = async (id, updates) => {
+  const { data: before } = await supabase
+    .from('accounts')
+    .select('name, country, city, address, tax_registration_number, abbreviation, registered_office, status, custom_fields')
+    .eq('id', id)
+    .maybeSingle();
   const { error } = await supabase
     .from('accounts')
     .update({
@@ -353,7 +426,20 @@ export const updateAccount = async (id, updates) => {
     })
     .eq('id', id);
   if (error) throw error;
-  logAuditEvent('updated', 'account', id, updates.name || '');
+  const changes = before
+    ? describeChanges({
+        Name: { before: before.name, after: updates.name },
+        Country: { before: before.country, after: updates.country },
+        City: { before: before.city, after: updates.city },
+        Address: { before: before.address, after: updates.address },
+        'Tax ID': { before: before.tax_registration_number, after: updates.taxRegistrationNumber },
+        Abbreviation: { before: before.abbreviation, after: updates.abbreviation },
+        'Registered office': { before: before.registered_office, after: updates.registeredOffice },
+        Status: { before: before.status, after: updates.status },
+        'Custom field': { before: before.custom_fields, after: updates.customFields, keyed: true },
+      })
+    : [];
+  if (changes.length > 0) logAuditEvent('updated', 'account', id, updates.name || before?.name || '', { changes });
 };
 
 // Playbooks live at the organization level (e.g. "Procurement rules", "GDPR
@@ -429,6 +515,8 @@ export const listAgreementsByAccount = async (accountId) => {
     id: a.id,
     accountId: a.account_id,
     accountName: a.account_name,
+    account2Id: a.account2_id || '',
+    account2Name: a.account2_name || '',
     title: a.title,
     agreementType: a.agreement_type,
     agreementSubtype: a.agreement_subtype,
@@ -455,6 +543,8 @@ export const listAgreements = async () => {
     id: a.id,
     accountId: a.account_id,
     accountName: a.account_name,
+    account2Id: a.account2_id || '',
+    account2Name: a.account2_name || '',
     title: a.title,
     agreementType: a.agreement_type,
     agreementSubtype: a.agreement_subtype,
@@ -485,6 +575,8 @@ export const getAgreement = async (id) => {
     id: data.id,
     accountId: data.account_id,
     accountName: data.account_name,
+    account2Id: data.account2_id || '',
+    account2Name: data.account2_name || '',
     title: data.title,
     agreementType: data.agreement_type,
     agreementSubtype: data.agreement_subtype,
@@ -498,6 +590,8 @@ export const getAgreement = async (id) => {
     attachments: data.attachments || [],
     reviewSessions: data.review_sessions || [],
     docusignEnvelopes: data.docusign_envelopes || [],
+    sfFiles: data.sf_files || {},
+    sfContractId: data.sf_contract_id || null,
     relatedAgreementId: data.related_agreement_id || null,
     relationType: data.relation_type || null,
     reminderDaysOverride: data.reminder_days_override || null,
@@ -539,6 +633,7 @@ export const createAgreement = async (agreement) => {
       tenant_id: tenantId,
       account_id: agreement.accountId || null,
       account_name: agreement.accountName || '',
+      ...(agreement.account2Id ? { account2_id: agreement.account2Id, account2_name: agreement.account2Name || '' } : {}),
       title: agreement.title,
       agreement_type: agreement.agreementType || '',
       agreement_subtype: agreement.agreementSubtype || '',
@@ -559,8 +654,21 @@ export const createAgreement = async (agreement) => {
 };
 
 export const updateAgreement = async (id, updates) => {
+  const { data: before } = await supabase
+    .from('agreements')
+    .select('title, status, content_html, effective_date, end_date, custom_fields, related_agreement_id, relation_type, reminder_days_override')
+    .eq('id', id)
+    .maybeSingle();
   const payload = { updated_at: new Date().toISOString() };
   if (updates.title !== undefined) payload.title = updates.title;
+  if (updates.accountId !== undefined) {
+    payload.account_id = updates.accountId || null;
+    payload.account_name = updates.accountName || '';
+  }
+  if (updates.account2Id !== undefined) {
+    payload.account2_id = updates.account2Id || null;
+    payload.account2_name = updates.account2Name || '';
+  }
   if (updates.status !== undefined) payload.status = updates.status;
   if (updates.contentHtml !== undefined) payload.content_html = updates.contentHtml;
   if (updates.effectiveDate !== undefined) payload.effective_date = updates.effectiveDate;
@@ -571,13 +679,29 @@ export const updateAgreement = async (id, updates) => {
   if (updates.reminderDaysOverride !== undefined) payload.reminder_days_override = updates.reminderDaysOverride;
   const { data, error } = await supabase.from('agreements').update(payload).eq('id', id).select().single();
   if (error) throw error;
-  logAuditEvent(
-    updates.status !== undefined ? 'status_changed' : 'updated',
-    'agreement',
-    id,
-    data.title,
-    updates.status !== undefined ? { status: updates.status } : {}
-  );
+  const changes = before
+    ? describeChanges({
+        Title: { before: before.title, after: data.title },
+        Status: { before: before.status, after: data.status },
+        'Start date': { before: before.effective_date, after: data.effective_date },
+        'End date': { before: before.end_date, after: data.end_date },
+        Content: { before: before.content_html, after: data.content_html, longText: true },
+        'Custom field': { before: before.custom_fields, after: data.custom_fields, keyed: true },
+        'Linked agreement': { before: before.related_agreement_id, after: data.related_agreement_id },
+        'Link type': { before: before.relation_type, after: data.relation_type },
+        'Reminder days': { before: before.reminder_days_override, after: data.reminder_days_override },
+      })
+    : [];
+  const statusChange = changes.find((c) => c.field === 'Status');
+  if (statusChange) {
+    logAuditEvent('status_changed', 'agreement', id, data.title, {
+      status: data.status,
+      from: statusChange.from,
+      changes: changes.filter((c) => c !== statusChange),
+    });
+  } else if (changes.length > 0) {
+    logAuditEvent('updated', 'agreement', id, data.title, { changes });
+  }
   return data;
 };
 
@@ -713,40 +837,17 @@ export const listReviewRequestsForAgreement = async (agreementId) => {
   return data.map(mapReviewRequest);
 };
 
+// Public review page: goes through the public-link function, since the
+// anonymous role cannot read review_requests.
 export const getReviewRequestPublic = async (id) => {
-  const { data, error } = await supabase
-    .from('review_requests')
-    .select('*')
-    .eq('id', id)
-    .single();
-  if (error) throw error;
-  return mapReviewRequest(data);
+  const { request } = await invokeFunction('public-link', { action: 'getReview', id });
+  return request;
 };
 
-export const getNextReviewInBatch = async (batchId, sequence) => {
-  if (!batchId) return null;
-  const { data, error } = await supabase
-    .from('review_requests')
-    .select('*')
-    .eq('batch_id', batchId)
-    .eq('sequence', sequence + 1)
-    .maybeSingle();
-  if (error) throw error;
-  return data ? mapReviewRequest(data) : null;
-};
 
+// Also emails the next reviewer in a sequential chain (server-side).
 export const submitReviewChanges = async (id, submittedHtml, changeTokens) => {
-  const { error } = await supabase
-    .from('review_requests')
-    .update({
-      submitted_html: submittedHtml,
-      redline_tokens: changeTokens,
-      status: 'Submitted',
-      submitted_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', id);
-  if (error) throw error;
+  await invokeFunction('public-link', { action: 'submitReview', id, submittedHtml, changeTokens });
 };
 
 export const acceptReviewChanges = async (id) => {
@@ -871,6 +972,79 @@ export const generateAgreementDocument = async (id, { templateId, status, agreem
   logAuditEvent('status_changed', 'agreement', id, agreementTitle || '', { status });
 };
 
+// ---- Obligations register ------------------------------------------------
+
+const mapObligation = (o) => ({
+  id: o.id,
+  agreementId: o.agreement_id,
+  description: o.description,
+  responsibleParty: o.responsible_party || '',
+  dueDate: o.due_date,
+  recurrence: o.recurrence,
+  trigger: o.trigger_text,
+  clause: o.clause,
+  sourceQuote: o.source_quote,
+  status: o.status,
+  source: o.source,
+  createdBy: o.created_by,
+  createdAt: o.created_at,
+  completedAt: o.completed_at,
+});
+
+export const listObligations = async (agreementId) => {
+  const { data, error } = await supabase
+    .from('obligations')
+    .select('*')
+    .eq('agreement_id', agreementId)
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return data.map(mapObligation);
+};
+
+// items: [{ description, responsibleParty, dueDate, recurrence, trigger, clause, sourceQuote }]
+export const createObligations = async (agreementId, items, source = 'ai') => {
+  const tenantId = await getCurrentTenantId();
+  const user = await getCurrentUser();
+  const rows = items.map((i) => ({
+    tenant_id: tenantId,
+    agreement_id: agreementId,
+    description: i.description,
+    responsible_party: i.responsibleParty || '',
+    due_date: i.dueDate || null,
+    recurrence: i.recurrence || null,
+    trigger_text: i.trigger || null,
+    clause: i.clause || null,
+    source_quote: i.sourceQuote || null,
+    source,
+    created_by: user?.email || '',
+  }));
+  const { data, error } = await supabase.from('obligations').insert(rows).select();
+  if (error) throw error;
+  logAuditEvent('obligations_added', 'agreement', agreementId, '', { count: rows.length, source });
+  return data.map(mapObligation);
+};
+
+export const setObligationStatus = async (id, status) => {
+  const { data, error } = await supabase
+    .from('obligations')
+    .update({ status, completed_at: status === 'done' ? new Date().toISOString() : null })
+    .eq('id', id)
+    .select()
+    .single();
+  if (error) throw error;
+  return mapObligation(data);
+};
+
+export const deleteObligation = async (id) => {
+  const { error } = await supabase.from('obligations').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// Attachments are stored as base64 inside the agreement row, so they are
+// capped small. Shared by every place that adds one.
+export const MAX_ATTACHMENT_BYTES = 650 * 1024;
+
 export const addAgreementAttachment = async (agreementId, attachment) => {
   const agreement = await getAgreement(agreementId);
   const attachments = [...(agreement.attachments || []), attachment];
@@ -879,16 +1053,19 @@ export const addAgreementAttachment = async (agreementId, attachment) => {
     .update({ attachments, updated_at: new Date().toISOString() })
     .eq('id', agreementId);
   if (error) throw error;
+  logAuditEvent('document_added', 'agreement', agreementId, agreement.title, { name: attachment.name });
 };
 
 export const deleteAgreementAttachment = async (agreementId, attachmentId) => {
   const agreement = await getAgreement(agreementId);
+  const removed = (agreement.attachments || []).find((a) => a.id === attachmentId);
   const attachments = (agreement.attachments || []).filter((a) => a.id !== attachmentId);
   const { error } = await supabase
     .from('agreements')
     .update({ attachments, updated_at: new Date().toISOString() })
     .eq('id', agreementId);
   if (error) throw error;
+  logAuditEvent('document_removed', 'agreement', agreementId, agreement.title, { name: removed?.name || '' });
 };
 
 export const addReviewSession = async (agreementId, session) => {
@@ -974,34 +1151,23 @@ export const listApprovalRequestsForAgreement = async (agreementId) => {
   return data.map(mapApprovalRequest);
 };
 
+// Public approval page: goes through the public-link function, since the
+// anonymous role cannot read approval_requests.
 export const getApprovalRequest = async (id) => {
-  const { data, error } = await supabase.from('approval_requests').select('*').eq('id', id).maybeSingle();
-  if (error) throw error;
-  return data ? mapApprovalRequest(data) : null;
+  try {
+    const { request } = await invokeFunction('public-link', { action: 'getApproval', id });
+    return request;
+  } catch (err) {
+    if (/not found/i.test(err.message)) return null;
+    throw err;
+  }
 };
 
-export const getNextApprovalInBatch = async (batchId, sequence) => {
-  if (!batchId) return null;
-  const { data, error } = await supabase
-    .from('approval_requests')
-    .select('*')
-    .eq('batch_id', batchId)
-    .eq('sequence', sequence + 1)
-    .maybeSingle();
-  if (error) throw error;
-  return data ? mapApprovalRequest(data) : null;
-};
 
-// Only persists this approver's decision — does not touch the agreement's
-// status. Advancing the agreement (and notifying the next approver in a
-// sequential chain) is the caller's job, since only the caller knows
-// whether this was the last approver in the batch.
+// Records the decision on the server, which also emails the next approver in
+// a sequential chain, or marks the agreement Approved after the last one.
 export const decideApprovalRequest = async (id, decision, comment) => {
-  const { error } = await supabase
-    .from('approval_requests')
-    .update({ status: decision, comment: (comment || '').trim(), updated_at: new Date().toISOString() })
-    .eq('id', id);
-  if (error) throw error;
+  await invokeFunction('public-link', { action: 'decideApproval', id, decision, comment });
 };
 
 export const listAllApprovalRequests = async () => {

@@ -17,8 +17,11 @@ export async function analyzeClauseWithAI(clauseTitle, clauseText, metadata) {
   return invokeFunction('analyze-clause', { clauseTitle, clauseText, metadata });
 }
 
+// Pass documentText for a Word file, or pdfBase64 for a PDF (Claude reads it,
+// scans included).
 export async function extractAgreementFieldsWithAI({
   documentText,
+  pdfBase64,
   accounts,
   agreementTypeOptions,
   agreementSubtypeOptions,
@@ -26,6 +29,7 @@ export async function extractAgreementFieldsWithAI({
 }) {
   return invokeFunction('extract-agreement-fields', {
     documentText,
+    pdfBase64,
     accounts,
     agreementTypeOptions,
     agreementSubtypeOptions,

@@ -1,7 +1,11 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import { useNavigate, useParams } from 'react-router-dom';
-import htmlDocx from 'html-docx-js/dist/html-docx';
+import { htmlToDocxBlob } from '../docxApi';
 import mammoth from 'mammoth';
+import { pushAttachmentToSalesforce, syncAgreementToSalesforce } from '../salesforceApi';
+import NoticeModal from '../components/NoticeModal';
+import { useAuth } from '../AuthContext';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 import {
@@ -33,14 +37,21 @@ import {
   getReminderSettings,
   saveAgreementReviewSummary,
   logAuditEvent,
+  MAX_ATTACHMENT_BYTES,
+  listObligations,
+  createObligations,
+  setObligationStatus,
+  deleteObligation,
 } from '../supabase';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
+import { prepareRenewalBrief, findObligations } from '../agentApi';
 import { indexObject } from '../embeddingsApi';
 import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds, computeChangeTokens } from '../redlineUtils';
 import './AgreementDetailScreen.css';
 import './ReviewModal.css';
+import { sanitizeDocumentHtml } from '../sanitizeHtml';
 
 const PIPELINE_STATUSES = [
   'Draft', 'Generated', 'Import offline', 'In review', 'Reviewed',
@@ -74,6 +85,32 @@ function AttachmentsIcon() {
     </svg>
   );
 }
+
+function RenewalIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agrd__nav-icon">
+      <path d="M20 12a8 8 0 1 1-2.3-5.7" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+      <path d="M20 4v4h-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ObligationsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="agrd__nav-icon">
+      <rect x="4" y="3" width="16" height="18" rx="2" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M8 8.5l1.5 1.5L12 7.5M8 14.5l1.5 1.5 2.5-2.5M14 9h3M14 15h3" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+const RENEWAL_ACTION_LABELS = {
+  renew: 'Renew as is',
+  renew_with_changes: 'Renew with changes',
+  renegotiate: 'Renegotiate',
+  let_lapse: 'Let it lapse',
+  unclear: 'Not enough information',
+};
 
 function BellIcon() {
   return (
@@ -120,9 +157,7 @@ function formatFileSize(bytes) {
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
-const MAX_ATTACHMENT_BYTES = 650 * 1024;
-
-function resolvePlaceholderValue(fieldKey, { agreement, account, template }) {
+function resolvePlaceholderValue(fieldKey, { agreement, account, account2, template }) {
   if (!fieldKey) return '';
   const parts = fieldKey.split('.');
 
@@ -131,6 +166,10 @@ function resolvePlaceholderValue(fieldKey, { agreement, account, template }) {
   }
   if (parts.length === 2 && parts[0] === 'template') {
     return template ? (template[parts[1]] ?? '') : '';
+  }
+  if (parts.length === 2 && parts[0] === 'builtin_account2') {
+    if (!account2) return '';
+    return account2[parts[1]] ?? (account2.customFields || {})[parts[1]] ?? '';
   }
   if (parts.length === 2) {
     if (!account) return '';
@@ -141,7 +180,7 @@ function resolvePlaceholderValue(fieldKey, { agreement, account, template }) {
 
 function fillTemplateHtml(html, context) {
   const container = document.createElement('div');
-  container.innerHTML = html || '';
+  container.innerHTML = sanitizeDocumentHtml(html || '');
   container.querySelectorAll('.tpl-placeholder').forEach((span) => {
     const fieldKey = span.getAttribute('data-field') || '';
     const value = resolvePlaceholderValue(fieldKey, context);
@@ -210,10 +249,12 @@ async function attachmentToMergeHtml(attachment) {
 async function attachmentToPlainText(attachment) {
   if (attachment.sourceHtml) {
     const div = document.createElement('div');
-    div.innerHTML = attachment.sourceHtml;
+    div.innerHTML = sanitizeDocumentHtml(attachment.sourceHtml);
     return (div.innerText || div.textContent || '').trim();
   }
-  if (attachment.dataBase64) {
+  // Review AI reads Word text in the browser; a PDF can't be opened by
+  // mammoth (it would throw and fail the whole review), so it is skipped.
+  if (attachment.dataBase64 && !/\.pdf$/i.test(attachment.name || '') && attachment.mimeType !== 'application/pdf') {
     const arrayBuffer = base64ToArrayBuffer(attachment.dataBase64);
     const result = await mammoth.extractRawText({ arrayBuffer });
     return (result.value || '').trim();
@@ -301,6 +342,15 @@ function attachmentToDocusignPayload(attachment) {
   return null;
 }
 
+async function attachmentToDocusignPayloadSafe(attachment) {
+  const payload = attachmentToDocusignPayload(attachment);
+  if (!payload || !attachment.sourceHtml || payload.fileExtension.toLowerCase() !== 'docx') return payload;
+  // Generated documents go to DocuSign as HTML: its converter accepts that
+  // reliably, while it kept rejecting our generated .docx files.
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:Arial,sans-serif;font-size:11pt;line-height:1.4}</style></head><body>${attachment.sourceHtml}</body></html>`;
+  return { documentBase64: btoa(unescape(encodeURIComponent(html))), fileExtension: 'html' };
+}
+
 function buildMergedHtml(htmlParts) {
   return htmlParts
     .map((html, idx) => (idx === 0 ? html : `<div style="page-break-before: always;"></div>${html}`))
@@ -328,7 +378,7 @@ async function exportHtmlAsPdf(html, fileName) {
   container.style.background = '#ffffff';
   container.style.padding = '24px';
   container.style.boxSizing = 'border-box';
-  container.innerHTML = html;
+  container.innerHTML = sanitizeDocumentHtml(html);
   document.body.appendChild(container);
 
   try {
@@ -367,6 +417,8 @@ async function exportHtmlAsPdf(html, fileName) {
 }
 
 function AgreementDetailScreen() {
+  const confirm = useConfirm();
+  const { canWrite, isAdmin } = useAuth();
   const { agreementId } = useParams();
   const navigate = useNavigate();
 
@@ -375,6 +427,16 @@ function AgreementDetailScreen() {
   const [notFound, setNotFound] = useState(false);
 
   const [activeNav, setActiveNav] = useState('details');
+  const [obligations, setObligations] = useState([]);
+  const [obligationsLoading, setObligationsLoading] = useState(false);
+  const [obligationsError, setObligationsError] = useState('');
+  const [obligationProposals, setObligationProposals] = useState(null);
+  const [obligationSummary, setObligationSummary] = useState('');
+  const [findingObligations, setFindingObligations] = useState(false);
+  const [savingObligations, setSavingObligations] = useState(false);
+  const [renewalBrief, setRenewalBrief] = useState(null);
+  const [renewalLoading, setRenewalLoading] = useState(false);
+  const [renewalError, setRenewalError] = useState('');
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
   const [customValues, setCustomValues] = useState({});
@@ -417,6 +479,9 @@ function AgreementDetailScreen() {
   const importFileInputRef = useRef(null);
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState('');
+  const [sfPushingId, setSfPushingId] = useState('');
+  const [sfNotice, setSfNotice] = useState(null);
+  const [sfSyncing, setSfSyncing] = useState(false);
 
   const [showMergeModal, setShowMergeModal] = useState(false);
   const [selectedMergeIds, setSelectedMergeIds] = useState([]);
@@ -578,6 +643,8 @@ function AgreementDetailScreen() {
       title: agreement.title || '',
       accountId: agreement.accountId || '',
       accountName: agreement.accountName || '',
+      account2Id: agreement.account2Id || '',
+      account2Name: agreement.account2Name || '',
       agreementType: agreement.agreementType || '',
       agreementSubtype: agreement.agreementSubtype || '',
       language: agreement.language || 'English',
@@ -594,7 +661,10 @@ function AgreementDetailScreen() {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
-    if (name === 'accountId') {
+    if (name === 'account2Id') {
+      const acc = accounts.find((a) => a.id === value);
+      setForm((prev) => ({ ...prev, account2Id: value, account2Name: acc?.name || '' }));
+    } else if (name === 'accountId') {
       const acc = accounts.find((a) => a.id === value);
       setForm((prev) => ({ ...prev, accountId: value, accountName: acc?.name || '' }));
     } else if (name === 'agreementType') {
@@ -625,7 +695,7 @@ function AgreementDetailScreen() {
   };
 
   const handleDelete = async () => {
-    if (!window.confirm(`Delete agreement "${agreement.title}"? This can't be undone.`)) return;
+    if (!(await confirm({ title: 'Delete agreement', message: `"${agreement.title}" and its documents will be permanently deleted. This can't be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteAgreement(agreementId);
       navigate('/dashboard/agreements');
@@ -669,8 +739,9 @@ function AgreementDetailScreen() {
       if (agreement.accountId) {
         account = await getAccount(agreement.accountId);
       }
-      const filledHtml = fillTemplateHtml(template.contentHtml, { agreement, account, template });
-      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(filledHtml));
+      const account2 = agreement.account2Id ? await getAccount(agreement.account2Id) : null;
+      const filledHtml = fillTemplateHtml(template.contentHtml, { agreement, account, account2, template });
+      const docxBlob = await htmlToDocxBlob(wrapAsHtmlDocument(filledHtml));
 
       if (docxBlob.size > MAX_ATTACHMENT_BYTES) {
         setGenerateError(
@@ -730,9 +801,15 @@ function AgreementDetailScreen() {
     }
   };
 
-  const handleDownloadAttachment = (attachment) => {
+  const handleDownloadAttachment = async (attachment) => {
     try {
-      const blob = base64ToBlob(attachment.dataBase64, attachment.mimeType || DOCX_MIME);
+      // Documents generated in the app keep their source HTML. Rebuild a regular
+      // .docx from it, so older files (whose Word-only format shows up empty in
+      // Pages, Google Docs or Preview) download correctly too.
+      const rebuild = attachment.sourceHtml && /\.docx$/i.test(attachment.name || '');
+      const blob = rebuild
+        ? await htmlToDocxBlob(wrapAsHtmlDocument(attachment.sourceHtml))
+        : base64ToBlob(attachment.dataBase64, attachment.mimeType || DOCX_MIME);
       downloadBlob(blob, attachment.name || 'document.docx');
     } catch (err) {
       console.error('Failed to download attachment:', err);
@@ -740,8 +817,74 @@ function AgreementDetailScreen() {
     }
   };
 
+  const handleSyncAgreementToSalesforce = async () => {
+    if (sfSyncing) return;
+    setSfSyncing(true);
+    try {
+      const result = await syncAgreementToSalesforce(agreementId);
+      logAuditEvent('synced_to_salesforce', 'agreement', agreementId, agreement.title, {
+        action: result.action,
+        sfStatus: result.sfStatus,
+        documents: (result.files?.created || 0) + (result.files?.newVersion || 0),
+      });
+      await load();
+      const titles = {
+        created: 'Contract created in Salesforce',
+        updated: 'Contract updated in Salesforce',
+        unchanged: 'Contract already up to date',
+      };
+      const f = result.files || { created: 0, newVersion: 0, unchanged: 0, failed: [] };
+      const sent = f.created + f.newVersion;
+      const fileLine = sent > 0
+        ? ` ${sent} document${sent === 1 ? '' : 's'} sent.`
+        : f.unchanged > 0 ? ' Documents already up to date.' : '';
+      const base = `"${agreement.title}" is under ${agreement.accountName || 'the account'} in Salesforce, with status ${result.sfStatus}.${fileLine}`;
+      setSfNotice(f.failed.length > 0
+        ? {
+            type: 'error',
+            title: 'Contract synced, but some documents failed',
+            message: `${base} Not sent: ${f.failed.join('; ')}`,
+          }
+        : { type: 'success', title: titles[result.action] || 'Synced with Salesforce', message: base });
+    } catch (err) {
+      console.error('Failed to sync agreement to Salesforce:', err);
+      setSfNotice({ type: 'error', title: 'Could not sync with Salesforce', message: err.message });
+    } finally {
+      setSfSyncing(false);
+    }
+  };
+
+  const handleSendToSalesforce = async (attachment) => {
+    if (sfPushingId) return;
+    setSfPushingId(attachment.id);
+    try {
+      const result = await pushAttachmentToSalesforce(agreementId, attachment.id);
+      if (!result.unchanged) {
+        logAuditEvent('sent_to_salesforce', 'agreement', agreementId, agreement.title, {
+          document: attachment.name,
+          outcome: result.newVersion ? 'new version' : 'first upload',
+        });
+      }
+      await load();
+      setSfNotice({
+        type: 'success',
+        title: result.unchanged
+          ? 'Already up to date in Salesforce'
+          : result.newVersion ? 'New version sent to Salesforce' : 'Sent to Salesforce',
+        message: result.unchanged
+          ? `"${attachment.name}" has not changed since it was last sent.`
+          : `"${attachment.name}" is now in the Files of ${agreement.accountName || 'the account'}${agreement.sfContractId ? ' and of its contract' : ''} in Salesforce.`,
+      });
+    } catch (err) {
+      console.error('Failed to send to Salesforce:', err);
+      setSfNotice({ type: 'error', title: 'Could not send to Salesforce', message: err.message });
+    } finally {
+      setSfPushingId('');
+    }
+  };
+
   const handleDeleteAttachment = async (attachment) => {
-    if (!window.confirm(`Remove "${attachment.name}"?`)) return;
+    if (!(await confirm({ title: 'Remove document', message: `"${attachment.name}" will be removed from this agreement.`, confirmLabel: 'Remove', danger: true }))) return;
     try {
       await deleteAgreementAttachment(agreementId, attachment.id);
       await load();
@@ -843,7 +986,7 @@ function AgreementDetailScreen() {
       const fileBase = `${sanitizeFileName(agreement.title)} - Merged`;
 
       if (format === 'word') {
-        const blob = htmlDocx.asBlob(wrapAsHtmlDocument(mergedHtml));
+        const blob = await htmlToDocxBlob(wrapAsHtmlDocument(mergedHtml));
         downloadBlob(blob, `${fileBase}.docx`);
       } else {
         await exportHtmlAsPdf(mergedHtml, `${fileBase}.pdf`);
@@ -1059,7 +1202,7 @@ function AgreementDetailScreen() {
     try {
       const originalHtml = await attachmentToMergeHtml(attachment);
       const ccEmail = reviewCc.trim();
-      const currentUser = agreement.createdBy || 'Legal Space';
+      const currentUser = agreement.createdBy || 'EsoVia';
       const batchId = crypto.randomUUID();
 
       // Sequential chain: create a Pending row for every reviewer up front,
@@ -1084,17 +1227,8 @@ function AgreementDetailScreen() {
         if (i === 0) firstReviewId = reviewId;
       }
 
-      const first = reviewersList[0];
       try {
-        await sendReviewEmail({
-          toEmail: first.email.trim(),
-          toName: first.name.trim(),
-          fromName: currentUser,
-          agreementTitle: agreement.title,
-          message: reviewMessage,
-          reviewLink: `${window.location.origin}/review/${firstReviewId}`,
-          ccEmail,
-        });
+        await sendReviewEmail({ reviewId: firstReviewId, ccEmail });
       } catch (emailErr) {
         console.error('Failed to send the review email:', emailErr);
         emailWarning = `Review link${reviewersList.length > 1 ? 's' : ''} created, but the notification email couldn't be sent (${describeEmailError(emailErr)}) - copy the link manually below.`;
@@ -1200,7 +1334,7 @@ function AgreementDetailScreen() {
     setProcessingReviewId(activeReviewRequest.id);
     try {
       const finalHtml = buildFinalHtmlFromTokens(activeChangeTokens, changeDecisions);
-      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(finalHtml));
+      const docxBlob = await htmlToDocxBlob(wrapAsHtmlDocument(finalHtml));
       const dataBase64 = await blobToBase64(docxBlob);
       const version = (agreement.attachments || []).length + 1;
       const newAttachment = {
@@ -1238,7 +1372,7 @@ function AgreementDetailScreen() {
   };
 
   const handleRejectReviewChanges = async (reviewRequest) => {
-    if (!window.confirm('Reject this entire submission? None of these changes will be applied.')) return;
+    if (!(await confirm({ title: 'Reject submission', message: 'None of the reviewer\'s changes will be applied.', confirmLabel: 'Reject', danger: true }))) return;
     setProcessingReviewId(reviewRequest.id);
     try {
       await rejectReviewChanges(reviewRequest.id);
@@ -1284,7 +1418,7 @@ function AgreementDetailScreen() {
       return;
     }
     const attachment = (agreement.attachments || []).find((a) => a.id === approvalAttachmentId) || null;
-    const currentUser = agreement.createdBy || 'Legal Space';
+    const currentUser = agreement.createdBy || 'EsoVia';
     const batchId = crypto.randomUUID();
 
     setSendingApproval(true);
@@ -1292,7 +1426,7 @@ function AgreementDetailScreen() {
     try {
       // Sequential chain: create a Pending row for every approver up front
       // (so the internal view shows the whole queue), but only email the
-      // first one now — decideApprovalRequest on the public page emails the
+      // first one now — decideApprovalRequest on the public page emails (server-side) the
       // next approver in the batch once each one approves.
       let firstApprovalId = '';
       for (let i = 0; i < approversList.length; i += 1) {
@@ -1312,17 +1446,9 @@ function AgreementDetailScreen() {
       }
 
       const approvalLink = `${window.location.origin}/approve/${firstApprovalId}`;
-      const first = approversList[0];
 
       try {
-        await sendApprovalEmail({
-          toEmail: first.email.trim(),
-          toName: first.name.trim(),
-          fromName: currentUser,
-          agreementTitle: agreement.title,
-          message: approvalMessage,
-          approvalLink,
-        });
+        await sendApprovalEmail({ approvalId: firstApprovalId });
       } catch (emailErr) {
         console.error('Failed to send the approval email:', emailErr);
         setApprovalError(
@@ -1424,7 +1550,7 @@ function AgreementDetailScreen() {
       }
 
       const container = document.createElement('div');
-      container.innerHTML = baseHtml;
+      container.innerHTML = sanitizeDocumentHtml(baseHtml);
 
       const nextNumber = detectNextClauseNumberNode(container);
       const p = document.createElement('p');
@@ -1463,7 +1589,7 @@ function AgreementDetailScreen() {
       }
 
       const container = document.createElement('div');
-      container.innerHTML = baseHtml;
+      container.innerHTML = sanitizeDocumentHtml(baseHtml);
 
       const replaced = findAndReplaceTextNode(container, item.originalExcerpt, item.proposedText);
       if (!replaced) {
@@ -1484,7 +1610,7 @@ function AgreementDetailScreen() {
     setSavingReviewEdits(true);
     try {
       const sourceAttachment = (agreement.attachments || []).find((a) => a.id === aiReviewAttachmentId);
-      const docxBlob = htmlDocx.asBlob(wrapAsHtmlDocument(pendingReviewEditsHtml));
+      const docxBlob = await htmlToDocxBlob(wrapAsHtmlDocument(pendingReviewEditsHtml));
       const dataBase64 = await blobToBase64(docxBlob);
       const version = (agreement.attachments || []).length + 1;
       const newAttachment = {
@@ -1605,10 +1731,10 @@ function AgreementDetailScreen() {
 
     const attachmentsById = new Map((agreement.attachments || []).map((a) => [a.id, a]));
     const selectedAttachments = signatureAttachmentIds.map((id) => attachmentsById.get(id)).filter(Boolean);
-    const documents = selectedAttachments.map((att) => {
-      const payload = attachmentToDocusignPayload(att);
+    const documents = await Promise.all(selectedAttachments.map(async (att) => {
+      const payload = await attachmentToDocusignPayloadSafe(att);
       return payload && { documentBase64: payload.documentBase64, documentName: att.name, fileExtension: payload.fileExtension };
-    });
+    }));
     if (documents.some((d) => !d)) {
       setSignatureError('Could not read one of the selected documents - try a different attachment.');
       return;
@@ -1769,15 +1895,12 @@ function AgreementDetailScreen() {
     let emailWarning = '';
     try {
       if (email) {
-        const recordLink = `${window.location.origin}/dashboard/agreements/${agreementId}`;
         try {
           await sendActivationEmail({
+            agreementId,
             toEmail: email,
             toName: activateNotifyName,
-            fromName: agreement.createdBy,
-            agreementTitle: agreement.title,
             message: activateMessage,
-            recordLink,
             ccEmail: activateCc.trim(),
           });
         } catch (emailErr) {
@@ -1802,6 +1925,104 @@ function AgreementDetailScreen() {
       setActivateError(err.message || 'Something went wrong while activating the agreement.');
     } finally {
       setActivating(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeNav !== 'obligations') return undefined;
+    let cancelled = false;
+    setObligationsLoading(true);
+    setObligationsError('');
+    listObligations(agreementId)
+      .then((rows) => { if (!cancelled) setObligations(rows); })
+      .catch((err) => {
+        console.error('Failed to load obligations:', err);
+        if (!cancelled) setObligationsError('Could not load the obligations. Has 008_obligations.sql been run in Supabase?');
+      })
+      .finally(() => { if (!cancelled) setObligationsLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeNav, agreementId]);
+
+  const handleFindObligations = async () => {
+    setFindingObligations(true);
+    setObligationsError('');
+    try {
+      const result = await findObligations(agreementId);
+      setObligationSummary(result.summary || '');
+      setObligationProposals((result.obligations || []).map((o) => ({ ...o, selected: true })));
+    } catch (err) {
+      console.error('Failed to find obligations:', err);
+      setObligationsError(err.message || 'Could not find obligations. Please try again.');
+    } finally {
+      setFindingObligations(false);
+    }
+  };
+
+  const updateObligationProposal = (index, patch) =>
+    setObligationProposals((prev) => prev.map((p, i) => (i === index ? { ...p, ...patch } : p)));
+
+  const handleSaveObligationProposals = async () => {
+    const chosen = (obligationProposals || []).filter((p) => p.selected);
+    if (chosen.length === 0) return;
+    setSavingObligations(true);
+    setObligationsError('');
+    try {
+      const saved = await createObligations(
+        agreementId,
+        chosen.map((p) => ({
+          description: p.description,
+          responsibleParty: p.responsibleParty,
+          dueDate: p.dueDate,
+          recurrence: p.recurrence,
+          trigger: p.trigger,
+          clause: p.clause,
+          sourceQuote: p.quote,
+        })),
+        'ai'
+      );
+      setObligations((prev) => [...prev, ...saved]);
+      setObligationProposals((prev) => {
+        const rest = (prev || []).filter((p) => !p.selected);
+        return rest.length > 0 ? rest : null;
+      });
+    } catch (err) {
+      console.error('Failed to save obligations:', err);
+      setObligationsError('Could not save the obligations. Please try again.');
+    } finally {
+      setSavingObligations(false);
+    }
+  };
+
+  const handleToggleObligation = async (ob) => {
+    try {
+      const updated = await setObligationStatus(ob.id, ob.status === 'done' ? 'open' : 'done');
+      setObligations((prev) => prev.map((o) => (o.id === ob.id ? updated : o)));
+    } catch (err) {
+      console.error('Failed to update obligation:', err);
+      setObligationsError('Could not update the obligation.');
+    }
+  };
+
+  const handleDeleteObligation = async (ob) => {
+    try {
+      await deleteObligation(ob.id);
+      setObligations((prev) => prev.filter((o) => o.id !== ob.id));
+    } catch (err) {
+      console.error('Failed to delete obligation:', err);
+      setObligationsError('Could not delete the obligation.');
+    }
+  };
+
+  const handlePrepareRenewalBrief = async () => {
+    setRenewalLoading(true);
+    setRenewalError('');
+    try {
+      setRenewalBrief(await prepareRenewalBrief(agreementId));
+    } catch (err) {
+      console.error('Failed to prepare renewal brief:', err);
+      setRenewalError(err.message || 'Could not prepare the renewal brief. Please try again.');
+    } finally {
+      setRenewalLoading(false);
     }
   };
 
@@ -1901,7 +2122,7 @@ function AgreementDetailScreen() {
 
       <div className="agrd__title-row">
         <h2 className="agrd__title">{agreement.title}</h2>
-        <button
+        {canWrite && (        <button
           type="button"
           className={`agrd__bell-btn ${agreement.reminderDaysOverride ? 'agrd__bell-btn--custom' : ''}`}
           onClick={openNotifyModal}
@@ -1909,7 +2130,7 @@ function AgreementDetailScreen() {
           aria-label="Set expiry reminders"
         >
           <BellIcon />
-        </button>
+        </button>)}
       </div>
 
       <div className="agrd__pipeline">
@@ -1944,9 +2165,11 @@ function AgreementDetailScreen() {
               </button>
             </div>
           ))}
+          {canWrite && (
           <button type="button" className="agrd__btn-secondary-sm" onClick={openRelationModal}>
             {agreement.relatedAgreementId ? 'Edit link to another agreement' : '+ Link to another agreement'}
           </button>
+          )}
       </div>
 
       <div className="agrd__grid">
@@ -1960,6 +2183,16 @@ function AgreementDetailScreen() {
             <AttachmentsIcon />
             <span className="agrd__nav-label">Files</span>
           </button>
+          <button className={`agrd__nav-btn ${activeNav === 'obligations' ? 'agrd__nav-btn--active' : ''}`} onClick={() => setActiveNav('obligations')} title="Obligations">
+            <ObligationsIcon />
+            <span className="agrd__nav-label">Obligations</span>
+          </button>
+          {canWrite && (
+            <button className={`agrd__nav-btn ${activeNav === 'renewal' ? 'agrd__nav-btn--active' : ''}`} onClick={() => setActiveNav('renewal')} title="Renewal brief">
+              <RenewalIcon />
+              <span className="agrd__nav-label">Renewal</span>
+            </button>
+          )}
         </aside>
 
         <div className="agrd__content">
@@ -1969,7 +2202,7 @@ function AgreementDetailScreen() {
               <>
                 <div className="agrd__content-header">
                   <h3 className="agrd__content-title">Agreement details</h3>
-                  {!editing && (
+                  {canWrite && !editing && (
                     <button className="agrd__edit-btn" onClick={handleStartEdit}>
                       <EditIcon /> Edit
                     </button>
@@ -1983,8 +2216,12 @@ function AgreementDetailScreen() {
                       <span className="agrd__view-value">{agreement.title || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
-                      <span className="agrd__view-label">Account</span>
+                      <span className="agrd__view-label">Account 1</span>
                       <span className="agrd__view-value">{agreement.accountName || '-'}</span>
+                    </div>
+                    <div className="agrd__view-field">
+                      <span className="agrd__view-label">Account 2</span>
+                      <span className="agrd__view-value">{agreement.account2Name || '-'}</span>
                     </div>
                     <div className="agrd__view-field">
                       <span className="agrd__view-label">Agreement type</span>
@@ -2031,8 +2268,16 @@ function AgreementDetailScreen() {
                       </div>
 
                       <div className="agrd__field">
-                        <label className="agrd__label" htmlFor="accountId">Account</label>
+                        <label className="agrd__label" htmlFor="accountId">Account 1</label>
                         <select id="accountId" name="accountId" className="agrd__input" value={form.accountId} onChange={handleFormChange}>
+                          <option value="">- Select account -</option>
+                          {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="agrd__field">
+                        <label className="agrd__label" htmlFor="account2Id">Account 2</label>
+                        <select id="account2Id" name="account2Id" className="agrd__input" value={form.account2Id} onChange={handleFormChange}>
                           <option value="">- Select account -</option>
                           {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                         </select>
@@ -2116,6 +2361,209 @@ function AgreementDetailScreen() {
                       </button>
                     </div>
                   </form>
+                )}
+              </>
+            )}
+
+            {activeNav === 'obligations' && (
+              <>
+                <div className="agrd__content-header">
+                  <h3 className="agrd__content-title">Obligations</h3>
+                  {canWrite && (
+                    <button type="button" className="agrd__btn-primary" onClick={handleFindObligations} disabled={findingObligations}>
+                      {findingObligations ? 'Reading…' : 'Find obligations with AI'}
+                    </button>
+                  )}
+                </div>
+                <p className="agrd__renewal-hint">
+                  Who must do what, and by when, under this agreement. The AI only proposes: nothing is saved until
+                  you tick the ones that are right and save them. It can miss or misread an obligation, so check each
+                  one against the quoted clause.
+                </p>
+
+                {obligationsError && <p className="agrd__error">{obligationsError}</p>}
+                {findingObligations && <p className="agrd__renewal-hint">Reading the agreement. This can take up to a minute.</p>}
+
+                {obligationProposals && !findingObligations && (
+                  <div className="agrd__ob-proposals">
+                    <h4 className="agrd__renewal-title">Proposed by AI</h4>
+                    {obligationSummary && <p className="agrd__renewal-text">{obligationSummary}</p>}
+                    {obligationProposals.length === 0 ? (
+                      <p className="agrd__renewal-hint">No new obligations were found.</p>
+                    ) : (
+                      <>
+                        {obligationProposals.map((p, i) => (
+                          <label key={i} className="agrd__ob-card">
+                            <input
+                              type="checkbox"
+                              checked={p.selected}
+                              onChange={(e) => updateObligationProposal(i, { selected: e.target.checked })}
+                            />
+                            <div className="agrd__ob-body">
+                              <p className="agrd__ob-desc">{p.description}</p>
+                              <p className="agrd__ob-meta">
+                                {p.responsibleParty ? `${p.responsibleParty}` : 'No party stated'}
+                                {p.recurrence ? ` · ${p.recurrence}` : ''}
+                                {p.trigger ? ` · ${p.trigger}` : ''}
+                                {p.clause ? ` · ${p.clause}` : ''}
+                                {` · ${p.confidence} confidence`}
+                              </p>
+                              {p.quote && <p className="agrd__ob-quote">&ldquo;{p.quote}&rdquo;</p>}
+                              <div className="agrd__ob-due" onClick={(e) => e.stopPropagation()}>
+                                <span>Due date</span>
+                                <input
+                                  type="date"
+                                  value={p.dueDate || ''}
+                                  onChange={(e) => updateObligationProposal(i, { dueDate: e.target.value || null })}
+                                />
+                              </div>
+                            </div>
+                          </label>
+                        ))}
+                        <div className="agrd__ob-actions">
+                          <button
+                            type="button"
+                            className="agrd__btn-primary"
+                            onClick={handleSaveObligationProposals}
+                            disabled={savingObligations || !obligationProposals.some((p) => p.selected)}
+                          >
+                            {savingObligations ? 'Saving…' : `Save ${obligationProposals.filter((p) => p.selected).length} selected`}
+                          </button>
+                          <button type="button" className="agrd__btn-secondary" onClick={() => setObligationProposals(null)}>
+                            Discard
+                          </button>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
+
+                <h4 className="agrd__renewal-title agrd__ob-saved-title">In the register</h4>
+                {obligationsLoading ? (
+                  <p className="agrd__renewal-hint">Loading…</p>
+                ) : obligations.length === 0 ? (
+                  <p className="agrd__renewal-hint">No obligations saved for this agreement yet.</p>
+                ) : (
+                  <ul className="agrd__ob-list">
+                    {obligations.map((ob) => (
+                      <li key={ob.id} className={`agrd__ob-row ${ob.status === 'done' ? 'agrd__ob-row--done' : ''}`}>
+                        {canWrite ? (
+                          <input type="checkbox" checked={ob.status === 'done'} onChange={() => handleToggleObligation(ob)} title="Mark as done" />
+                        ) : (
+                          <span className="agrd__ob-status">{ob.status === 'done' ? 'Done' : 'Open'}</span>
+                        )}
+                        <div className="agrd__ob-body">
+                          <p className="agrd__ob-desc">{ob.description}</p>
+                          <p className="agrd__ob-meta">
+                            {ob.responsibleParty || 'No party stated'}
+                            {ob.dueDate ? ` · due ${ob.dueDate}` : ''}
+                            {ob.recurrence ? ` · ${ob.recurrence}` : ''}
+                            {ob.trigger ? ` · ${ob.trigger}` : ''}
+                            {ob.clause ? ` · ${ob.clause}` : ''}
+                          </p>
+                          {ob.sourceQuote && <p className="agrd__ob-quote">&ldquo;{ob.sourceQuote}&rdquo;</p>}
+                        </div>
+                        {canWrite && (
+                          <button type="button" className="agrd__ob-delete" onClick={() => handleDeleteObligation(ob)} title="Delete obligation">
+                            Delete
+                          </button>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </>
+            )}
+
+            {activeNav === 'renewal' && canWrite && (
+              <>
+                <div className="agrd__content-header">
+                  <h3 className="agrd__content-title">Renewal brief</h3>
+                  <button type="button" className="agrd__btn-primary" onClick={handlePrepareRenewalBrief} disabled={renewalLoading}>
+                    {renewalLoading ? 'Preparing…' : renewalBrief ? 'Prepare again' : 'Prepare brief'}
+                  </button>
+                </div>
+                <p className="agrd__renewal-hint">
+                  An AI agent reads this agreement and prepares what you need before it ends: the term, notice
+                  deadlines, whether it renews on its own, and a recommendation. It only reads - it never changes,
+                  sends or signs anything. It is not legal advice, so check the points before relying on them.
+                </p>
+
+                {renewalError && <p className="agrd__error">{renewalError}</p>}
+                {renewalLoading && <p className="agrd__renewal-hint">Reading the agreement and preparing the brief. This can take up to a minute.</p>}
+
+                {renewalBrief && !renewalLoading && (
+                  <div className="agrd__renewal">
+                    {renewalBrief.headline && <p className="agrd__renewal-headline">{renewalBrief.headline}</p>}
+                    {renewalBrief.summary && <p className="agrd__renewal-text">{renewalBrief.summary}</p>}
+
+                    <div className="agrd__renewal-reco">
+                      <span className={`agrd__renewal-action agrd__renewal-action--${renewalBrief.recommendation.action}`}>
+                        {RENEWAL_ACTION_LABELS[renewalBrief.recommendation.action] || 'Not enough information'}
+                      </span>
+                      <p className="agrd__renewal-text">{renewalBrief.recommendation.reasoning}</p>
+                    </div>
+
+                    <div className="agrd__renewal-section">
+                      <h4 className="agrd__renewal-title">Term and notice</h4>
+                      <dl className="agrd__renewal-term">
+                        <div><dt>Ends</dt><dd>{renewalBrief.term.endDate || '-'}{renewalBrief.term.daysUntilEnd !== null ? ` (${renewalBrief.term.daysUntilEnd >= 0 ? `in ${renewalBrief.term.daysUntilEnd} days` : `${Math.abs(renewalBrief.term.daysUntilEnd)} days ago`})` : ''}</dd></div>
+                        <div><dt>Renews automatically</dt><dd>{renewalBrief.term.autoRenewal === null ? 'Not stated' : renewalBrief.term.autoRenewal ? 'Yes' : 'No'}</dd></div>
+                        <div><dt>Notice period</dt><dd>{renewalBrief.term.noticePeriod || 'Not stated'}</dd></div>
+                        <div><dt>Notice deadline</dt><dd>{renewalBrief.term.noticeDeadline || 'Not stated'}</dd></div>
+                      </dl>
+                      {renewalBrief.term.source && <p className="agrd__renewal-source">Source: {renewalBrief.term.source}</p>}
+                    </div>
+
+                    {renewalBrief.keyTerms.length > 0 && (
+                      <div className="agrd__renewal-section">
+                        <h4 className="agrd__renewal-title">Key terms</h4>
+                        <ul className="agrd__renewal-list">
+                          {renewalBrief.keyTerms.map((t, i) => <li key={i}>{t.point}</li>)}
+                        </ul>
+                      </div>
+                    )}
+
+                    {renewalBrief.changesToSeek.length > 0 && (
+                      <div className="agrd__renewal-section">
+                        <h4 className="agrd__renewal-title">Changes to seek</h4>
+                        <ul className="agrd__renewal-list">
+                          {renewalBrief.changesToSeek.map((c, i) => (
+                            <li key={i}><strong>{c.change}</strong>{c.why ? `: ${c.why}` : ''}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {renewalBrief.risks.length > 0 && (
+                      <div className="agrd__renewal-section">
+                        <h4 className="agrd__renewal-title">Risks</h4>
+                        <ul className="agrd__renewal-list">
+                          {renewalBrief.risks.map((r, i) => (
+                            <li key={i}>
+                              <span className={`agrd__renewal-sev agrd__renewal-sev--${r.severity || 'medium'}`}>{r.severity || 'medium'}</span>{' '}
+                              <strong>{r.issue}</strong>{r.detail ? `: ${r.detail}` : ''}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    {renewalBrief.nextSteps.length > 0 && (
+                      <div className="agrd__renewal-section">
+                        <h4 className="agrd__renewal-title">Next steps</h4>
+                        <ul className="agrd__renewal-list">
+                          {renewalBrief.nextSteps.map((s, i) => (
+                            <li key={i}>{s.by ? <strong>{s.by}: </strong> : null}{s.step}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+
+                    <p className="agrd__renewal-source">
+                      Generated by AI on {new Date(renewalBrief.generatedAt).toLocaleString()}. Review before relying on it.
+                    </p>
+                  </div>
                 )}
               </>
             )}
@@ -2307,6 +2755,7 @@ function AgreementDetailScreen() {
                             <span className="agrd__attachment-name">
                               {att.name}
                               {att.version && <span className="agrd__version-badge">v{att.version}</span>}
+                              {agreement.sfFiles?.[att.id] && <span className="agrd__version-badge">In Salesforce</span>}
                             </span>
                             <span className="agrd__attachment-size">{formatFileSize(att.size)}</span>
                           </div>
@@ -2326,6 +2775,21 @@ function AgreementDetailScreen() {
                           >
                             Download
                           </button>
+                          {isAdmin && agreement.accountId && (
+                            <button
+                              type="button"
+                              className="agrd__attachment-btn"
+                              onClick={() => handleSendToSalesforce(att)}
+                              disabled={!!sfPushingId}
+                            >
+                              {sfPushingId === att.id
+                                ? 'Sending…'
+                                : agreement.sfFiles?.[att.id]
+                                  ? 'Update in Salesforce'
+                                  : 'Send to Salesforce'}
+                            </button>
+                          )}
+                          {canWrite && (
                           <button
                             type="button"
                             className="agrd__attachment-btn agrd__attachment-btn--danger"
@@ -2333,6 +2797,7 @@ function AgreementDetailScreen() {
                           >
                             Remove
                           </button>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -2343,6 +2808,7 @@ function AgreementDetailScreen() {
           </div>
         </div>
 
+        {canWrite ? (
         <aside className="agrd__actions">
           <div className="agrd__actions-card">
             <h4 className="agrd__actions-title">Actions</h4>
@@ -2396,10 +2862,27 @@ function AgreementDetailScreen() {
               onChange={handleImportFilesSelected}
             />
             {importError && <p className="agrd__error agrd__error--sm">{importError}</p>}
+            {isAdmin && agreement.accountId && (
+              <button className="agrd__btn-secondary-sm" onClick={handleSyncAgreementToSalesforce} disabled={sfSyncing}>
+                {sfSyncing
+                  ? 'Syncing…'
+                  : agreement.sfContractId
+                    ? 'Update contract in Salesforce'
+                    : 'Create contract in Salesforce'}
+              </button>
+            )}
             <div className="agrd__actions-divider" />
             <button className="agrd__btn-danger-sm" onClick={handleDelete}>Delete agreement</button>
           </div>
         </aside>
+        ) : (
+        <aside className="agrd__actions">
+          <div className="agrd__actions-card">
+            <h4 className="agrd__actions-title">Actions</h4>
+            <p className="agrd__modal-hint">Your profile is read-only. Ask an admin if you need to edit this agreement.</p>
+          </div>
+        </aside>
+        )}
       </div>
 
       {showGenerateModal && (
@@ -2905,7 +3388,7 @@ function AgreementDetailScreen() {
               <h3 className="agrd__modal-title">Send for approval</h3>
               <p className="agrd__modal-subtitle">
                 The approver gets an emailed link where they can only view the document and approve or reject
-                it - no Legal Space account needed.
+                it - no EsoVia account needed.
               </p>
 
               {approvalError && <p className="agrd__error">{approvalError}</p>}
@@ -3747,6 +4230,7 @@ function AgreementDetailScreen() {
           </div>
         </div>
       )}
+      <NoticeModal notice={sfNotice} onClose={() => setSfNotice(null)} />
     </div>
   );
 }

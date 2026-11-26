@@ -105,7 +105,6 @@ function ResetPasswordScreen() {
     <div className="start-screen">
       <div className="start-screen__left">
         <div className="start-screen__left-content">
-          <img src="/images/logo.png" alt="Legal Space" className="start-screen__logo" />
           <h1 className="start-screen__title">Set your password</h1>
           <p className="start-screen__subtitle">
             Choose a password to finish setting up your account.

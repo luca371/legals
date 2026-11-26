@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import { useParams } from 'react-router-dom';
 import mammoth from 'mammoth';
-import { getApprovalRequest, decideApprovalRequest, getNextApprovalInBatch } from '../supabase';
-import { sendApprovalEmail } from '../emailApi';
-import { invokeFunction } from '../functionsClient';
+import { getApprovalRequest, decideApprovalRequest } from '../supabase';
+import { sanitizeDocumentHtml } from '../sanitizeHtml';
 import './ApprovalLinkScreen.css';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
@@ -50,12 +50,14 @@ function CrossIcon() {
 }
 
 function ApprovalLinkScreen() {
+  const confirm = useConfirm();
   const { approvalId } = useParams();
   const editableRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
   const [request, setRequest] = useState(null);
   const [notFound, setNotFound] = useState(false);
+  const [expired, setExpired] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
   const [previewError, setPreviewError] = useState('');
 
@@ -76,12 +78,12 @@ function ApprovalLinkScreen() {
 
         const attachment = req.attachment;
         if (attachment?.sourceHtml) {
-          setPreviewHtml(attachment.sourceHtml);
+          setPreviewHtml(sanitizeDocumentHtml(attachment.sourceHtml));
         } else if (attachment?.dataBase64 && attachment.mimeType === DOCX_MIME) {
           try {
             const arrayBuffer = base64ToArrayBuffer(attachment.dataBase64);
             const result = await mammoth.convertToHtml({ arrayBuffer });
-            setPreviewHtml(result.value);
+            setPreviewHtml(sanitizeDocumentHtml(result.value));
           } catch (err) {
             console.error('Failed to preview document:', err);
             setPreviewError('Could not preview this document - you can still download it below.');
@@ -89,6 +91,7 @@ function ApprovalLinkScreen() {
         }
       } catch (err) {
         console.error('Failed to load approval request:', err);
+        if (/expired/i.test(err.message || '')) setExpired(true);
         setNotFound(true);
       } finally {
         setLoading(false);
@@ -106,36 +109,18 @@ function ApprovalLinkScreen() {
 
   const handleDecide = async (decision) => {
     if (deciding) return;
-    if (decision === 'Rejected' && !window.confirm('Reject this document?')) return;
+    if (decision === 'Rejected' && !(await confirm({ title: 'Reject this document', message: 'The sender will be told it was rejected, along with your comment if you wrote one.', confirmLabel: 'Reject', danger: true }))) return;
     setDeciding(decision);
     setDecideError('');
     try {
+      // The server also emails the next approver, or marks the agreement
+      // Approved when this was the last one in the chain.
       await decideApprovalRequest(approvalId, decision, comment);
-
-      if (decision === 'Approved') {
-        try {
-          const next = await getNextApprovalInBatch(request.batchId, request.sequence);
-          if (next) {
-            await sendApprovalEmail({
-              toEmail: next.approverEmail,
-              toName: next.approverName,
-              fromName: request.requestedBy,
-              agreementTitle: request.agreementTitle,
-              message: request.message,
-              approvalLink: `${window.location.origin}/approve/${next.id}`,
-            });
-          } else {
-            await invokeFunction('finalize-approval', { approvalId });
-          }
-        } catch (chainErr) {
-          console.error('Could not advance the approval chain:', chainErr);
-        }
-      }
 
       setRequest((prev) => ({ ...prev, status: decision, comment }));
     } catch (err) {
       console.error('Failed to record decision:', err);
-      setDecideError('Something went wrong recording your decision. Please try again.');
+      setDecideError(err.message || 'Something went wrong recording your decision. Please try again.');
     } finally {
       setDeciding('');
     }
@@ -155,9 +140,11 @@ function ApprovalLinkScreen() {
     return (
       <div className="appr">
         <div className="appr__card">
-          <h1 className="appr__title">Link not found</h1>
+          <h1 className="appr__title">{expired ? 'Link expired' : 'Link not found'}</h1>
           <p className="appr__subtitle">
-            This approval link is invalid or no longer available. Ask the sender to resend it.
+            {expired
+              ? 'This approval link has expired. Ask the sender to send a new one.'
+              : 'This approval link is invalid or no longer available. Ask the sender to resend it.'}
           </p>
         </div>
       </div>

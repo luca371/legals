@@ -1,7 +1,9 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are the AI assistant embedded in "Legal Space", a contract lifecycle management platform. You help the user answer questions about their organization's accounts and agreements (contracts) — things like "how many agreements does account X have", "what clauses are in contract Y", "which agreements are expiring soon", "list all NDAs with account Z", etc.
+const SYSTEM_PROMPT = `You are the AI assistant embedded in "EsoVia", a contract lifecycle management platform. You help the user answer questions about their organization's accounts and agreements (contracts) — things like "how many agreements does account X have", "what clauses are in contract Y", "which agreements are expiring soon", "list all NDAs with account Z", etc.
 
 You have tools to look up real data — ALWAYS use them rather than guessing or making anything up. Typical flow:
 - To find agreements by exact metadata (a specific account, type, status), call list_agreements — agreements already store the account name directly, so you don't need to look up an account id first just for this.
@@ -96,10 +98,16 @@ const TOOLS = [
   },
 ];
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'ask-ai');
+  if (limited) return limited;
 
   try {
     const { messages } = await req.json();
@@ -118,6 +126,6 @@ Deno.serve(async (req) => {
     return jsonResponse(data);
   } catch (err) {
     console.error('Ask AI error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Ask AI failed.' }, 500);
+    return jsonResponse({ error: 'Ask AI failed.' }, 500);
   }
 });

@@ -50,12 +50,7 @@ function StartScreen() {
       {/* Zona stânga - 30% */}
       <div className="start-screen__left">
         <div className="start-screen__left-content">
-          <img
-            src="/images/logo.png"
-            alt="Legal Space"
-            className="start-screen__logo"
-          />
-          <h1 className="start-screen__title">Welcome to Legal Space</h1>
+          <h1 className="start-screen__title">Welcome to EsoVia</h1>
           <p className="start-screen__subtitle">
             Your official CLM tool for drafting, review and signature.
           </p>

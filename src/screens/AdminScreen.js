@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import { createPortal } from 'react-dom';
 import {
   listUsers,
@@ -15,7 +16,11 @@ import {
   updateBuiltInFieldConfig,
   getTypeSubtypeMap,
   updateTypeSubtypeMap,
+  getCurrentUser,
+  logAuditEvent,
 } from '../supabase';
+import { PROFILES, PROFILE_LABELS } from '../AuthContext';
+import SalesforceConnection from '../components/SalesforceConnection';
 import './AdminScreen.css';
 
 const EMPTY_FORM = {
@@ -23,6 +28,7 @@ const EMPTY_FORM = {
   lastName: '',
   email: '',
   role: '',
+  profile: 'reader',
   department: '',
   employeeId: '',
   password: '',
@@ -92,7 +98,13 @@ function fieldTypeDisplay(f) {
 }
 
 function AdminScreen() {
+  const confirm = useConfirm();
   const [tab, setTab] = useState('users');
+  const [selfId, setSelfId] = useState(null);
+
+  useEffect(() => {
+    getCurrentUser().then((u) => setSelfId(u?.id ?? null));
+  }, []);
 
   // ---- Users state ----
   const [users, setUsers] = useState([]);
@@ -189,6 +201,7 @@ function AdminScreen() {
       lastName: targetUser.lastName || '',
       email: targetUser.email || '',
       role: targetUser.role || '',
+      profile: targetUser.profile || 'reader',
       department: targetUser.department || '',
       employeeId: targetUser.employeeId || '',
       password: '',
@@ -209,12 +222,17 @@ function AdminScreen() {
     setSubmitting(true);
     try {
       if (isEditMode) {
-        await updateUserProfile(editingUser.id, form);
+        const result = await updateUserProfile(editingUser.id, form);
+        if (result?.error) throw result.error;
+        if (form.profile !== editingUser.profile) {
+          logAuditEvent('profile_changed', 'user', editingUser.id, editingUser.email, { from: editingUser.profile, to: form.profile });
+        }
         setSuccessMsg(`${form.firstName} ${form.lastName} was updated.`);
       } else {
         // Password is optional here — the server route auto-generates one
         // if it's left empty, same behavior as before.
-        await createUserAsAdmin(form);
+        const newUserId = await createUserAsAdmin(form);
+        logAuditEvent('user_created', 'user', newUserId, form.email, { profile: form.profile });
         setSuccessMsg(`${form.firstName} ${form.lastName} was added and received an invite email.`);
       }
       handleCloseForm();
@@ -241,27 +259,40 @@ function AdminScreen() {
 
   const handleToggleActive = async (targetUser) => {
     setOpenMenu(null);
+    if (targetUser.id === selfId) {
+      alert("You can't deactivate your own account.");
+      return;
+    }
     const nextActive = targetUser.isActive === false;
-    const confirmMsg = nextActive
-      ? `Reactivate ${targetUser.firstName} ${targetUser.lastName}?`
-      : `Deactivate ${targetUser.firstName} ${targetUser.lastName}?`;
-    if (!window.confirm(confirmMsg)) return;
+    const fullName = `${targetUser.firstName} ${targetUser.lastName}`;
+    const proceed = await confirm(
+      nextActive
+        ? { title: 'Reactivate user', message: `${fullName} will be able to sign in again.`, confirmLabel: 'Reactivate' }
+        : { title: 'Deactivate user', message: `${fullName} will no longer be able to sign in. You can reactivate them later.`, confirmLabel: 'Deactivate', danger: true },
+    );
+    if (!proceed) return;
     try {
-      await setUserActive(targetUser.id, nextActive);
+      const result = await setUserActive(targetUser.id, nextActive);
+      if (result?.error) throw result.error;
       await loadUsers();
     } catch (err) {
-      alert('Could not update the user. Please try again.');
+      alert(err?.message || 'Could not update the user. Please try again.');
     }
   };
 
   const handleDeleteUser = async (targetUser) => {
     setOpenMenu(null);
-    if (!window.confirm(`Delete ${targetUser.firstName} ${targetUser.lastName}?`)) return;
+    if (targetUser.id === selfId) {
+      alert("You can't delete your own account.");
+      return;
+    }
+    if (!(await confirm({ title: 'Delete user', message: `${targetUser.firstName} ${targetUser.lastName} will be removed from the platform.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
-      await softDeleteUser(targetUser.id);
+      const result = await softDeleteUser(targetUser.id);
+      if (result?.error) throw result.error;
       await loadUsers();
     } catch (err) {
-      alert('Could not delete the user. Please try again.');
+      alert(err?.message || 'Could not delete the user. Please try again.');
     }
   };
 
@@ -333,7 +364,7 @@ function AdminScreen() {
   };
 
   const handleRemoveField = async (field) => {
-    if (!window.confirm(`Remove the "${field.label}" field from ${OBJECT_LABELS[objectType]}?`)) return;
+    if (!(await confirm({ title: 'Remove field', message: `The "${field.label}" field will be removed from ${OBJECT_LABELS[objectType]}.`, confirmLabel: 'Remove', danger: true }))) return;
     try {
       await removeCustomField(objectType, field.id);
       await loadFields(objectType);
@@ -430,9 +461,13 @@ function AdminScreen() {
       <div className="admin__tabs">
         <button className={`admin__tab ${tab === 'users' ? 'admin__tab--active' : ''}`} onClick={() => setTab('users')}>Users</button>
         <button className={`admin__tab ${tab === 'objects' ? 'admin__tab--active' : ''}`} onClick={() => setTab('objects')}>Objects</button>
+        <button className={`admin__tab ${tab === 'integrations' ? 'admin__tab--active' : ''}`} onClick={() => setTab('integrations')}>Integrations</button>
       </div>
 
       {successMsg && <div className="admin__toast">{successMsg}</div>}
+
+      {/* ---- Integrations tab ---- */}
+      {tab === 'integrations' && <SalesforceConnection />}
 
       {/* ---- Users tab ---- */}
       {tab === 'users' && (
@@ -450,7 +485,7 @@ function AdminScreen() {
             <div className="admin__table-wrap">
               <table className="admin__table">
                 <thead>
-                  <tr><th>Name</th><th>Email</th><th>Role</th><th>Department</th><th>ID</th><th>Status</th><th></th></tr>
+                  <tr><th>Name</th><th>Email</th><th>Role</th><th>Profile</th><th>Department</th><th>ID</th><th>Status</th><th></th></tr>
                 </thead>
                 <tbody>
                   {users.map((u) => (
@@ -458,6 +493,9 @@ function AdminScreen() {
                       <td>{u.firstName} {u.lastName}</td>
                       <td>{u.email}</td>
                       <td>{u.role}</td>
+                      <td>
+                        <span className={`admin__profile admin__profile--${u.profile}`}>{PROFILE_LABELS[u.profile] || u.profile}</span>
+                      </td>
                       <td>{u.department || '-'}</td>
                       <td>{u.employeeId || '-'}</td>
                       <td>
@@ -570,6 +608,27 @@ function AdminScreen() {
 
               <label className="admin__label" htmlFor="role">Role</label>
               <input id="role" name="role" className="admin__input" placeholder="e.g. Legal Counsel, Sales Rep" value={form.role} onChange={handleChange} required />
+
+              <label className="admin__label" htmlFor="profile">Profile</label>
+              <select
+                id="profile"
+                name="profile"
+                className="admin__input"
+                value={form.profile}
+                onChange={handleChange}
+                disabled={isEditMode && editingUser?.id === selfId}
+              >
+                {PROFILES.map((p) => <option key={p} value={p}>{PROFILE_LABELS[p]}</option>)}
+              </select>
+              <p className="admin__hint admin__hint--top">
+                {isEditMode && editingUser?.id === selfId
+                  ? "You can't change your own profile."
+                  : form.profile === 'admin'
+                    ? 'Admin: everything a Writer can do, plus users, settings, integrations and the audit log.'
+                    : form.profile === 'writer'
+                      ? 'Writer: creates, edits, activates and sends agreements for signature. No access to administration.'
+                      : 'Reader: read-only access to agreements, accounts and dashboards. Can use Ask E.'}
+              </p>
 
               <label className="admin__label" htmlFor="department">Department</label>
               <input id="department" name="department" className="admin__input" value={form.department} onChange={handleChange} />

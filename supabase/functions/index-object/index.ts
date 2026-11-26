@@ -1,7 +1,8 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
 import mammoth from 'npm:mammoth@1.8.0';
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { embedTexts } from '../_shared/voyage.ts';
+import { requireUser } from '../_shared/auth.ts';
 
 function stripHtml(html: string) {
   return html
@@ -126,10 +127,14 @@ async function buildClauseText(supabase: ReturnType<typeof createClient>, id: st
   return { tenantId: data.tenant_id, text: combined };
 }
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
     const { objectType, objectId } = await req.json();
@@ -171,12 +176,13 @@ Deno.serve(async (req) => {
     });
 
     if (upsertError) {
-      return jsonResponse({ error: upsertError.message }, 400);
+      console.error('Index upsert failed:', upsertError);
+      return jsonResponse({ error: 'Indexing failed.' }, 400);
     }
 
     return jsonResponse({ ok: true });
   } catch (err) {
     console.error('Index object error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Index object failed.' }, 500);
+    return jsonResponse({ error: 'Index object failed.' }, 500);
   }
 });

@@ -1,10 +1,14 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
+import { requireWriter } from '../_shared/auth.ts';
 import { getAccessToken, sendEnvelopeForSignature } from '../_shared/docusign.ts';
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  const auth = await requireWriter(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
     const { documents, signers, ccRecipients, emailSubject, emailMessage } = await req.json();
@@ -38,9 +42,18 @@ Deno.serve(async (req) => {
       emailMessage,
     });
 
+    // Remember which tenant owns this envelope: status and document lookups
+    // only serve envelopes recorded here for the caller's tenant.
+    if (envelope?.envelopeId) {
+      const { error: recordError } = await auth.admin
+        .from('docusign_envelope_tenants')
+        .insert({ envelope_id: envelope.envelopeId, tenant_id: auth.tenantId });
+      if (recordError) console.error('Could not record envelope owner:', recordError);
+    }
+
     return jsonResponse(envelope);
   } catch (err) {
     console.error('DocuSign send error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'DocuSign send failed.' }, 500);
+    return jsonResponse({ error: 'DocuSign send failed.' }, 500);
   }
 });

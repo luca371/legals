@@ -1,7 +1,9 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are a contract-drafting assistant embedded in "Legal Space", a contract lifecycle management tool. You are given ONE clause from a contract template (its title, its text, and the template's type/subtype) and asked for an in-depth review of that single clause — the kind of detailed note an experienced contract manager would leave for the drafter. You are NOT providing legal advice — keep it practical, not a definitive legal conclusion.
+const SYSTEM_PROMPT = `You are a contract-drafting assistant embedded in "EsoVia", a contract lifecycle management tool. You are given ONE clause from a contract template (its title, its text, and the template's type/subtype) and asked for an in-depth review of that single clause — the kind of detailed note an experienced contract manager would leave for the drafter. You are NOT providing legal advice — keep it practical, not a definitive legal conclusion.
 
 LANGUAGE RULE: every field in your answer is commentary FOR THE DRAFTER, not document content — write ALL of it in English, regardless of what language the clause itself is written in.
 
@@ -20,10 +22,16 @@ The JSON object must have exactly these fields:
 
 Keep each array to at most 4 items, each one specific sentence — no filler. "pros" and "watchFor" may be empty arrays if genuinely not applicable, but "cons" and "improvements" should almost always have at least one item unless the clause is already excellent (score >= 9).`;
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'analyze-clause');
+  if (limited) return limited;
 
   try {
     const { clauseTitle, clauseText, metadata } = await req.json();
@@ -70,6 +78,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('Analyze clause error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Analyze clause failed.' }, 500);
+    return jsonResponse({ error: 'Analyze clause failed.' }, 500);
   }
 });

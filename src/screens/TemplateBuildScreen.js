@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import mammoth from 'mammoth';
 import {
   getObjectSchema,
@@ -16,6 +17,7 @@ import {
 import { analyzeTemplateWithAI, suggestClausesWithAI, analyzeClauseWithAI } from '../aiApi';
 import { indexObject, semanticSearch } from '../embeddingsApi';
 import './TemplateBuildScreen.css';
+import { sanitizeDocumentHtml } from '../sanitizeHtml';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
 
@@ -59,7 +61,8 @@ const BUILT_IN_OBJECT_FIELDS = {
 };
 
 const BUILT_IN_LOOKUPS = [
-  { id: 'builtin_account', label: 'Account', target: 'account', source: 'agreement' },
+  { id: 'builtin_account', label: 'Account 1', target: 'account', source: 'agreement' },
+  { id: 'builtin_account2', label: 'Account 2', target: 'account', source: 'agreement' },
 ];
 
 function extractPlaceholders(html) {
@@ -161,6 +164,7 @@ async function buildFieldGroups() {
 }
 
 function TemplateBuildScreen() {
+  const confirm = useConfirm();
   const [view, setView] = useState('list');
   const [templates, setTemplates] = useState([]);
   const [loadingTemplates, setLoadingTemplates] = useState(true);
@@ -246,7 +250,7 @@ function TemplateBuildScreen() {
 
   useEffect(() => {
     if (htmlContent && editableRef.current && !editableRef.current.dataset.loaded) {
-      editableRef.current.innerHTML = htmlContent;
+      editableRef.current.innerHTML = sanitizeDocumentHtml(htmlContent);
       editableRef.current.dataset.loaded = 'true';
     }
   }, [htmlContent]);
@@ -462,7 +466,7 @@ function TemplateBuildScreen() {
   };
 
   const handleDelete = async (template) => {
-    if (!window.confirm(`Delete template "${template.name}"? This can't be undone.`)) return;
+    if (!(await confirm({ title: 'Delete template', message: `"${template.name}" will be permanently deleted. This can't be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteTemplate(template.id);
       await loadTemplates();

@@ -1,0 +1,142 @@
+.notice__backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(3px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 1000;
+  animation: noticeFade 0.2s var(--ease) both;
+}
+
+.notice__card {
+  --notice-color: var(--color-success);
+  --notice-soft: var(--color-success-soft);
+  background: var(--color-surface);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-lg);
+  padding: 36px 32px 28px;
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+  animation: noticePop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+.notice__card--error {
+  --notice-color: var(--color-danger);
+  --notice-soft: var(--color-danger-soft);
+}
+
+.notice__icon {
+  width: 72px;
+  height: 72px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: var(--notice-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.notice__icon svg {
+  width: 56px;
+  height: 56px;
+}
+
+.notice__circle,
+.notice__mark {
+  stroke: var(--notice-color);
+  stroke-width: 3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.notice__circle {
+  stroke-dasharray: 151;
+  stroke-dashoffset: 151;
+  animation: noticeDraw 0.5s 0.1s var(--ease) forwards;
+}
+
+.notice__mark {
+  stroke-dasharray: 48;
+  stroke-dashoffset: 48;
+  animation: noticeDraw 0.35s 0.45s var(--ease) forwards;
+}
+
+.notice__title {
+  font-family: var(--font-sans);
+  font-size: 1.3rem;
+  font-weight: 700;
+  color: var(--color-text);
+  margin: 0 0 14px;
+}
+
+.notice__stats {
+  display: flex;
+  justify-content: center;
+  gap: 12px;
+  margin: 0 0 16px;
+}
+
+.notice__stat {
+  flex: 1;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.notice__stat-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  color: var(--notice-color);
+  line-height: 1.1;
+}
+
+.notice__stat-label {
+  font-size: 0.75rem;
+  color: var(--color-text-secondary);
+}
+
+.notice__message {
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--color-text-secondary);
+  margin: 0 0 22px;
+  word-break: break-word;
+}
+
+.notice__btn {
+  width: 100%;
+  padding: 12px 18px;
+  background: var(--notice-color);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: filter 0.15s var(--ease);
+}
+
+.notice__btn:hover {
+  filter: brightness(1.08);
+}
+
+@keyframes noticeFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes noticePop {
+  from { opacity: 0; transform: scale(0.85) translateY(12px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes noticeDraw {
+  to { stroke-dashoffset: 0; }
+}

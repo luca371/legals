@@ -1345,3 +1345,252 @@
 .agrd__notify-days {
   margin-top: 12px;
 }
+/* ---------- Renewal brief ---------- */
+
+.agrd__renewal-hint {
+  margin: 0 0 16px;
+  max-width: 640px;
+  font-size: 0.86rem;
+  line-height: 1.55;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__renewal {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.agrd__renewal-headline {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.agrd__renewal-text {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--color-text-secondary);
+}
+
+.agrd__renewal-reco {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.agrd__renewal-action {
+  align-self: flex-start;
+  padding: 3px 12px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+}
+
+.agrd__renewal-action--renew {
+  background: #e6f4ea;
+  color: #1e6b34;
+  border-color: transparent;
+}
+
+.agrd__renewal-action--renew_with_changes,
+.agrd__renewal-action--renegotiate {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: transparent;
+}
+
+.agrd__renewal-action--let_lapse {
+  background: #fde8e8;
+  color: #b42318;
+  border-color: transparent;
+}
+
+.agrd__renewal-title {
+  margin: 0 0 6px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__renewal-term {
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 12px 20px;
+}
+
+.agrd__renewal-term dt {
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__renewal-term dd {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.agrd__renewal-list {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.88rem;
+  line-height: 1.55;
+  color: var(--color-text-secondary);
+}
+
+.agrd__renewal-sev {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.agrd__renewal-sev--high {
+  background: #fde8e8;
+  color: #b42318;
+}
+
+.agrd__renewal-sev--medium {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.agrd__renewal-sev--low {
+  background: #e6f4ea;
+  color: #1e6b34;
+}
+
+.agrd__renewal-source {
+  margin: 6px 0 0;
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
+}
+
+/* ---------- Obligations ---------- */
+
+.agrd__ob-proposals {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 22px;
+}
+
+.agrd__ob-card,
+.agrd__ob-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-bg);
+  border-radius: var(--radius-md);
+}
+
+.agrd__ob-card {
+  cursor: pointer;
+}
+
+.agrd__ob-card input[type='checkbox'],
+.agrd__ob-row input[type='checkbox'] {
+  margin-top: 3px;
+}
+
+.agrd__ob-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.agrd__ob-desc {
+  margin: 0;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.agrd__ob-meta {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__ob-quote {
+  margin: 6px 0 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--color-border);
+  font-size: 0.82rem;
+  line-height: 1.5;
+  font-style: italic;
+  color: var(--color-text-secondary);
+}
+
+.agrd__ob-due {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__ob-actions {
+  display: flex;
+  gap: 10px;
+}
+
+.agrd__ob-saved-title {
+  margin-top: 4px;
+}
+
+.agrd__ob-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.agrd__ob-row--done .agrd__ob-desc {
+  text-decoration: line-through;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__ob-status {
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  color: var(--color-text-tertiary);
+}
+
+.agrd__ob-delete {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+}
+
+.agrd__ob-delete:hover {
+  color: #b42318;
+}

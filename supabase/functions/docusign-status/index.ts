@@ -1,15 +1,30 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
+import { requireUser } from '../_shared/auth.ts';
 import { getAccessToken, getEnvelopeStatus } from '../_shared/docusign.ts';
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
 
   try {
     const { envelopeId } = await req.json();
     if (!envelopeId) {
       return jsonResponse({ error: 'envelopeId is required.' }, 400);
+    }
+
+    // All tenants share one DocuSign account, so only envelopes this tenant sent.
+    const { data: owned } = await auth.admin
+      .from('docusign_envelope_tenants')
+      .select('envelope_id')
+      .eq('envelope_id', String(envelopeId))
+      .eq('tenant_id', auth.tenantId)
+      .maybeSingle();
+    if (!owned) {
+      return jsonResponse({ error: 'Envelope not found.' }, 404);
     }
 
     const accessToken = await getAccessToken({
@@ -27,6 +42,6 @@ Deno.serve(async (req) => {
     return jsonResponse(status);
   } catch (err) {
     console.error('DocuSign status error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'DocuSign status check failed.' }, 500);
+    return jsonResponse({ error: 'DocuSign status check failed.' }, 500);
   }
 });

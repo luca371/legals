@@ -1,11 +1,19 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { embedTexts } from '../_shared/voyage.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'semantic-search');
+  if (limited) return limited;
 
   try {
     const { query, objectType, matchCount } = await req.json();
@@ -30,7 +38,8 @@ Deno.serve(async (req) => {
     });
 
     if (rpcError) {
-      return jsonResponse({ error: rpcError.message }, 400);
+      console.error('Semantic search query failed:', rpcError);
+      return jsonResponse({ error: 'Search failed.' }, 400);
     }
     if (!matches || matches.length === 0) {
       return jsonResponse({ results: [] });
@@ -133,6 +142,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ results });
   } catch (err) {
     console.error('Semantic search error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Semantic search failed.' }, 500);
+    return jsonResponse({ error: 'Semantic search failed.' }, 500);
   }
 });

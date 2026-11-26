@@ -1,9 +1,14 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
+import { MFA_REQUIRED, sessionAal } from '../_shared/auth.ts';
 
 function generateTempPassword() {
-  return Math.random().toString(36).slice(-8) + 'A1!';
+  // Cryptographically random; the user sets their own password from the emailed link.
+  const bytes = crypto.getRandomValues(new Uint8Array(12));
+  return Array.from(bytes, (b) => b.toString(36).padStart(2, '0')).join('').slice(0, 16) + 'aA1!';
 }
+
+const PROFILES = ['admin', 'writer', 'reader'];
 
 function mapCreateUserError(error: { message?: string } | null) {
   const msg = error?.message || '';
@@ -19,7 +24,7 @@ function mapCreateUserError(error: { message?: string } | null) {
   return msg || 'Something went wrong creating the user.';
 }
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -48,15 +53,21 @@ Deno.serve(async (req) => {
 
   const { data: callerProfile, error: callerProfileError } = await supabaseAdmin
     .from('users')
-    .select('tenant_id, is_admin, is_active')
+    .select('tenant_id, profile, is_active')
     .eq('id', caller.id)
     .single();
 
-  if (callerProfileError || !callerProfile?.is_admin || !callerProfile.is_active) {
+  if (callerProfileError || callerProfile?.profile !== 'admin' || !callerProfile.is_active) {
     return jsonResponse({ error: 'Only active admins can create users.' }, 403);
   }
+  if (sessionAal(req) !== 'aal2') {
+    return jsonResponse({ error: MFA_REQUIRED }, 403);
+  }
 
-  const { email, password, firstName, lastName, role, department, employeeId } = await req.json();
+  const { email, password, firstName, lastName, role, department, employeeId, profile } = await req.json();
+  if (profile !== undefined && !PROFILES.includes(profile)) {
+    return jsonResponse({ error: 'Profile must be admin, writer or reader.' }, 400);
+  }
 
   if (!email || !firstName || !lastName) {
     return jsonResponse({ error: 'Missing required fields.' }, 400);
@@ -91,7 +102,7 @@ Deno.serve(async (req) => {
     role,
     department: department || '',
     employee_id: employeeId || '',
-    is_admin: false,
+    profile: profile || 'reader',
     is_active: true,
   });
 

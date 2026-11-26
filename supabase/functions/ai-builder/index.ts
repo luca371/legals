@@ -1,7 +1,9 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are embedded in "Legal Space", a contract lifecycle management tool. You are given the plain text of a contract template and a list of available data fields (each with a human label and a placeholder code).
+const SYSTEM_PROMPT = `You are embedded in "EsoVia", a contract lifecycle management tool. You are given the plain text of a contract template and a list of available data fields (each with a human label and a placeholder code).
 
 Work in two steps, and show your work for both before giving the final answer.
 
@@ -54,10 +56,16 @@ function parseSuggestions(rawText: string) {
   }
 }
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'ai-builder');
+  if (limited) return limited;
 
   try {
     const { documentText, fields } = await req.json();
@@ -85,6 +93,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ suggestions });
   } catch (err) {
     console.error('AI Builder error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'AI Builder failed.' }, 500);
+    return jsonResponse({ error: 'AI Builder failed.' }, 500);
   }
 });

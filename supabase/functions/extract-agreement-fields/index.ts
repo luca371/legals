@@ -1,7 +1,10 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { pdfDocumentBlock } from '../_shared/pdf.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are embedded in "Legal Space", a contract lifecycle management tool. The user just uploaded a real contract document (already signed, or prepared offline) to create an agreement record from it. Your job is to read the document and extract the real values for the record's fields, so the user doesn't have to retype what's already in the document.
+const SYSTEM_PROMPT = `You are embedded in "EsoVia", a contract lifecycle management tool. The user just uploaded a real contract document (already signed, or prepared offline) to create an agreement record from it. Your job is to read the document and extract the real values for the record's fields, so the user doesn't have to retype what's already in the document.
 
 You are given: the document's plain text, a list of existing accounts (id + name) in the organization, the allowed agreement type and subtype options, and a list of custom fields (id, label, type, and options for dropdowns) the organization tracks on agreements.
 
@@ -55,24 +58,37 @@ function parseExtraction(rawText: string) {
   };
 }
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
 
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'extract-agreement-fields');
+  if (limited) return limited;
+
   try {
-    const { documentText, accounts, agreementTypeOptions, agreementSubtypeOptions, customFieldDefs } = await req.json();
-    if (!documentText || !String(documentText).trim()) {
-      return jsonResponse({ error: 'documentText is required.' }, 400);
+    const { documentText, pdfBase64, accounts, agreementTypeOptions, agreementSubtypeOptions, customFieldDefs } = await req.json();
+    const hasPdf = typeof pdfBase64 === 'string' && pdfBase64.length > 0;
+    if (!hasPdf && (!documentText || !String(documentText).trim())) {
+      return jsonResponse({ error: 'documentText or pdfBase64 is required.' }, 400);
     }
 
-    const userMessage = `Existing accounts (JSON array of {id, name}):\n${JSON.stringify(accounts || [])}\n\nAllowed agreement types:\n${JSON.stringify(agreementTypeOptions || [])}\n\nAllowed agreement subtypes:\n${JSON.stringify(agreementSubtypeOptions || [])}\n\nCustom fields (JSON array of {id, label, type, options}):\n${JSON.stringify(customFieldDefs || [])}\n\nDocument text:\n"""\n${String(documentText).slice(0, 20000)}\n"""`;
+    const context = `Existing accounts (JSON array of {id, name}):\n${JSON.stringify(accounts || [])}\n\nAllowed agreement types:\n${JSON.stringify(agreementTypeOptions || [])}\n\nAllowed agreement subtypes:\n${JSON.stringify(agreementSubtypeOptions || [])}\n\nCustom fields (JSON array of {id, label, type, options}):\n${JSON.stringify(customFieldDefs || [])}`;
+
+    // A PDF goes to Claude as a document block (it reads text and scans);
+    // a Word file arrives already converted to text by the browser.
+    const content = hasPdf
+      ? [pdfDocumentBlock(pdfBase64), { type: 'text', text: `${context}\n\nThe document is the attached PDF.` }]
+      : `${context}\n\nDocument text:\n"""\n${String(documentText).slice(0, 20000)}\n"""`;
 
     const data = await callAnthropic(Deno.env.get('ANTHROPIC_API_KEY') ?? '', {
       model: ANTHROPIC_MODEL,
       max_tokens: 2048,
       system: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: userMessage }],
+      messages: [{ role: 'user', content }],
     });
 
     const textBlock = (data.content || []).find((c: { type: string }) => c.type === 'text');
@@ -81,6 +97,6 @@ Deno.serve(async (req) => {
     return jsonResponse(parseExtraction(textBlock.text));
   } catch (err) {
     console.error('Extract agreement fields error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Field extraction failed.' }, 500);
+    return jsonResponse({ error: 'Field extraction failed.' }, 500);
   }
 });

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import mammoth from 'mammoth';
 import { indexObject } from '../embeddingsApi';
 import { extractAgreementFieldsWithAI } from '../aiApi';
@@ -11,15 +11,32 @@ import {
   getObjectSchema,
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
+  addAgreementAttachment,
+  MAX_ATTACHMENT_BYTES,
 } from '../supabase';
+import { useAuth } from '../AuthContext';
 import './AgreementsScreen.css';
 
 const LANGUAGES = ['English', 'Romanian', 'French', 'German', 'Spanish'];
+
+const PDF_MIME = 'application/pdf';
+
+function arrayBufferToBase64(arrayBuffer) {
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = '';
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
 
 const EMPTY_FORM = {
   title: '',
   accountId: '',
   accountName: '',
+  account2Id: '',
+  account2Name: '',
   agreementType: '',
   agreementSubtype: '',
   language: 'English',
@@ -63,7 +80,9 @@ function SignedIcon() {
 }
 
 function AgreementsScreen() {
+  const { canWrite } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState(null);
 
   const [sideFilter, setSideFilter] = useState('mine');
@@ -146,6 +165,20 @@ function AgreementsScreen() {
     setExtractedFields(false);
   };
 
+  // Arriving from an account page ("+ Create an agreement"): open the create
+  // flow with that account already selected, then clear the request so a
+  // refresh or Back doesn't reopen it.
+  const presetAccountId = location.state?.newAgreementForAccountId;
+  useEffect(() => {
+    if (!presetAccountId || !canWrite || accounts.length === 0) return;
+    const account = accounts.find((a) => a.id === presetAccountId);
+    handleOpenCreate();
+    if (account) setForm((prev) => ({ ...prev, accountId: account.id, accountName: account.name }));
+    navigate(location.pathname, { replace: true, state: null });
+    // handleOpenCreate only sets state; it is safe to leave out of the deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presetAccountId, canWrite, accounts]);
+
   const handleCloseCreate = () => {
     extractSessionRef.current += 1;
     setShowCreate(false);
@@ -161,17 +194,39 @@ function AgreementsScreen() {
   const handleFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith('.docx')) { setUploadError('Please upload a .docx file.'); return; }
+    const lowerName = file.name.toLowerCase();
+    const isPdf = lowerName.endsWith('.pdf');
+    if (!isPdf && !lowerName.endsWith('.docx')) { setUploadError('Please upload a .docx or .pdf file.'); return; }
+    // A PDF is kept as an attachment (stored inside the agreement row), so it
+    // has to fit the same size cap as every other attachment.
+    if (isPdf && file.size > MAX_ATTACHMENT_BYTES) {
+      setUploadError(`This PDF is too large to store (limit ${Math.round(MAX_ATTACHMENT_BYTES / 1024)} KB). Try a smaller or compressed file.`);
+      return;
+    }
     setUploading(true);
     setUploadError('');
     setExtractedFields(false);
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const result = await mammoth.convertToHtml({ arrayBuffer });
-      setUploadedFile({ name: file.name, contentHtml: result.value });
-      handleAutoExtractFields(arrayBuffer);
+      if (isPdf) {
+        const pdfBase64 = arrayBufferToBase64(arrayBuffer);
+        setUploadedFile({
+          name: file.name,
+          contentHtml: '',
+          pdf: { name: file.name, size: file.size, mimeType: PDF_MIME, dataBase64: pdfBase64 },
+        });
+        handleAutoExtractFields({ pdfBase64 });
+      } else {
+        const result = await mammoth.convertToHtml({ arrayBuffer });
+        setUploadedFile({ name: file.name, contentHtml: result.value });
+        handleAutoExtractFields({ arrayBuffer });
+      }
     } catch (err) {
-      setUploadError('Could not read this file. Try saving it again from Word and re-uploading.');
+      setUploadError(
+        isPdf
+          ? 'Could not read this PDF. Try another file.'
+          : 'Could not read this file. Try saving it again from Word and re-uploading.'
+      );
     } finally {
       setUploading(false);
     }
@@ -181,7 +236,7 @@ function AgreementsScreen() {
   // so the form is already filled in by the time the user clicks "Next" -
   // never blocks the upload step, and never overwrites anything the user
   // has already typed.
-  const handleAutoExtractFields = async (arrayBuffer) => {
+  const handleAutoExtractFields = async ({ arrayBuffer, pdfBase64 }) => {
     const session = ++extractSessionRef.current;
     setExtracting(true);
     // Don't let a slow AI call hold the user hostage - after 30s, unblock
@@ -191,12 +246,16 @@ function AgreementsScreen() {
       if (extractSessionRef.current === session) setExtracting(false);
     }, 30000);
     try {
-      const textResult = await mammoth.extractRawText({ arrayBuffer });
-      const documentText = (textResult.value || '').trim();
-      if (!documentText) return;
+      let documentText = '';
+      if (!pdfBase64) {
+        const textResult = await mammoth.extractRawText({ arrayBuffer });
+        documentText = (textResult.value || '').trim();
+        if (!documentText) return;
+      }
 
       const extracted = await extractAgreementFieldsWithAI({
         documentText,
+        pdfBase64,
         accounts: accounts.map((a) => ({ id: a.id, name: a.name })),
         agreementTypeOptions: typeOptions,
         agreementSubtypeOptions: subtypeOptions,
@@ -229,6 +288,11 @@ function AgreementsScreen() {
 
   const handleFormChange = (e) => {
     const { name, value } = e.target;
+    if (name === 'account2Id') {
+      const acc = accounts.find((a) => a.id === value);
+      setForm((prev) => ({ ...prev, account2Id: value, account2Name: acc?.name || '' }));
+      return;
+    }
     if (name === 'accountId') {
       const acc = accounts.find((a) => a.id === value);
       setForm((prev) => ({ ...prev, accountId: value, accountName: acc?.name || '' }));
@@ -254,6 +318,22 @@ function AgreementsScreen() {
         customFields: customValues,
         contentHtml: uploadedFile?.contentHtml || '',
       });
+      if (uploadedFile?.pdf) {
+        // The agreement already exists at this point, so a failed attach must
+        // not block opening it - the PDF can be added again from its page.
+        try {
+          await addAgreementAttachment(created.id, {
+            id: `att_${Date.now()}_${uploadedFile.pdf.name}`,
+            name: uploadedFile.pdf.name,
+            size: uploadedFile.pdf.size,
+            mimeType: uploadedFile.pdf.mimeType,
+            dataBase64: uploadedFile.pdf.dataBase64,
+            uploadedAt: new Date().toISOString(),
+          });
+        } catch (attachErr) {
+          console.error('Failed to attach the uploaded PDF:', attachErr);
+        }
+      }
       indexObject('agreement', created.id).catch((err) => console.warn('Background indexing failed:', err));
       handleCloseCreate();
       navigate(`/dashboard/agreements/${created.id}`);
@@ -302,7 +382,7 @@ function AgreementsScreen() {
       <div className="agr__main">
         <div className="agr__header">
           <h2 className="agr__title">{sideFilter === 'mine' ? 'My agreements' : 'All agreements'}</h2>
-          <button className="agr__create-btn" onClick={handleOpenCreate}>+ Create new agreement</button>
+          {canWrite && <button className="agr__create-btn" data-tour="create-agreement" onClick={handleOpenCreate}>+ Create new agreement</button>}
         </div>
 
         {loading ? (
@@ -377,11 +457,11 @@ function AgreementsScreen() {
                 <div className="agr__modal-header">
                   <h3 className="agr__modal-title">{createFlow === 'signed' ? 'Import signed agreement' : 'Import offline document'}</h3>
                   <p className="agr__modal-subtitle">
-                    Upload a .docx file{createFlow === 'signed' ? ' - the agreement will be marked as Signed.' : ', then complete the details.'}
+                    Upload a .docx or .pdf file{createFlow === 'signed' ? ' - the agreement will be marked as Signed.' : ', then complete the details.'}
                   </p>
                 </div>
                 <div className="agr__upload-zone" onClick={() => fileInputRef.current?.click()}>
-                  <input ref={fileInputRef} type="file" accept=".docx" className="agr__upload-input" onChange={handleFileChange} />
+                  <input ref={fileInputRef} type="file" accept=".docx,.pdf" className="agr__upload-input" onChange={handleFileChange} />
                   {uploading ? (
                     <p className="agr__upload-hint">Converting document…</p>
                   ) : uploadedFile ? (
@@ -401,7 +481,7 @@ function AgreementsScreen() {
                           <path d="M6 10a5 5 0 0 1 10 0 3 3 0 0 1 0 6H6a3.5 3.5 0 0 1 0-7z" stroke="#0071e3" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                         </svg>
                       )}
-                      <p className="agr__upload-title">Upload a Word document (.docx)</p>
+                      <p className="agr__upload-title">Upload a Word (.docx) or PDF document</p>
                       <p className="agr__upload-hint">Click to browse</p>
                     </>
                   )}
@@ -437,8 +517,16 @@ function AgreementsScreen() {
                     </div>
 
                     <div className="agr__field">
-                      <label className="agr__label" htmlFor="accountId">Account</label>
+                      <label className="agr__label" htmlFor="accountId">Account 1</label>
                       <select id="accountId" name="accountId" className="agr__input" value={form.accountId} onChange={handleFormChange}>
+                        <option value="">- Select account -</option>
+                        {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                      </select>
+                    </div>
+
+                    <div className="agr__field">
+                      <label className="agr__label" htmlFor="account2Id">Account 2</label>
+                      <select id="account2Id" name="account2Id" className="agr__input" value={form.account2Id} onChange={handleFormChange}>
                         <option value="">- Select account -</option>
                         {accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>

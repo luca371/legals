@@ -1,25 +1,29 @@
 import { NavLink } from 'react-router-dom';
 import AskELabel from './AskELabel';
+import { useAuth } from '../AuthContext';
 import './Sidebar.css';
 
 const NAV_ITEMS = [
   { path: '/dashboard/agreements', label: 'Agreements', icon: IconAgreements },
   { path: '/dashboard/accounts', label: 'Accounts', icon: IconAccounts },
   { path: '/dashboard/dashboards', label: 'Dashboards', icon: IconDashboards },
-  { path: '/dashboard/templates', label: 'Template build', icon: IconTemplates },
+  { path: '/dashboard/templates', label: 'Template build', icon: IconTemplates, writerOnly: true },
+  { path: '/dashboard/draft', label: 'Draft with AI', icon: IconDraft, writerOnly: true },
   { path: '/dashboard/ask-ai', label: 'Ask E', labelNode: <AskELabel />, icon: IconAskAI },
-  { path: '/dashboard/settings', label: 'Settings', icon: IconSettings },
+  { path: '/dashboard/settings', label: 'Settings', icon: IconSettings, writerOnly: true },
 ];
 
 const ADMIN_ITEM = { path: '/dashboard/admin', label: 'Admin', icon: IconAdmin };
 
 function Sidebar({ collapsed, onToggle, isAdmin }) {
+  const { canWrite } = useAuth();
+  const navItems = NAV_ITEMS.filter((item) => !item.writerOnly || canWrite);
+
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
       <div className="sidebar__brand">
         <div className="sidebar__brand-info">
-          <img src="/images/logo.png" alt="Legal Space" className="sidebar__logo" />
-          <span className="sidebar__brand-name">Legal Space</span>
+          <span className="sidebar__brand-name">EsoVia</span>
         </div>
 
         <button
@@ -33,10 +37,11 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
       </div>
 
       <nav className="sidebar__nav">
-        {NAV_ITEMS.map(({ path, label, labelNode, icon: Icon }) => (
+        {navItems.map(({ path, label, labelNode, icon: Icon }) => (
           <NavLink
             key={path}
             to={path}
+            data-tour={`nav-${path.split('/').pop()}`}
             title={label}
             className={({ isActive }) =>
               `sidebar__item ${isActive ? 'sidebar__item--active' : ''}`
@@ -55,6 +60,7 @@ function Sidebar({ collapsed, onToggle, isAdmin }) {
           <nav className="sidebar__nav sidebar__nav--admin">
             <NavLink
               to={ADMIN_ITEM.path}
+              data-tour="nav-admin"
               title={ADMIN_ITEM.label}
               className={({ isActive }) =>
                 `sidebar__item sidebar__item--admin ${isActive ? 'sidebar__item--active' : ''}`
@@ -118,6 +124,16 @@ function IconTemplates({ className }) {
   );
 }
 
+function IconDraft({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 3.5h8l4 4v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-16a1 1 0 0 1 1-1z" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M13.5 3.5v4h4" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+      <path d="M9 13.5l3-3 2 2-3 3-2.5.5.5-2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
 function IconAskAI({ className }) {
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -133,16 +149,16 @@ function IconAskAI({ className }) {
 }
 
 function IconSettings({ className }) {
+  // Gear with 8 evenly spaced teeth, generated from its geometry so every tooth is identical.
   return (
     <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <circle cx="12" cy="12" r="3.2" stroke="currentColor" strokeWidth="1.9" />
       <path
-        d="M19.4 13.5c.1-.5.1-1 0-1.5l1.6-1.4-1.5-2.6-2 .6c-.4-.3-.8-.6-1.3-.8l-.4-2.1H10.2l-.4 2.1c-.5.2-.9.5-1.3.8l-2-.6-1.5 2.6L6.6 12c-.1.5-.1 1 0 1.5L5 14.9l1.5 2.6 2-.6c.4.3.8.6 1.3.8l.4 2.1h3.6l.4-2.1c.5-.2.9-.5 1.3-.8l2 .6 1.5-2.6-1.6-1.4z"
+        d="M10.15 5.04 L10.38 2.54 L13.62 2.54 L13.85 5.04 A7.20 7.20 0 0 1 15.61 5.77 L17.54 4.16 L19.84 6.46 L18.23 8.39 A7.20 7.20 0 0 1 18.96 10.15 L21.46 10.38 L21.46 13.62 L18.96 13.85 A7.20 7.20 0 0 1 18.23 15.61 L19.84 17.54 L17.54 19.84 L15.61 18.23 A7.20 7.20 0 0 1 13.85 18.96 L13.62 21.46 L10.38 21.46 L10.15 18.96 A7.20 7.20 0 0 1 8.39 18.23 L6.46 19.84 L4.16 17.54 L5.77 15.61 A7.20 7.20 0 0 1 5.04 13.85 L2.54 13.62 L2.54 10.38 L5.04 10.15 A7.20 7.20 0 0 1 5.77 8.39 L4.16 6.46 L6.46 4.16 L8.39 5.77 A7.20 7.20 0 0 1 10.15 5.04 Z"
         stroke="currentColor"
-        strokeWidth="1.9"
+        strokeWidth="1.6"
         strokeLinejoin="round"
-        strokeLinecap="round"
       />
+      <circle cx="12" cy="12" r="2.9" stroke="currentColor" strokeWidth="1.6" />
     </svg>
   );
 }

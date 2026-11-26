@@ -59,14 +59,6 @@
   animation: fadeInUp 0.8s ease-out both;
 }
 
-.start-screen__logo {
-  width: 84px;
-  height: 84px;
-  object-fit: contain;
-  margin-bottom: 8px;
-  animation: fadeInUp 0.7s ease-out both;
-}
-
 .start-screen__title {
   font-family: var(--font-sans);
   font-weight: 700;
@@ -274,7 +266,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .start-screen__left-content,
-  .start-screen__logo,
   .start-screen__title,
   .start-screen__subtitle,
   .login-form {

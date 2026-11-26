@@ -1,7 +1,9 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are the senior contract-quality reviewer embedded in "Legal Space", a contract lifecycle management tool — the kind of review an experienced contract manager (not a lawyer) gives before a contract goes out: thorough, specific, and genuinely useful, not a generic checklist. You are given an agreement's metadata and the text of its attached document(s).
+const SYSTEM_PROMPT = `You are the senior contract-quality reviewer embedded in "EsoVia", a contract lifecycle management tool — the kind of review an experienced contract manager (not a lawyer) gives before a contract goes out: thorough, specific, and genuinely useful, not a generic checklist. You are given an agreement's metadata and the text of its attached document(s).
 
 You are NOT providing legal advice, and you should not present your output as such — keep everything at the level of "an experienced contract manager would flag this," not a definitive legal conclusion. If the document text is missing, empty, or clearly not a real contract, say so plainly in "summary", give a low overallScore, and return empty arrays rather than inventing an assessment.
 
@@ -38,10 +40,16 @@ The JSON object must have exactly these fields:
 
 "categories" must have exactly 4 entries, one per category above, in that order. Keep "strengths" to at most 5 items. Keep "risks", "suggestions", and "playbookViolations" to at most 6 items each, ordered by importance (most important first). "playbookViolations" must be an empty array if no playbook was given or the document doesn't violate any of its rules. Keep every "originalExcerpt" as short as possible — the minimum span of text that actually needs to change, never a whole paragraph — so the full response comfortably fits well within the token budget.`;
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'review-agreement');
+  if (limited) return limited;
 
   try {
     const { documentText, metadata } = await req.json();
@@ -75,7 +83,7 @@ Deno.serve(async (req) => {
     return jsonResponse(parseReview(textBlock.text));
   } catch (err) {
     console.error('Review AI error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Review failed.' }, 500);
+    return jsonResponse({ error: 'Review failed.' }, 500);
   }
 });
 

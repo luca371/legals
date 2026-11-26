@@ -1,7 +1,9 @@
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
+import { requireUser } from '../_shared/auth.ts';
+import { enforceAiLimit } from '../_shared/ratelimit.ts';
 
-const SYSTEM_PROMPT = `You are a contract-drafting assistant embedded in "Legal Space", a contract lifecycle management tool. You are given a contract TEMPLATE's metadata (agreement type/subtype/language) and its current document text. You are NOT providing legal advice — keep everything practical and template-oriented (a starting point for the drafter to adapt), not definitive legal conclusions.
+const SYSTEM_PROMPT = `You are a contract-drafting assistant embedded in "EsoVia", a contract lifecycle management tool. You are given a contract TEMPLATE's metadata (agreement type/subtype/language) and its current document text. You are NOT providing legal advice — keep everything practical and template-oriented (a starting point for the drafter to adapt), not definitive legal conclusions.
 
 LANGUAGE RULE (important, applies to every field below): any clause TEXT meant to be inserted into the document ("text" in TASK 1) must be written in the template's language (given in the metadata). Every other field — reason, assessment, improvement, excerpt — is commentary FOR THE DRAFTER, not document content, and must ALWAYS be written in English regardless of the template's language.
 
@@ -26,10 +28,16 @@ The JSON object must have exactly these two fields:
 
 If the document has no identifiable clauses yet (e.g. it's empty or just a title), return {"missingClauses": [...], "existingClauses": []}.`;
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
+
+  // Signed-in, active users only: these call paid AI APIs.
+  const auth = await requireUser(req);
+  if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
+  const limited = await enforceAiLimit(auth, 'suggest-clauses');
+  if (limited) return limited;
 
   try {
     const { documentText, metadata } = await req.json();
@@ -71,6 +79,6 @@ Deno.serve(async (req) => {
     });
   } catch (err) {
     console.error('Suggest clauses error:', err);
-    return jsonResponse({ error: err instanceof Error ? err.message : 'Suggest clauses failed.' }, 500);
+    return jsonResponse({ error: 'Suggest clauses failed.' }, 500);
   }
 });

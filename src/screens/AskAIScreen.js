@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import mammoth from 'mammoth';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -32,6 +33,7 @@ import {
 import { sendToClaudeWithTools } from '../askAiApi';
 import { semanticSearch } from '../embeddingsApi';
 import './AskAIScreen.css';
+import { sanitizeDocumentHtml } from '../sanitizeHtml';
 
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const MAX_DOC_CHARS = 15000; 
@@ -176,7 +178,7 @@ async function extractAttachmentText(attachment) {
   if (!attachment) return '';
   if (attachment.sourceHtml) {
     const div = document.createElement('div');
-    div.innerHTML = attachment.sourceHtml;
+    div.innerHTML = sanitizeDocumentHtml(attachment.sourceHtml);
     return (div.innerText || div.textContent || '').trim();
   }
   if (attachment.dataBase64 && attachment.mimeType === DOCX_MIME) {
@@ -332,6 +334,7 @@ async function runConversationTurn(startMessages, onStatus) {
 }
 
 function AskAIScreen() {
+  const confirm = useConfirm();
   const [chatLog, setChatLog] = useState([]);
   const [history, setHistory] = useState([]);
   const [input, setInput] = useState('');
@@ -445,7 +448,7 @@ function AskAIScreen() {
 
   const handleDeleteConversation = async (id, e) => {
     e.stopPropagation();
-    if (!window.confirm('Delete this conversation? This can\'t be undone.')) return;
+    if (!(await confirm({ title: 'Delete conversation', message: "This conversation will be permanently deleted. This can't be undone.", confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteAskAiConversation(id);
       setConversations((prev) => prev.filter((c) => c.id !== id));

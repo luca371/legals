@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
+import GuidedTour from '../components/GuidedTour';
 import AskELabel from '../components/AskELabel';
 import { logout } from '../supabase';
 import './DashboardLayout.css';
@@ -18,6 +19,7 @@ const SECTION_LABELS = {
 function DashboardLayout({ user, isAdmin }) {
   const location = useLocation();
   const [collapsed, setCollapsed] = useState(false);
+  const [tourOpen, setTourOpen] = useState(false);
   const currentKey = location.pathname.split('/dashboard/')[1] || 'agreements';
   const sectionTitle = SECTION_LABELS[currentKey] || 'Dashboard';
 
@@ -49,6 +51,13 @@ function DashboardLayout({ user, isAdmin }) {
           <h1 className="dashboard__section-title">{sectionTitle}</h1>
 
           <div className="dashboard__user">
+            <button
+              type="button"
+              className="dashboard__tour"
+              onClick={() => setTourOpen(true)}
+            >
+              Take the tour
+            </button>
             <span className="dashboard__user-name">{displayName}</span>
             <button className="dashboard__logout" onClick={handleLogout}>
               Log out
@@ -57,9 +66,14 @@ function DashboardLayout({ user, isAdmin }) {
         </header>
 
         <main className="dashboard__content">
-          <Outlet />
+          <Outlet context={{ isAdmin }} />
         </main>
       </div>
+
+      <GuidedTour
+        open={tourOpen}
+        onClose={() => setTourOpen(false)}
+      />
     </div>
   );
 }

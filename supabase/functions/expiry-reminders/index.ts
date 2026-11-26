@@ -1,5 +1,5 @@
 import { createClient } from 'npm:@supabase/supabase-js@2';
-import { corsHeaders, jsonResponse } from '../_shared/cors.ts';
+import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { sendEmailJs } from '../_shared/emailjs.ts';
 
 // Runs across every tenant, on a schedule (see the pg_cron job set up in
@@ -7,7 +7,7 @@ import { sendEmailJs } from '../_shared/emailjs.ts';
 // bypass RLS rather than a caller's JWT.
 const DEFAULT_THRESHOLDS = [30, 14, 7, 1];
 
-Deno.serve(async (req) => {
+serveWithCors(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
   }
@@ -82,7 +82,7 @@ Deno.serve(async (req) => {
           templateParams: {
             to_email: a.created_by,
             to_name: a.created_by,
-            from_name: 'Legal Space',
+            from_name: 'EsoVia',
             subject_line: `Contract expiring in ${daysLeft} day${daysLeft === 1 ? '' : 's'}: ${a.title || ''}`,
             intro_text: `"${a.title || 'This agreement'}"${a.account_name ? ` (${a.account_name})` : ''} is set to expire on ${a.end_date}, in ${daysLeft} day${daysLeft === 1 ? '' : 's'}.`,
             detail_line: 'Renew, amend, or let it lapse — just make sure someone looks at it before then.',

@@ -637,3 +637,22 @@
   margin: 0 0 10px;
   font-family: var(--font-sans);
 }
+.admin__profile {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: var(--radius-xl);
+  font-size: 0.76rem;
+  font-weight: 600;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.admin__profile--admin {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.admin__profile--writer {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}

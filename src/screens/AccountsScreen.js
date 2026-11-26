@@ -1,7 +1,11 @@
 import { useEffect, useState, useMemo } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import { useNavigate } from 'react-router-dom';
-import { listAccounts, createAccount, deleteAccount, getObjectSchema, listAgreements } from '../supabase';
+import { useAuth } from '../AuthContext';
+import { listAccounts, createAccount, deleteAccount, getObjectSchema, listAgreements, logAuditEvent } from '../supabase';
 import { indexObject } from '../embeddingsApi';
+import { syncAccountsFromSalesforce } from '../salesforceApi';
+import NoticeModal from '../components/NoticeModal';
 import { computeHealthByAccount } from '../healthScore';
 import './AccountsScreen.css';
 
@@ -36,6 +40,7 @@ function SearchIcon() {
 }
 
 function AccountsScreen() {
+  const confirm = useConfirm();
   const navigate = useNavigate();
 
   const [accounts, setAccounts] = useState([]);
@@ -52,6 +57,9 @@ function AccountsScreen() {
   const [customValues, setCustomValues] = useState({});
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [notice, setNotice] = useState(null);
+  const { isAdmin, canWrite } = useAuth();
 
   const loadAccounts = async () => {
     setLoading(true);
@@ -166,7 +174,7 @@ function AccountsScreen() {
 
   const handleDelete = async (account, e) => {
     e.stopPropagation();
-    if (!window.confirm(`Delete account "${account.name}"? This can't be undone.`)) return;
+    if (!(await confirm({ title: 'Delete account', message: `"${account.name}" will be permanently deleted. This can't be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteAccount(account.id);
       await loadAccounts();
@@ -193,11 +201,43 @@ function AccountsScreen() {
     return <input type="text" className="acc__input" value={value} onChange={(e) => handleCustomChange(field.id, e.target.value)} />;
   };
 
+  const handleSalesforceSync = async () => {
+    setSyncing(true);
+    try {
+      const result = await syncAccountsFromSalesforce();
+      logAuditEvent('salesforce_account_sync', 'account', null, 'Accounts from Salesforce', { created: result.created, updated: result.updated });
+      await loadAccounts();
+      setNotice({
+        type: 'success',
+        title: 'Salesforce sync complete',
+        message: `${result.fetched} account${result.fetched === 1 ? '' : 's'} checked in Salesforce.`,
+        stats: [
+          { label: 'New', value: result.created },
+          { label: 'Updated', value: result.updated },
+        ],
+      });
+    } catch (err) {
+      console.error('Salesforce sync failed:', err);
+      setNotice({ type: 'error', title: 'Salesforce sync failed', message: err.message });
+    } finally {
+      setSyncing(false);
+    }
+  };
+
   return (
     <div className="acc">
       <div className="acc__header">
         <h2 className="acc__title">Accounts</h2>
-        <button className="acc__add-btn" onClick={handleOpenCreate}>+ Create account</button>
+        <div className="acc__header-actions">
+          {isAdmin && (
+            <button className="acc__sync-btn" onClick={handleSalesforceSync} disabled={syncing}>
+              {syncing ? 'Syncing…' : 'Sync from Salesforce'}
+            </button>
+          )}
+          {canWrite && (
+            <button className="acc__add-btn" data-tour="create-account" onClick={handleOpenCreate}>+ Create account</button>
+          )}
+        </div>
       </div>
 
       <div className="acc__toolbar">
@@ -384,6 +424,7 @@ function AccountsScreen() {
           </form>
         </div>
       )}
+      <NoticeModal notice={notice} onClose={() => setNotice(null)} />
     </div>
   );
 }

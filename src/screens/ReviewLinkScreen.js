@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { getReviewRequestPublic, submitReviewChanges, getNextReviewInBatch } from '../supabase';
-import { sendReviewEmail } from '../emailApi';
+import { getReviewRequestPublic, submitReviewChanges } from '../supabase';
+import { sanitizeDocumentHtml } from '../sanitizeHtml';
 import { computeChangeTokens, renderChangeTokensToHtml } from '../redlineUtils';
 import './ReviewLinkScreen.css';
 
@@ -45,7 +45,7 @@ function ReviewLinkScreen() {
     const load = async () => {
       try {
         const data = await getReviewRequestPublic(reviewId);
-        setReview(data);
+        setReview({ ...data, originalHtml: sanitizeDocumentHtml(data.originalHtml) });
         if (data.status !== 'Pending') {
           setSubmitted(true);
         } else if (isExpired(data.createdAt)) {
@@ -78,28 +78,12 @@ function ReviewLinkScreen() {
     setSubmitting(true);
     setError('');
     try {
+      // The server also emails the next reviewer in the chain.
       await submitReviewChanges(reviewId, editedHtml, previewTokens);
-
-      try {
-        const next = await getNextReviewInBatch(review.batchId, review.sequence);
-        if (next) {
-          await sendReviewEmail({
-            toEmail: next.reviewerEmail,
-            toName: next.reviewerName,
-            fromName: review.requestedBy,
-            agreementTitle: review.agreementTitle,
-            message: review.message,
-            reviewLink: `${window.location.origin}/review/${next.id}`,
-          });
-        }
-      } catch (chainErr) {
-        console.error('Could not advance the review chain:', chainErr);
-      }
-
       setSubmitted(true);
     } catch (err) {
       console.error('Failed to submit review changes:', err);
-      setError('Something went wrong while submitting your changes. Please try again.');
+      setError(err.message || 'Something went wrong while submitting your changes. Please try again.');
     } finally {
       setSubmitting(false);
     }

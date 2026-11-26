@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import {
   getSignatureUsageThisMonth,
   listAgreements,
@@ -17,6 +18,7 @@ import {
 } from '../supabase';
 import { indexObject } from '../embeddingsApi';
 import AskELabel from '../components/AskELabel';
+import { useAuth } from '../AuthContext';
 import './SettingsScreen.css';
 
 // Sequential, not parallel — Voyage throttles accounts with no payment
@@ -36,13 +38,71 @@ const AUDIT_ACTION_LABELS = {
   signed: 'Signed',
   sent_for_approval: 'Sent for approval',
   sent_for_review: 'Sent for review',
+  document_added: 'Document added',
+  document_removed: 'Document removed',
+  sent_to_salesforce: 'Sent to Salesforce',
+  synced_to_salesforce: 'Synced to Salesforce',
+  salesforce_account_sync: 'Salesforce account sync',
+  profile_changed: 'Profile changed',
+  user_created: 'User created',
 };
+
+const AUDIT_FILTERS = [
+  { id: 'all', label: 'All' },
+  { id: 'changes', label: 'Changes' },
+  { id: 'views', label: 'Views' },
+];
+
+// One readable line describing what an entry did, built from its stored details.
+function formatAuditDetails(entry) {
+  const d = entry.details || {};
+  const show = (v) => (v === undefined || v === null || v === '' ? '(empty)' : String(v));
+  const changes = Array.isArray(d.changes)
+    ? d.changes.map((c) => (c.edited ? `${c.field} edited` : `${c.field}: ${show(c.from)} \u2192 ${show(c.to)}`))
+    : [];
+  let lead = '';
+  switch (entry.action) {
+    case 'status_changed':
+      lead = d.status ? `Status: ${show(d.from)} \u2192 ${d.status}` : '';
+      break;
+    case 'profile_changed':
+      lead = `Profile: ${show(d.from)} \u2192 ${show(d.to)}`;
+      break;
+    case 'user_created':
+      lead = d.profile ? `Profile: ${d.profile}` : '';
+      break;
+    case 'sent_for_review':
+      lead = d.reviewerEmail ? `To: ${d.reviewerEmail}` : '';
+      break;
+    case 'sent_for_approval':
+      lead = d.approverEmail ? `To: ${d.approverEmail}` : '';
+      break;
+    case 'document_added':
+    case 'document_removed':
+      lead = d.name || '';
+      break;
+    case 'sent_to_salesforce':
+      lead = [d.document, d.outcome && `(${d.outcome})`].filter(Boolean).join(' ');
+      break;
+    case 'synced_to_salesforce':
+      lead = `Contract ${d.action || 'synced'}, status ${d.sfStatus || '-'}, ${d.documents || 0} document(s) sent`;
+      break;
+    case 'salesforce_account_sync':
+      lead = `${d.created || 0} new, ${d.updated || 0} updated`;
+      break;
+    default:
+      break;
+  }
+  return [lead, ...changes].filter(Boolean).join('; ');
+}
 
 function formatAuditAction(action) {
   return AUDIT_ACTION_LABELS[action] || action;
 }
 
 function SettingsScreen() {
+  const confirm = useConfirm();
+  const { isAdmin } = useAuth();
   const [usage, setUsage] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,6 +150,7 @@ function SettingsScreen() {
   const [auditLog, setAuditLog] = useState([]);
   const [loadingAuditLog, setLoadingAuditLog] = useState(true);
   const [auditLogError, setAuditLogError] = useState('');
+  const [auditFilter, setAuditFilter] = useState('all');
 
   const loadAuditLog = async () => {
     setLoadingAuditLog(true);
@@ -98,7 +159,7 @@ function SettingsScreen() {
       setAuditLog(await listAuditLog());
     } catch (err) {
       console.error('Failed to load audit log:', err);
-      setAuditLogError('Could not load the audit log.');
+      setAuditLogError(`Could not load the audit log.${err?.message ? ` (${err.message})` : ''}`);
     } finally {
       setLoadingAuditLog(false);
     }
@@ -121,14 +182,19 @@ function SettingsScreen() {
     loadAuditLog();
   }, []);
 
+  const visibleAuditLog = auditLog.filter((e) =>
+    auditFilter === 'changes' ? e.action !== 'viewed' : auditFilter === 'views' ? e.action === 'viewed' : true,
+  );
+
   const handleExportAuditLog = () => {
-    const header = ['Date', 'Actor', 'Action', 'Object type', 'Object', 'Details'];
+    const header = ['Date', 'Actor', 'Action', 'Object type', 'Object', 'Details', 'Raw details'];
     const rows = auditLog.map((e) => [
       e.createdAt ? new Date(e.createdAt).toISOString() : '',
       e.actorEmail || '',
       e.action,
       e.objectType,
       e.objectLabel || '',
+      formatAuditDetails(e),
       JSON.stringify(e.details || {}),
     ]);
     const escapeCell = (cell) => `"${String(cell).replace(/"/g, '""')}"`;
@@ -210,7 +276,7 @@ function SettingsScreen() {
   };
 
   const handleDeletePlaybook = async (id) => {
-    if (!window.confirm('Delete this playbook? Accounts it\'s assigned to will lose it too. This can\'t be undone.')) return;
+    if (!(await confirm({ title: 'Delete playbook', message: "Accounts this playbook is assigned to will lose it too. This can't be undone.", confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deletePlaybook(id);
       setPlaybooks((prev) => prev.filter((p) => p.id !== id));
@@ -317,6 +383,7 @@ function SettingsScreen() {
         )}
       </div>
 
+      {isAdmin && (
       <div className="settings__card">
         <div className="settings__card-header">
           <h3 className="settings__card-title">Expiration reminders</h3>
@@ -372,7 +439,9 @@ function SettingsScreen() {
           </>
         )}
       </div>
+      )}
 
+      {isAdmin && (
       <div className="settings__card">
         <div className="settings__card-header">
           <h3 className="settings__card-title"><AskELabel /> - search index</h3>
@@ -408,6 +477,7 @@ function SettingsScreen() {
           {reindexing ? 'Indexing…' : 'Reindex everything'}
         </button>
       </div>
+      )}
 
       <div className="settings__card">
         <div className="settings__card-header">
@@ -478,6 +548,7 @@ function SettingsScreen() {
         )}
       </div>
 
+      {isAdmin && (
       <div className="settings__card">
         <div className="settings__card-header">
           <h3 className="settings__card-title">Audit log</h3>
@@ -495,9 +566,23 @@ function SettingsScreen() {
           <p className="settings__card-hint">No activity logged yet.</p>
         ) : (
           <>
-            <button type="button" className="settings__reindex-btn" onClick={handleExportAuditLog}>
-              Export CSV
-            </button>
+            <div className="settings__audit-toolbar">
+              <div className="settings__audit-filters" role="group" aria-label="Filter the audit log">
+                {AUDIT_FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={`settings__audit-filter ${auditFilter === f.id ? 'settings__audit-filter--active' : ''}`}
+                    onClick={() => setAuditFilter(f.id)}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <button type="button" className="settings__reindex-btn" onClick={handleExportAuditLog}>
+                Export CSV
+              </button>
+            </div>
             <div className="settings__audit-table-wrap">
               <table className="settings__audit-table">
                 <thead>
@@ -506,10 +591,11 @@ function SettingsScreen() {
                     <th>Actor</th>
                     <th>Action</th>
                     <th>Object</th>
+                    <th>Details</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {auditLog.slice(0, 100).map((e) => (
+                  {visibleAuditLog.slice(0, 100).map((e) => (
                     <tr key={e.id}>
                       <td className="settings__audit-date">{e.createdAt ? new Date(e.createdAt).toLocaleString() : ''}</td>
                       <td>{e.actorEmail || '-'}</td>
@@ -517,17 +603,22 @@ function SettingsScreen() {
                         <span className="settings__audit-action">{formatAuditAction(e.action)}</span>
                       </td>
                       <td>{e.objectLabel || e.objectType}</td>
+                      <td className="settings__audit-details" title={formatAuditDetails(e)}>{formatAuditDetails(e)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            {auditLog.length > 100 && (
+            {visibleAuditLog.length === 0 && (
+              <p className="settings__card-hint">Nothing matches this filter.</p>
+            )}
+            {visibleAuditLog.length > 100 && (
               <p className="settings__card-hint">Showing the 100 most recent - use Export CSV for the full list.</p>
             )}
           </>
         )}
       </div>
+      )}
     </div>
   );
 }

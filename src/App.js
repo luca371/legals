@@ -6,7 +6,10 @@ import ReviewLinkScreen from './screens/ReviewLinkScreen';
 import ApprovalLinkScreen from './screens/ApprovalLinkScreen';
 import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
-import { onAuthStateChange, getUserStatus, logout } from './supabase';
+import { AuthContext, profileFlags } from './AuthContext';
+import { ConfirmProvider } from './components/ConfirmProvider';
+import { onAuthStateChange, getUserStatus, getMfaStep, logout } from './supabase';
+import MfaScreen from './screens/MfaScreen';
 
 import AgreementsScreen from './screens/AgreementsScreen';
 import AccountsScreen from './screens/AccountsScreen';
@@ -15,14 +18,17 @@ import AgreementDetailScreen from './screens/AgreementDetailScreen';
 import DashboardsScreen from './screens/DashboardsScreen';
 import TemplateBuildScreen from './screens/TemplateBuildScreen';
 import AskAIScreen from './screens/AskAIScreen';
+import DraftStudioScreen from './screens/DraftStudioScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
 
 function App() {
   const [user, setUser] = useState(null);
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [profile, setProfile] = useState('reader');
   const [checkingAuth, setCheckingAuth] = useState(true);
   const [blockedMessage, setBlockedMessage] = useState('');
+  // 'ok' | 'verify' (enter code) | 'enroll' (admin must set up two-factor)
+  const [mfaStep, setMfaStep] = useState('ok');
 
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (currentUser) => {
@@ -33,16 +39,18 @@ function App() {
           await logout();
           setBlockedMessage('Your account has been deactivated. Please contact your administrator.');
           setUser(null);
-          setIsAdmin(false);
+          setProfile('reader');
           setCheckingAuth(false);
           return;
         }
 
-        setIsAdmin(status.isAdmin);
+        setMfaStep(await getMfaStep(status.profile === 'admin'));
+        setProfile(status.profile);
         setUser(currentUser);
       } else {
         setUser(null);
-        setIsAdmin(false);
+        setProfile('reader');
+        setMfaStep('ok');
       }
       setCheckingAuth(false);
     });
@@ -54,7 +62,16 @@ function App() {
     return null;
   }
 
+  const auth = profileFlags(profile);
+  const { isAdmin, canWrite } = auth;
+
+  const handleMfaDone = async () => {
+    setMfaStep(await getMfaStep(isAdmin));
+  };
+
   return (
+    <AuthContext.Provider value={auth}>
+    <ConfirmProvider>
     <BrowserRouter>
       <Routes>
         <Route
@@ -72,7 +89,11 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute user={user}>
-              <DashboardLayout user={user} isAdmin={isAdmin} />
+              {mfaStep === 'ok' ? (
+                <DashboardLayout user={user} isAdmin={isAdmin} />
+              ) : (
+                <MfaScreen mode={mfaStep} onDone={handleMfaDone} />
+              )}
             </ProtectedRoute>
           }
         >
@@ -82,9 +103,10 @@ function App() {
           <Route path="accounts" element={<AccountsScreen />} />
           <Route path="accounts/:accountId" element={<AccountDetailScreen />} />
           <Route path="dashboards" element={<DashboardsScreen />} />
-          <Route path="templates" element={<TemplateBuildScreen />} />
+          <Route path="templates" element={canWrite ? <TemplateBuildScreen /> : <Navigate to="/dashboard/agreements" replace />} />
+          <Route path="draft" element={canWrite ? <DraftStudioScreen /> : <Navigate to="/dashboard/agreements" replace />} />
           <Route path="ask-ai" element={<AskAIScreen />} />
-          <Route path="settings" element={<SettingsScreen />} />
+          <Route path="settings" element={canWrite ? <SettingsScreen /> : <Navigate to="/dashboard/agreements" replace />} />
           <Route
             path="admin"
             element={isAdmin ? <AdminScreen /> : <Navigate to="/dashboard/agreements" replace />}
@@ -97,6 +119,8 @@ function App() {
         />
       </Routes>
     </BrowserRouter>
+    </ConfirmProvider>
+    </AuthContext.Provider>
   );
 }
 

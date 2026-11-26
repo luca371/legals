@@ -1,6 +1,8 @@
+import { sanitizeDocumentHtml } from './sanitizeHtml';
+
 export function htmlToParagraphs(html) {
   const div = document.createElement('div');
-  div.innerHTML = html || '';
+  div.innerHTML = sanitizeDocumentHtml(html || '');
   const topLevel = Array.from(div.children).filter((el) =>
     /^(P|LI|H1|H2|H3|H4|H5|H6|DIV)$/.test(el.tagName)
   );

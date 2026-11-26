@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useConfirm } from '../components/ConfirmProvider';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getAccount,
@@ -10,8 +11,10 @@ import {
   listAssignedPlaybookIds,
   setAccountPlaybooks,
 } from '../supabase';
+import { useAuth } from '../AuthContext';
 import { indexObject } from '../embeddingsApi';
 import { computeAccountHealth } from '../healthScore';
+import { prepareAccountBrief } from '../agentApi';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -33,6 +36,8 @@ function ChevronIcon() {
 }
 
 function AccountDetailScreen() {
+  const confirm = useConfirm();
+  const { canWrite } = useAuth();
   const { accountId } = useParams();
   const navigate = useNavigate();
 
@@ -51,6 +56,10 @@ function AccountDetailScreen() {
   const [customValues, setCustomValues] = useState({});
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  const [brief, setBrief] = useState(null);
+  const [briefLoading, setBriefLoading] = useState(false);
+  const [briefError, setBriefError] = useState('');
 
   const [allPlaybooks, setAllPlaybooks] = useState([]);
   const [assignedPlaybookIds, setAssignedPlaybookIds] = useState([]);
@@ -162,8 +171,13 @@ function AccountDetailScreen() {
     }
   };
 
+  // Opens the create flow on the Agreements screen with this account already chosen.
+  const handleCreateAgreement = () => {
+    navigate('/dashboard/agreements', { state: { newAgreementForAccountId: accountId } });
+  };
+
   const handleDelete = async () => {
-    if (!window.confirm(`Delete account "${account.name}"? This can't be undone.`)) return;
+    if (!(await confirm({ title: 'Delete account', message: `"${account.name}" will be permanently deleted. This can't be undone.`, confirmLabel: 'Delete', danger: true }))) return;
     try {
       await deleteAccount(accountId);
       navigate('/dashboard/accounts');
@@ -189,6 +203,19 @@ function AccountDetailScreen() {
       setPlaybookError('Could not save. Please try again.');
     } finally {
       setSavingPlaybooks(false);
+    }
+  };
+
+  const handlePrepareBrief = async () => {
+    setBriefLoading(true);
+    setBriefError('');
+    try {
+      setBrief(await prepareAccountBrief(accountId));
+    } catch (err) {
+      console.error('Failed to prepare account brief:', err);
+      setBriefError(err.message || 'Could not prepare the brief. Please try again.');
+    } finally {
+      setBriefLoading(false);
     }
   };
 
@@ -252,13 +279,23 @@ function AccountDetailScreen() {
             >
               Playbook
             </button>
+            {canWrite && (
+              <button
+                className={`accd__tab ${activeTab === 'brief' ? 'accd__tab--active' : ''}`}
+                onClick={() => setActiveTab('brief')}
+              >
+                AI brief
+              </button>
+            )}
           </div>
 
           <div className="accd__top-actions">
-            <button className="accd__btn-create-agreement" onClick={() => {}}>
-              + Create an agreement
-            </button>
-            {!editing && activeTab === 'info' && (
+            {canWrite && (
+              <button className="accd__btn-create-agreement" onClick={handleCreateAgreement}>
+                + Create an agreement
+              </button>
+            )}
+            {canWrite && !editing && activeTab === 'info' && (
               <>
                 <button className="accd__btn-secondary" onClick={handleStartEdit}>Edit</button>
                 <button className="accd__btn-danger" onClick={handleDelete}>Delete</button>
@@ -395,9 +432,11 @@ function AccountDetailScreen() {
               ) : agreements.length === 0 ? (
                 <div className="accd__agreements-empty">
                   <p>No agreements linked to this account yet.</p>
-                  <button className="accd__btn-create-agreement" onClick={() => {}}>
-                    + Create an agreement
-                  </button>
+                  {canWrite && (
+                    <button className="accd__btn-create-agreement" onClick={handleCreateAgreement}>
+                      + Create an agreement
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="accd__agreements-table-wrap">
@@ -480,16 +519,143 @@ function AccountDetailScreen() {
                   </div>
                   <div className="accd__playbook-actions">
                     {playbooksSaved && <span className="accd__playbook-saved">✓ Saved</span>}
-                    <button
+                    {canWrite && <button
                       type="button"
                       className="accd__btn-primary"
                       onClick={handleSavePlaybookAssignments}
                       disabled={savingPlaybooks}
                     >
                       {savingPlaybooks ? 'Saving…' : 'Save assignments'}
-                    </button>
+                    </button>}
                   </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'brief' && canWrite && (
+            <div className="accd__brief">
+              <div className="accd__brief-header">
+                <p className="accd__brief-hint">
+                  An AI agent reads this account's agreements and prepares a briefing for a review, renewal or
+                  negotiation. It only reads - it never changes, sends or signs anything. It is not legal advice, so
+                  check the points before relying on them.
+                </p>
+                <button
+                  type="button"
+                  className="accd__btn-primary"
+                  onClick={handlePrepareBrief}
+                  disabled={briefLoading}
+                >
+                  {briefLoading ? 'Preparing…' : brief ? 'Prepare again' : 'Prepare brief'}
+                </button>
+              </div>
+
+              {briefError && <p className="accd__error">{briefError}</p>}
+              {briefLoading && <p className="accd__empty">Reading the agreements and preparing the brief. This can take up to a minute.</p>}
+
+              {brief && !briefLoading && (
+                <div className="accd__brief-body">
+                  {brief.headline && <p className="accd__brief-headline">{brief.headline}</p>}
+                  {brief.summary && <p className="accd__brief-text">{brief.summary}</p>}
+
+                  {brief.keyTerms.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Key terms</h3>
+                      <ul className="accd__brief-list">
+                        {brief.keyTerms.map((t, i) => (
+                          <li key={i}>
+                            {t.agreementId ? (
+                              <button
+                                type="button"
+                                className="accd__brief-link"
+                                onClick={() => navigate(`/dashboard/agreements/${t.agreementId}`)}
+                              >
+                                {t.agreement || 'Agreement'}
+                              </button>
+                            ) : (
+                              <strong>{t.agreement}</strong>
+                            )}
+                            {': '}{t.point}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {brief.risks.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Risks</h3>
+                      <ul className="accd__brief-list">
+                        {brief.risks.map((r, i) => (
+                          <li key={i}>
+                            <span className={`accd__brief-sev accd__brief-sev--${r.severity || 'medium'}`}>{r.severity || 'medium'}</span>{' '}
+                            <strong>{r.issue}</strong>{r.detail ? `: ${r.detail}` : ''}
+                            {r.agreementId && (
+                              <>
+                                {' '}
+                                <button
+                                  type="button"
+                                  className="accd__brief-link"
+                                  onClick={() => navigate(`/dashboard/agreements/${r.agreementId}`)}
+                                >
+                                  Open
+                                </button>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {brief.upcoming.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Upcoming</h3>
+                      <ul className="accd__brief-list">
+                        {brief.upcoming.map((u, i) => (
+                          <li key={i}>
+                            {u.date ? <strong>{u.date}</strong> : null}{u.date ? ': ' : ''}{u.what}
+                            {u.agreementId && (
+                              <>
+                                {' '}
+                                <button
+                                  type="button"
+                                  className="accd__brief-link"
+                                  onClick={() => navigate(`/dashboard/agreements/${u.agreementId}`)}
+                                >
+                                  Open
+                                </button>
+                              </>
+                            )}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {brief.talkingPoints.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Talking points</h3>
+                      <ul className="accd__brief-list">
+                        {brief.talkingPoints.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {brief.openItems.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Open items</h3>
+                      <ul className="accd__brief-list">
+                        {brief.openItems.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="accd__brief-foot">
+                    Generated by AI on {new Date(brief.generatedAt).toLocaleString()}. Review before relying on it.
+                  </p>
+                </div>
               )}
             </div>
           )}
