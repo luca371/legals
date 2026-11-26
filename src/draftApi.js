@@ -2,7 +2,7 @@ import { supabase } from './supabase';
 
 // supabase.functions.invoke() waits for the whole response, so the draft is
 // read with fetch to get it piece by piece. messages: [{ role, content }].
-export async function streamDraft({ messages, blocks, onText, signal }) {
+export async function streamDraft({ messages, blocks, renewalOfId, onText, signal }) {
   const {
     data: { session },
   } = await supabase.auth.getSession();
@@ -14,7 +14,7 @@ export async function streamDraft({ messages, blocks, onText, signal }) {
       Authorization: `Bearer ${session?.access_token ?? ''}`,
       apikey: process.env.REACT_APP_SUPABASE_ANON_KEY,
     },
-    body: JSON.stringify({ messages, blocks }),
+    body: JSON.stringify({ messages, blocks, ...(renewalOfId ? { renewalOfId } : {}) }),
     signal,
   });
 

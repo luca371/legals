@@ -22,7 +22,7 @@ import { useAuth } from '../AuthContext';
 import './SettingsScreen.css';
 import { AGENT_ACTIONS } from '../aiFeatures';
 
-const EMPTY_PLAYBOOK = { title: '', body: '', obligations: '', reviewCriteria: '', screeningCriteria: '', permittedActions: null };
+const EMPTY_PLAYBOOK = { title: '', body: '', obligations: '', reviewCriteria: '', screeningCriteria: '', approvalRules: '', permittedActions: null };
 
 // Sequential, not parallel — Voyage throttles accounts with no payment
 // method on file to 3 requests/minute, and firing several at once just
@@ -252,6 +252,7 @@ function SettingsScreen() {
       obligations: pb.obligations,
       reviewCriteria: pb.reviewCriteria,
       screeningCriteria: pb.screeningCriteria,
+      approvalRules: pb.approvalRules,
       permittedActions: pb.permittedActions,
     });
     setPlaybookError('');
@@ -554,6 +555,17 @@ function SettingsScreen() {
                 rows={4}
               />
             </label>
+            <label className="settings__playbook-label">
+              Approval rules
+              <span className="settings__playbook-sub">Who must approve, and when. The approval form can propose the chain from these rules; you still check and send it.</span>
+              <textarea
+                className="settings__playbook-input"
+                value={playbookForm.approvalRules}
+                onChange={(e) => setPlaybookForm((f) => ({ ...f, approvalRules: e.target.value }))}
+                placeholder="e.g.&#10;- Every agreement: the Legal Manager&#10;- Contract value over 50,000 EUR: also the CFO, last&#10;- Data processing agreements: also the DPO"
+                rows={4}
+              />
+            </label>
             <div className="settings__playbook-label">
               Allowed AI actions on the accounts this playbook is assigned to
               <span className="settings__playbook-sub">Untick an action to block it for those accounts. When several playbooks apply, the strictest wins.</span>
@@ -611,12 +623,13 @@ function SettingsScreen() {
                   </div>
                 </div>
                 <p className="settings__playbook-card-body">{pb.body}</p>
-                {(pb.obligations || pb.reviewCriteria || pb.screeningCriteria || pb.permittedActions) && (
+                {(pb.obligations || pb.reviewCriteria || pb.screeningCriteria || pb.approvalRules || pb.permittedActions) && (
                   <p className="settings__playbook-sub">
                     {[
                       pb.obligations && 'obligations',
                       pb.reviewCriteria && 'review criteria',
                       pb.screeningCriteria && 'screening criteria',
+                      pb.approvalRules && 'approval rules',
                       pb.permittedActions && `AI limited to: ${pb.permittedActions.map((k) => AGENT_ACTIONS.find((a) => a.key === k)?.label || k).join(', ') || 'nothing'}`,
                     ].filter(Boolean).join(' · ')}
                   </p>

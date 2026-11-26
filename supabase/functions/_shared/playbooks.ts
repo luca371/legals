@@ -11,7 +11,7 @@ type Row = Record<string, any>;
 export const AGENT_ACTIONS = ['draft', 'review', 'renewal_brief', 'account_brief', 'obligations', 'screening'] as const;
 export type AgentAction = (typeof AGENT_ACTIONS)[number];
 
-export const PLAYBOOK_COLUMNS = 'title, body, obligations, review_criteria, screening_criteria, permitted_actions';
+export const PLAYBOOK_COLUMNS = 'title, body, obligations, review_criteria, screening_criteria, approval_rules, permitted_actions';
 
 // What an agent reads: only the sections that have content.
 export function playbookForAgent(p: Row | null | undefined) {

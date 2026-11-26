@@ -157,6 +157,11 @@ async function sendNoticeDeadlineReminders(supabase: Db, thresholdsByTenant: Map
         ctaPath: `/dashboard/agreements/${a.id}`,
       });
       sent += 1;
+      await supabase.rpc('notify', {
+        p_tenant: a.tenant_id, p_email: a.created_by, p_kind: 'deadline',
+        p_title: `Notice deadline in ${daysLeft} day${daysLeft === 1 ? '' : 's'}: ${a.title || ''}`,
+        p_body: `Last day to give notice: ${a.notice_deadline}.`, p_link: `/dashboard/agreements/${a.id}`,
+      });
       await supabase
         .from('agreements')
         .update({ notice_reminders_sent: [...new Set([...already, ...crossed])] })
@@ -179,7 +184,7 @@ async function sendDueReminders(supabase: Db, today: Date) {
 
   const { data: tasks } = await supabase
     .from('tasks')
-    .select('id, title, details, due_date, assignee_email, created_by, agreement_id')
+    .select('id, tenant_id, title, details, due_date, assignee_email, created_by, agreement_id')
     .eq('status', 'open')
     .is('reminder_sent_at', null)
     .not('due_date', 'is', null)
@@ -198,6 +203,11 @@ async function sendDueReminders(supabase: Db, today: Date) {
         ctaPath: '/dashboard/tasks',
       });
       sent += 1;
+      await supabase.rpc('notify', {
+        p_tenant: t.tenant_id, p_email: to, p_kind: 'task',
+        p_title: `${daysLeft < 0 ? 'Overdue' : daysLeft === 0 ? 'Due today' : 'Due tomorrow'}: ${t.title}`,
+        p_body: `Due ${t.due_date}.`, p_link: '/dashboard/tasks',
+      });
       await supabase.from('tasks').update({ reminder_sent_at: new Date().toISOString() }).eq('id', t.id);
     } catch (err) {
       console.error(`Task reminder failed for ${t.id}:`, err);
@@ -207,7 +217,7 @@ async function sendDueReminders(supabase: Db, today: Date) {
 
   const { data: obligations } = await supabase
     .from('obligations')
-    .select('id, description, due_date, responsible_party, agreement_id, agreements(title, created_by)')
+    .select('id, tenant_id, description, due_date, responsible_party, agreement_id, agreements(title, created_by)')
     .eq('status', 'open')
     .is('reminder_sent_at', null)
     .not('due_date', 'is', null)
@@ -225,6 +235,11 @@ async function sendDueReminders(supabase: Db, today: Date) {
         ctaPath: `/dashboard/agreements/${o.agreement_id}`,
       });
       sent += 1;
+      await supabase.rpc('notify', {
+        p_tenant: o.tenant_id, p_email: to, p_kind: 'obligation',
+        p_title: `Obligation due ${o.due_date}: ${o.agreements?.title || 'agreement'}`,
+        p_body: o.description, p_link: `/dashboard/agreements/${o.agreement_id}`,
+      });
       await supabase.from('obligations').update({ reminder_sent_at: new Date().toISOString() }).eq('id', o.id);
     } catch (err) {
       console.error(`Obligation reminder failed for ${o.id}:`, err);

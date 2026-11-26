@@ -813,3 +813,12 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.draft__renewal-note {
+  margin: 0 16px 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-accent-soft);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+}

@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import {
   listAccounts,
   getObjectSchema,
   getBuiltInFieldConfigs,
   getTypeSubtypeMap,
   createAgreement,
+  updateAgreement,
   addAgreementAttachment,
   generateAgreementDocument,
   MAX_ATTACHMENT_BYTES,
@@ -90,10 +91,13 @@ const nextId = () => `m${Date.now()}_${messageCounter++}`;
 
 function DraftStudioScreen() {
   const navigate = useNavigate();
+  const location = useLocation();
+  // "Start renewal" from an agreement: { id, title } of the agreement renewed.
+  const [renewalOf, setRenewalOf] = useState(() => location.state?.renewalOf || null);
 
   const [accounts, setAccounts] = useState([]);
   const [messages, setMessages] = useState([]);
-  const [input, setInput] = useState('');
+  const [input, setInput] = useState(() => location.state?.prompt || '');
   const [streaming, setStreaming] = useState(false);
   const [error, setError] = useState('');
 
@@ -314,6 +318,7 @@ function DraftStudioScreen() {
       await streamDraft({
         messages: history.filter((m) => m.text).map((m) => ({ role: m.role, content: m.text })),
         blocks: baseBlocks,
+        renewalOfId: renewalOf?.id,
         onText: (chunk) => parser.push(chunk),
         signal: controller.signal,
       });
@@ -334,6 +339,7 @@ function DraftStudioScreen() {
   const handleStop = () => abortRef.current?.abort();
 
   const handleNewDraft = () => {
+    setRenewalOf(null);
     abortRef.current?.abort();
     streamingRef.current = false;
     setStreaming(false);
@@ -540,6 +546,14 @@ function DraftStudioScreen() {
         contentHtml: html,
       });
 
+      if (renewalOf?.id) {
+        try {
+          await updateAgreement(created.id, { relatedAgreementId: renewalOf.id, relationType: 'renewal' });
+        } catch (linkErr) {
+          console.error('Could not link the renewal to the original agreement:', linkErr);
+        }
+      }
+
       // The Word file, like a document generated from a template, and the same
       // status change that flow makes: once the document is attached the
       // agreement becomes "Generated". The agreement exists already, so a
@@ -659,6 +673,11 @@ function DraftStudioScreen() {
           <button type="button" className="draft__link-btn" onClick={handleNewDraft} disabled={messages.length === 0}>New draft</button>
         </div>
 
+        {renewalOf && (
+          <p className="draft__renewal-note">
+            Renewal of <strong>{renewalOf.title}</strong>. The agent starts from its text; the agreement you create is linked to it as its renewal.
+          </p>
+        )}
         <div className="draft__messages">
           {messages.length === 0 && (
             <div className="draft__welcome">

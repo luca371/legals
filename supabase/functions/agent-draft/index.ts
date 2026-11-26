@@ -226,6 +226,31 @@ serveWithCors(async (req) => {
     const precedentQuery = [...new Set([userTurns[0], userTurns[userTurns.length - 1]])].join('\n').slice(0, 700);
     const precedents = blocks.length > 0 ? [] : await findPrecedents(callerClient, precedentQuery);
 
+    // "Start renewal": the agreement being renewed is the starting point.
+    let renewing: Row | null = null;
+    if (typeof body.renewalOfId === 'string' && body.renewalOfId && blocks.length === 0) {
+      const { data: base } = await callerClient
+        .from('agreements')
+        .select('id, title, account_name, account2_name, agreement_type, agreement_subtype, language, effective_date, end_date, notice_period_days, auto_renewal, content_html, attachments')
+        .eq('id', body.renewalOfId)
+        .maybeSingle();
+      if (base) {
+        const { documents } = await readAgreementDocuments(base, 14000, true);
+        renewing = {
+          title: base.title,
+          parties: [base.account_name, base.account2_name].filter(Boolean),
+          type: base.agreement_type,
+          subtype: base.agreement_subtype,
+          language: base.language,
+          effectiveDate: base.effective_date,
+          endDate: base.end_date,
+          noticePeriodDays: base.notice_period_days,
+          autoRenewal: base.auto_renewal,
+          text: documents.map((d) => d.text).join('\n\n'),
+        };
+      }
+    }
+
     const { data: schema } = await callerClient
       .from('object_schemas')
       .select('built_in_configs')
@@ -272,7 +297,10 @@ ${JSON.stringify(clauseList)}
 SIMILAR AGREEMENTS already in this organization (precedents - how it writes this kind of agreement; never copy their party-specific details):
 ${JSON.stringify(precedents.map((p) => ({ title: p.title, type: p.type, subtype: p.subtype, language: p.language, status: p.status, text: p.text })))}
 
-ALLOWED agreement types: ${JSON.stringify(configs.agreementType || [])}
+${renewing ? `AGREEMENT BEING RENEWED (write its renewal: same parties, type and structure, a new term starting the day after it ends, and the changes the user asks for; keep everything else as it is):
+${JSON.stringify(renewing)}
+
+` : ''}ALLOWED agreement types: ${JSON.stringify(configs.agreementType || [])}
 ALLOWED agreement subtypes by type: ${JSON.stringify(configs.agreementTypeSubtypeMap || {})}
 ALLOWED subtypes (all): ${JSON.stringify(configs.agreementSubtype || [])}
 ALLOWED languages: ${JSON.stringify(LANGUAGES)}`;

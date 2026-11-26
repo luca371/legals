@@ -19,6 +19,7 @@ export const AI_FUNCTIONS: Record<string, { feature: string; cost: number }> = {
   'suggest-clauses': { feature: 'drafting', cost: 1 },
   'review-agreement': { feature: 'review', cost: 3 },
   'analyze-clause': { feature: 'review', cost: 1 },
+  'agent-approval-route': { feature: 'review', cost: 2 },
   'agent-renewal-brief': { feature: 'renewals', cost: 3 },
   'agent-account-brief': { feature: 'portfolio', cost: 3 },
   'agent-obligations': { feature: 'obligations', cost: 2 },

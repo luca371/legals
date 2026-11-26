@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../AuthContext';
 import { useConfirm } from '../components/ConfirmProvider';
 import { TASK_TYPES } from '../aiFeatures';
-import { listTasks, createTasks, updateTask, deleteTask, listAgreements, getCurrentUser } from '../supabase';
+import { listTasks, createTasks, updateTask, deleteTask, listAgreements, getCurrentUser, getCalendarFeedUrl } from '../supabase';
 import './TasksScreen.css';
 
 const TYPE_LABELS = Object.fromEntries(TASK_TYPES.map((t) => [t.key, t.label]));
@@ -48,6 +48,10 @@ function TasksScreen() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [calendarUrl, setCalendarUrl] = useState('');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarBusy, setCalendarBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   useEffect(() => {
     getCurrentUser().then((u) => setMe((u?.email || '').toLowerCase())).catch(() => {});
@@ -91,6 +95,39 @@ function TasksScreen() {
     });
     return map;
   }, [visible, status, today]);
+
+  const loadCalendarUrl = async (regenerate) => {
+    if (regenerate && !(await confirm({
+      title: 'Get a new calendar link',
+      message: 'The old link stops working, so calendars subscribed to it stop updating. Subscribe again with the new one.',
+      confirmLabel: 'Get new link',
+    }))) return;
+    setCalendarBusy(true);
+    setCopied(false);
+    try {
+      setCalendarUrl(await getCalendarFeedUrl(regenerate));
+    } catch (err) {
+      console.error('Failed to get calendar link:', err);
+      setError('Could not get your calendar link.');
+    } finally {
+      setCalendarBusy(false);
+    }
+  };
+
+  const handleToggleCalendar = () => {
+    const next = !showCalendar;
+    setShowCalendar(next);
+    if (next && !calendarUrl) loadCalendarUrl(false);
+  };
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(calendarUrl);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
 
   const handleCreate = async (e) => {
     e.preventDefault();
@@ -186,12 +223,37 @@ function TasksScreen() {
           <h2 className="tsk__heading">Tasks</h2>
           <p className="tsk__sub">Reviews, approvals, signatures, renewals and obligation follow-ups. Open tasks due by tomorrow are emailed to their assignee.</p>
         </div>
-        {canWrite && (
-          <button type="button" className="tsk__btn-primary" onClick={() => setShowForm((v) => !v)}>
-            {showForm ? 'Cancel' : 'New task'}
+        <div className="tsk__header-actions">
+          <button type="button" className="tsk__btn-secondary" onClick={handleToggleCalendar}>
+            {showCalendar ? 'Hide calendar link' : 'Add to my calendar'}
           </button>
-        )}
+          {canWrite && (
+            <button type="button" className="tsk__btn-primary" onClick={() => setShowForm((v) => !v)}>
+              {showForm ? 'Cancel' : 'New task'}
+            </button>
+          )}
+        </div>
       </div>
+
+      {showCalendar && (
+        <div className="tsk__form">
+          <p className="tsk__cal-text">
+            Subscribe to this link in Outlook (Add calendar &gt; Subscribe from web), Google Calendar (Other calendars &gt;
+            From URL) or Apple Calendar. It shows your open tasks and the notice deadlines and end dates of your
+            organization's agreements, and refreshes on its own. The link is personal: anyone who has it can see these
+            dates, so do not share it.
+          </p>
+          <div className="tsk__cal-row">
+            <input className="tsk__input tsk__cal-url" readOnly value={calendarBusy ? 'Loading…' : calendarUrl} onFocus={(e) => e.target.select()} />
+            <button type="button" className="tsk__btn-primary" onClick={handleCopy} disabled={!calendarUrl || calendarBusy}>
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+            <button type="button" className="tsk__btn-secondary" onClick={() => loadCalendarUrl(true)} disabled={calendarBusy}>
+              New link
+            </button>
+          </div>
+        </div>
+      )}
 
       {showForm && (
         <form className="tsk__form" onSubmit={handleCreate}>

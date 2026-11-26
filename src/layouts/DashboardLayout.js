@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
 import Sidebar from '../components/Sidebar';
 import GuidedTour from '../components/GuidedTour';
+import NotificationBell from '../components/NotificationBell';
 import AskELabel from '../components/AskELabel';
 import { logout } from '../supabase';
 import './DashboardLayout.css';
@@ -10,6 +11,8 @@ const SECTION_LABELS = {
   agreements: 'Agreements',
   accounts: 'Accounts',
   dashboards: 'Dashboards',
+  tasks: 'Tasks',
+  draft: 'Draft with AI',
   templates: 'Template build',
   'ask-ai': <AskELabel />,
   settings: 'Settings',
@@ -58,6 +61,7 @@ function DashboardLayout({ user, isAdmin }) {
             >
               Take the tour
             </button>
+            <NotificationBell />
             <span className="dashboard__user-name">{displayName}</span>
             <button className="dashboard__logout" onClick={handleLogout}>
               Log out

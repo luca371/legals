@@ -454,6 +454,7 @@ const mapPlaybook = (p) => ({
   obligations: p.obligations || '',
   reviewCriteria: p.review_criteria || '',
   screeningCriteria: p.screening_criteria || '',
+  approvalRules: p.approval_rules || '',
   // null = every agent action allowed
   permittedActions: Array.isArray(p.permitted_actions) ? p.permitted_actions : null,
   createdAt: p.created_at,
@@ -465,6 +466,7 @@ const playbookPayload = (playbook) => ({
   obligations: playbook.obligations || '',
   review_criteria: playbook.reviewCriteria || '',
   screening_criteria: playbook.screeningCriteria || '',
+  approval_rules: playbook.approvalRules || '',
   permitted_actions: Array.isArray(playbook.permittedActions) ? playbook.permittedActions : null,
 });
 
@@ -1479,4 +1481,148 @@ export const updateTask = async (id, updates) => {
 export const deleteTask = async (id) => {
   const { error } = await supabase.from('tasks').delete().eq('id', id);
   if (error) throw error;
+};
+
+
+// ---- Notifications ------------------------------------------------------------
+
+const mapNotification = (n) => ({
+  id: n.id,
+  kind: n.kind,
+  title: n.title,
+  body: n.body,
+  link: n.link,
+  createdAt: n.created_at,
+  readAt: n.read_at,
+});
+
+// The signed-in user's own notifications (RLS keeps it to their email).
+export const listNotifications = async (limit = 30) => {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data.map(mapNotification);
+};
+
+export const countUnreadNotifications = async () => {
+  const { count, error } = await supabase
+    .from('notifications')
+    .select('id', { count: 'exact', head: true })
+    .is('read_at', null);
+  if (error) throw error;
+  return count || 0;
+};
+
+export const markNotificationsRead = async (ids) => {
+  let query = supabase.from('notifications').update({ read_at: new Date().toISOString() }).is('read_at', null);
+  if (ids) query = query.in('id', ids);
+  const { error } = await query;
+  if (error) throw error;
+};
+
+// ---- Automation rules -----------------------------------------------------------
+
+const mapRule = (r) => ({
+  id: r.id,
+  name: r.name || '',
+  triggerStatus: r.trigger_status,
+  taskTitle: r.task_title,
+  taskType: r.task_type,
+  dueInDays: r.due_in_days,
+  assignee: r.assignee,
+  enabled: r.enabled,
+});
+
+export const listAutomationRules = async () => {
+  const { data, error } = await supabase.from('automation_rules').select('*').order('created_at', { ascending: true });
+  if (error) throw error;
+  return data.map(mapRule);
+};
+
+export const saveAutomationRule = async (rule) => {
+  const payload = {
+    name: rule.name || '',
+    trigger_status: rule.triggerStatus,
+    task_title: rule.taskTitle,
+    task_type: rule.taskType || 'other',
+    due_in_days: rule.dueInDays === '' || rule.dueInDays === null || rule.dueInDays === undefined ? null : Number(rule.dueInDays),
+    assignee: (rule.assignee || 'creator').trim() || 'creator',
+    enabled: rule.enabled !== false,
+  };
+  if (rule.id) {
+    const { error } = await supabase.from('automation_rules').update(payload).eq('id', rule.id);
+    if (error) throw error;
+    return;
+  }
+  const tenantId = await getCurrentTenantId();
+  const { error } = await supabase.from('automation_rules').insert({ tenant_id: tenantId, ...payload });
+  if (error) throw error;
+};
+
+export const deleteAutomationRule = async (id) => {
+  const { error } = await supabase.from('automation_rules').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ---- Weekly monitoring ------------------------------------------------------------
+
+export const getMonitoringSettings = async () => {
+  const tenantId = await getCurrentTenantId();
+  const { data, error } = await supabase
+    .from('tenant_settings')
+    .select('weekly_monitoring, monitoring_recipients')
+    .eq('tenant_id', tenantId)
+    .maybeSingle();
+  if (error) throw error;
+  return { enabled: !!data?.weekly_monitoring, recipients: data?.monitoring_recipients || '' };
+};
+
+export const saveMonitoringSettings = async ({ enabled, recipients }) => {
+  const tenantId = await getCurrentTenantId();
+  const { error } = await supabase.from('tenant_settings').upsert({
+    tenant_id: tenantId,
+    weekly_monitoring: !!enabled,
+    monitoring_recipients: recipients || '',
+    updated_at: new Date().toISOString(),
+  });
+  if (error) throw error;
+  logAuditEvent('updated', 'settings', tenantId, 'Weekly monitoring', { enabled: !!enabled });
+};
+
+// ---- Calendar feed ------------------------------------------------------------------
+
+export const getCalendarFeedUrl = async (regenerate = false) => {
+  const { data, error } = await supabase.rpc('my_calendar_token', { p_regenerate: regenerate });
+  if (error) throw error;
+  if (!data) return '';
+  return `${supabaseUrl}/functions/v1/calendar-feed?token=${data}`;
+};
+
+// ---- Agent activity ------------------------------------------------------------------
+
+// Admins see the whole organization's runs; others their own (RLS).
+export const listAgentRuns = async (limit = 200) => {
+  const { data, error } = await supabase
+    .from('agent_runs')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data.map((r) => ({
+    id: r.id,
+    agent: r.agent,
+    subjectType: r.subject_type,
+    subjectId: r.subject_id,
+    actorEmail: r.actor_email,
+    status: r.status,
+    steps: r.steps,
+    inputTokens: r.input_tokens || 0,
+    outputTokens: r.output_tokens || 0,
+    error: r.error,
+    createdAt: r.created_at,
+    finishedAt: r.finished_at,
+  }));
 };

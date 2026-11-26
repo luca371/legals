@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useAuth } from '../AuthContext';
 import { AI_FEATURES, featureOn } from '../aiFeatures';
-import { getAiFeatures, updateAiFeatures, getCreditStatus, getAiUsage } from '../supabase';
+import { getAiFeatures, updateAiFeatures, getCreditStatus, getAiUsage, getMonitoringSettings, saveMonitoringSettings } from '../supabase';
 import './AiFeaturesPanel.css';
 
 // Credits are built (supabase/sql/012_automation.sql) but not offered yet: no
@@ -22,15 +22,24 @@ function AiFeaturesPanel() {
   const [loading, setLoading] = useState(true);
   const [savingKey, setSavingKey] = useState('');
   const [error, setError] = useState('');
+  const [monitoring, setMonitoring] = useState({ enabled: false, recipients: '' });
+  const [savingMonitoring, setSavingMonitoring] = useState(false);
+  const [monitoringSaved, setMonitoringSaved] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([getAiFeatures(), getCreditStatus().catch(() => null), getAiUsage(30).catch(() => [])])
-      .then(([f, c, u]) => {
+    Promise.all([
+      getAiFeatures(),
+      getCreditStatus().catch(() => null),
+      getAiUsage(30).catch(() => []),
+      getMonitoringSettings().catch(() => ({ enabled: false, recipients: '' })),
+    ])
+      .then(([f, c, u, m]) => {
         if (cancelled) return;
         setFeatures(f);
         setCredits(c);
         setUsage(u);
+        setMonitoring(m);
       })
       .catch((err) => {
         console.error('Failed to load AI settings:', err);
@@ -55,6 +64,27 @@ function AiFeaturesPanel() {
       setError('Could not save. Admin changes need a session verified with two-factor - sign out and in again if this keeps failing.');
     } finally {
       setSavingKey('');
+    }
+  };
+
+  const handleSaveMonitoring = async (next) => {
+    const emails = String(next.recipients || '').split(/[,;\s]+/).filter(Boolean);
+    if (emails.some((e) => !/^\S+@\S+\.\S+$/.test(e))) {
+      setError('Enter the digest recipients as email addresses separated by commas.');
+      return;
+    }
+    setSavingMonitoring(true);
+    setMonitoringSaved(false);
+    setError('');
+    try {
+      await saveMonitoringSettings({ enabled: next.enabled, recipients: emails.join(', ') });
+      setMonitoring({ enabled: next.enabled, recipients: emails.join(', ') });
+      setMonitoringSaved(true);
+    } catch (err) {
+      console.error('Failed to save monitoring settings:', err);
+      setError('Could not save. Admin changes need a session verified with two-factor - sign out and in again if this keeps failing.');
+    } finally {
+      setSavingMonitoring(false);
     }
   };
 
@@ -116,6 +146,48 @@ function AiFeaturesPanel() {
           );
         })}
       </ul>
+
+      <div className="aif__monitor">
+        <div className="aif__item aif__item--plain">
+          <div className="aif__text">
+            <span className="aif__name">Weekly portfolio monitoring</span>
+            <span className="aif__desc">
+              Every Monday morning, screens the accounts with live agreements and emails a digest: notice deadlines and
+              end dates in the next 30 days, overdue tasks and obligations, and accounts that need attention. Uses
+              account screening for each account.
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={monitoring.enabled}
+            className={`aif__switch ${monitoring.enabled ? 'aif__switch--on' : ''}`}
+            onClick={() => handleSaveMonitoring({ ...monitoring, enabled: !monitoring.enabled })}
+            disabled={savingMonitoring || !featureOn(features, 'screening')}
+            aria-label={`Weekly portfolio monitoring ${monitoring.enabled ? 'on' : 'off'}`}
+          >
+            <span className="aif__knob" />
+          </button>
+        </div>
+        {!featureOn(features, 'screening') && <p className="aif__note">Turn on Account screening to use weekly monitoring.</p>}
+        {monitoring.enabled && (
+          <div className="aif__recipients">
+            <label className="aif__desc" htmlFor="aif-recipients">Send the digest to (leave empty for all admins)</label>
+            <div className="aif__recipients-row">
+              <input
+                id="aif-recipients"
+                className="aif__input"
+                value={monitoring.recipients}
+                onChange={(e) => { setMonitoring({ ...monitoring, recipients: e.target.value }); setMonitoringSaved(false); }}
+                placeholder="legal@company.com, cfo@company.com"
+              />
+              <button type="button" className="aif__save" onClick={() => handleSaveMonitoring(monitoring)} disabled={savingMonitoring}>
+                {savingMonitoring ? 'Saving…' : monitoringSaved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {usage.length > 0 && (
         <>

@@ -22,6 +22,8 @@ import {
 import { PROFILES, PROFILE_LABELS } from '../AuthContext';
 import SalesforceConnection from '../components/SalesforceConnection';
 import AiFeaturesPanel from '../components/AiFeaturesPanel';
+import AutomationPanel from '../components/AutomationPanel';
+import AgentActivityPanel from '../components/AgentActivityPanel';
 import './AdminScreen.css';
 
 const EMPTY_FORM = {
@@ -464,6 +466,8 @@ function AdminScreen() {
         <button className={`admin__tab ${tab === 'objects' ? 'admin__tab--active' : ''}`} onClick={() => setTab('objects')}>Objects</button>
         <button className={`admin__tab ${tab === 'integrations' ? 'admin__tab--active' : ''}`} onClick={() => setTab('integrations')}>Integrations</button>
         <button className={`admin__tab ${tab === 'ai' ? 'admin__tab--active' : ''}`} onClick={() => setTab('ai')}>AI features</button>
+        <button className={`admin__tab ${tab === 'automation' ? 'admin__tab--active' : ''}`} onClick={() => setTab('automation')}>Automation</button>
+        <button className={`admin__tab ${tab === 'activity' ? 'admin__tab--active' : ''}`} onClick={() => setTab('activity')}>AI activity</button>
       </div>
 
       {successMsg && <div className="admin__toast">{successMsg}</div>}
@@ -473,6 +477,8 @@ function AdminScreen() {
 
       {/* ---- AI features tab ---- */}
       {tab === 'ai' && <AiFeaturesPanel />}
+      {tab === 'automation' && <AutomationPanel />}
+      {tab === 'activity' && <AgentActivityPanel />}
 
       {/* ---- Users tab ---- */}
       {tab === 'users' && (

@@ -1649,3 +1649,36 @@
 .agrd__renewal-steps label {
   cursor: pointer;
 }
+
+/* ---- Approval routing ---- */
+.agrd__route {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 4px 0 12px;
+}
+
+.agrd__route-result {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: 0.83rem;
+  color: var(--color-text-secondary);
+}
+
+.agrd__route-result p {
+  margin: 0 0 6px;
+}
+
+.agrd__route-result ul {
+  margin: 0 0 6px;
+  padding-left: 18px;
+}
+
+.agrd__route-warn {
+  color: var(--color-warning);
+}
+
+.agrd__route-hint {
+  font-weight: 600;
+}

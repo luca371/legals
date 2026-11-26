@@ -49,7 +49,7 @@ import { featureOn } from '../aiFeatures';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
-import { prepareRenewalBrief, findObligations } from '../agentApi';
+import { prepareRenewalBrief, findObligations, proposeApprovers } from '../agentApi';
 import { indexObject } from '../embeddingsApi';
 import { buildFinalHtmlFromTokens, renderChangeTokensToHtml, listChangeIds, computeChangeTokens } from '../redlineUtils';
 import './AgreementDetailScreen.css';
@@ -458,6 +458,9 @@ function AgreementDetailScreen() {
   // Follow-up tasks: the agreement's open tasks, and next steps picked from the brief.
   const [agreementTasks, setAgreementTasks] = useState([]);
   const [selectedSteps, setSelectedSteps] = useState([]);
+  // Approval chain proposed from the playbooks' approval rules.
+  const [routing, setRouting] = useState(false);
+  const [routeResult, setRouteResult] = useState(null);
   const [creatingTasks, setCreatingTasks] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
@@ -1415,6 +1418,25 @@ function AgreementDetailScreen() {
     setApprovalAttachmentId('');
     setApproversList([{ name: '', email: '' }]);
     setApprovalMessage('');
+    setRouteResult(null);
+  };
+
+  const handleProposeApprovers = async () => {
+    setRouting(true);
+    setApprovalError('');
+    setRouteResult(null);
+    try {
+      const result = await proposeApprovers(agreementId);
+      setRouteResult(result);
+      if (result.approvers?.length) {
+        setApproversList(result.approvers.map((a) => ({ name: a.name || '', email: a.email })));
+      }
+    } catch (err) {
+      console.error('Failed to propose approvers:', err);
+      setApprovalError(err.message || 'Could not propose approvers.');
+    } finally {
+      setRouting(false);
+    }
   };
 
   const closeApprovalModal = () => {
@@ -2107,6 +2129,19 @@ function AgreementDetailScreen() {
     }
   };
 
+  // Opens Draft Studio on the renewal: the agent starts from this agreement's
+  // text and the changes the brief recommends. Nothing is created until the
+  // user creates it there; it is then linked to this agreement as its renewal.
+  const handleStartRenewal = () => {
+    const changes = (renewalBrief?.changesToSeek || []).map((c) => `- ${c.change}`).join('\n');
+    const prompt = `Draft the renewal of "${agreement.title}"${agreement.accountName ? ` with ${agreement.accountName}` : ''}.${
+      agreement.endDate ? ` The new term starts the day after ${agreement.endDate}.` : ''
+    }${changes ? `\nMake these changes:\n${changes}` : ' Keep the current terms.'}`;
+    navigate('/dashboard/draft', {
+      state: { renewalOf: { id: agreementId, title: agreement.title }, prompt },
+    });
+  };
+
   const handlePrepareRenewalBrief = async () => {
     setRenewalLoading(true);
     setRenewalError('');
@@ -2728,6 +2763,18 @@ function AgreementDetailScreen() {
                         >
                           {creatingTasks ? 'Creating…' : 'Create tasks from the selected steps'}
                         </button>
+                      </div>
+                    )}
+
+                    {featureOn(aiFeatures, 'drafting') && ['renew', 'renew_with_changes', 'renegotiate'].includes(renewalBrief.recommendation.action) && (
+                      <div className="agrd__renewal-section">
+                        <button type="button" className="agrd__btn-primary" onClick={handleStartRenewal}>
+                          Start renewal in Draft Studio
+                        </button>
+                        <p className="agrd__renewal-source">
+                          Opens Draft Studio with this agreement as the starting point and the changes above. You review the
+                          draft before creating it; it is then linked to this agreement as its renewal.
+                        </p>
                       </div>
                     )}
 
@@ -3588,6 +3635,30 @@ function AgreementDetailScreen() {
                       </div>
                     </label>
                   ))}
+                </div>
+              )}
+
+              {featureOn(aiFeatures, 'review') && (
+                <div className="agrd__route">
+                  <button type="button" className="agrd__btn-secondary" onClick={handleProposeApprovers} disabled={routing}>
+                    {routing ? 'Reading the approval rules…' : 'Propose approvers from the playbook'}
+                  </button>
+                  {routeResult && (
+                    <div className="agrd__route-result">
+                      {routeResult.explanation && <p>{routeResult.explanation}</p>}
+                      {routeResult.approvers?.length > 0 && (
+                        <ul>
+                          {routeResult.approvers.map((a) => <li key={a.email}><strong>{a.name}</strong>{a.reason ? `: ${a.reason}` : ''}</li>)}
+                        </ul>
+                      )}
+                      {routeResult.unmatched?.length > 0 && (
+                        <p className="agrd__route-warn">
+                          Not filled in: {routeResult.unmatched.map((u) => `${u.rule}${u.reason ? ` (${u.reason})` : ''}`).join('; ')}
+                        </p>
+                      )}
+                      {routeResult.approvers?.length > 0 && <p className="agrd__route-hint">Check the list below before sending.</p>}
+                    </div>
+                  )}
                 </div>
               )}
 

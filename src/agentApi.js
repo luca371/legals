@@ -19,3 +19,9 @@ export async function prepareRenewalBrief(agreementId) {
 export async function screenAccount(accountId) {
   return invokeFunction('agent-account-screening', { accountId });
 }
+
+// Proposes the approval chain from the playbooks' approval rules. Fills the
+// approval form only - a person reviews and sends it.
+export async function proposeApprovers(agreementId) {
+  return invokeFunction('agent-approval-route', { agreementId });
+}
