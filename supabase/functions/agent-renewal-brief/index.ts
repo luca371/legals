@@ -3,6 +3,7 @@ import { requireWriter } from '../_shared/auth.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 import { monthStartIso, parseAnswerJson, readAgreementDocuments, type Row } from '../_shared/agent-docs.ts';
 import { enforceAiLimit } from '../_shared/ratelimit.ts';
+import { accountPlaybooks, actionAllowed, actionNotAllowedResponse, playbookForAgent } from '../_shared/playbooks.ts';
 
 // Renewal agent. Read-only: it reads ONE agreement and its account, works out
 // the term, notice and renewal mechanics, and recommends what to do before it
@@ -25,7 +26,7 @@ You are NOT providing legal advice. Keep everything at the level of "an experien
 
 HOW TO REASON ABOUT THE TERM:
 - "endDate" in the metadata is the end of the current term. Compute "daysUntilEnd" from today.
-- Read the text for: automatic renewal / evergreen clauses, the notice period required to terminate or not renew, and any renewal price change. If notice is required, "noticeDeadline" = endDate minus the notice period; say plainly if that date has already passed.
+- Read the text for: automatic renewal / evergreen clauses, the notice period required to terminate or not renew, and any renewal price change. The playbooks may list obligations to track and review criteria: apply them. If notice is required, "noticeDeadline" = endDate minus the notice period; say plainly if that date has already passed.
 - If the text does not say whether it renews or how much notice is needed, set those fields to null - never assume.
 - If another agreement on the account is already linked as a renewal or amendment of this one, say so in the headline.
 
@@ -52,6 +53,7 @@ The JSON object must have exactly these fields:
     "daysUntilEnd": <integer, negative if already ended, or null>,
     "autoRenewal": true|false|null,
     "noticePeriod": "<e.g. '30 days written notice', or null>",
+    "noticePeriodDays": <the notice period as a whole number of days (a month = 30, a year = 365), or null>,
     "noticeDeadline": "<YYYY-MM-DD or null>",
     "source": "<where in the document this comes from, e.g. 'clause 8', or null>"
   },
@@ -90,8 +92,6 @@ serveWithCors(async (req) => {
 
   const auth = await requireWriter(req);
   if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
-  const limited = await enforceAiLimit(auth, 'agent-renewal-brief');
-  if (limited) return limited;
   const { admin, callerClient, user, tenantId } = auth;
 
   let runId: string | null = null;
@@ -110,13 +110,18 @@ serveWithCors(async (req) => {
     const { data: agreement, error: agreementError } = await callerClient
       .from('agreements')
       .select(
-        'id, title, account_id, account_name, agreement_type, agreement_subtype, status, effective_date, end_date, custom_fields, content_html, attachments, last_ai_review, related_agreement_id, relation_type'
+        'id, title, account_id, account_name, agreement_type, agreement_subtype, status, effective_date, end_date, notice_period_days, auto_renewal, custom_fields, content_html, attachments, last_ai_review, related_agreement_id, relation_type'
       )
       .eq('id', agreementId)
       .single();
     if (agreementError || !agreement) {
       return jsonResponse({ error: "This agreement doesn't exist or you can't access it." }, 404);
     }
+
+    const playbooks = await accountPlaybooks(callerClient, agreement.account_id);
+    if (!actionAllowed(playbooks, 'renewal_brief')) return actionNotAllowedResponse('renewal_brief');
+    const limited = await enforceAiLimit(auth, 'agent-renewal-brief');
+    if (limited) return limited;
 
     const { count: runsThisMonth } = await admin
       .from('agent_runs')
@@ -156,6 +161,8 @@ serveWithCors(async (req) => {
           status: agreement.status,
           effectiveDate: agreement.effective_date,
           endDate: agreement.end_date,
+          recordedNoticePeriodDays: agreement.notice_period_days,
+          recordedAutoRenewal: agreement.auto_renewal,
           customFields: agreement.custom_fields || {},
           relatedAgreementId: agreement.related_agreement_id,
           relationType: agreement.relation_type,
@@ -199,13 +206,7 @@ serveWithCors(async (req) => {
       }
 
       if (name === 'list_account_playbooks') {
-        if (!agreement.account_id) return [];
-        const { data, error } = await callerClient
-          .from('account_playbooks')
-          .select('playbooks(title, body)')
-          .eq('account_id', agreement.account_id);
-        if (error) throw error;
-        return (data || []).map((r: Row) => ({ title: r.playbooks?.title, body: r.playbooks?.body }));
+        return playbooks.map(playbookForAgent);
       }
 
       return { error: `Unknown tool: ${name}` };
@@ -336,6 +337,10 @@ function normalizeBrief(brief: Row) {
       daysUntilEnd: typeof term.daysUntilEnd === 'number' ? term.daysUntilEnd : null,
       autoRenewal: typeof term.autoRenewal === 'boolean' ? term.autoRenewal : null,
       noticePeriod: term.noticePeriod ?? null,
+      noticePeriodDays:
+        Number.isInteger(term.noticePeriodDays) && term.noticePeriodDays >= 0 && term.noticePeriodDays <= 3650
+          ? term.noticePeriodDays
+          : null,
       noticeDeadline: term.noticeDeadline ?? null,
       source: term.source ?? null,
     },

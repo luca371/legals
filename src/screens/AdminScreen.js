@@ -21,6 +21,7 @@ import {
 } from '../supabase';
 import { PROFILES, PROFILE_LABELS } from '../AuthContext';
 import SalesforceConnection from '../components/SalesforceConnection';
+import AiFeaturesPanel from '../components/AiFeaturesPanel';
 import './AdminScreen.css';
 
 const EMPTY_FORM = {
@@ -462,12 +463,16 @@ function AdminScreen() {
         <button className={`admin__tab ${tab === 'users' ? 'admin__tab--active' : ''}`} onClick={() => setTab('users')}>Users</button>
         <button className={`admin__tab ${tab === 'objects' ? 'admin__tab--active' : ''}`} onClick={() => setTab('objects')}>Objects</button>
         <button className={`admin__tab ${tab === 'integrations' ? 'admin__tab--active' : ''}`} onClick={() => setTab('integrations')}>Integrations</button>
+        <button className={`admin__tab ${tab === 'ai' ? 'admin__tab--active' : ''}`} onClick={() => setTab('ai')}>AI features</button>
       </div>
 
       {successMsg && <div className="admin__toast">{successMsg}</div>}
 
       {/* ---- Integrations tab ---- */}
       {tab === 'integrations' && <SalesforceConnection />}
+
+      {/* ---- AI features tab ---- */}
+      {tab === 'ai' && <AiFeaturesPanel />}
 
       {/* ---- Users tab ---- */}
       {tab === 'users' && (

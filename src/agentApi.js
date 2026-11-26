@@ -13,3 +13,9 @@ export async function findObligations(agreementId) {
 export async function prepareRenewalBrief(agreementId) {
   return invokeFunction('agent-renewal-brief', { agreementId });
 }
+
+// Checks the account against its playbooks' screening criteria; the result is
+// also stored on the account (lastScreening).
+export async function screenAccount(accountId) {
+  return invokeFunction('agent-account-screening', { accountId });
+}

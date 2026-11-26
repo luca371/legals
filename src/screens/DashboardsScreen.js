@@ -21,6 +21,7 @@ import {
   getBuiltInFieldConfigs,
   getObjectSchema,
 } from '../supabase';
+import { Link } from 'react-router-dom';
 import './DashboardsScreen.css';
 
 const DEFAULT_STATUS_ORDER = [
@@ -296,6 +297,25 @@ function DashboardsScreen() {
       })
       .filter((a) => a && a.daysLeft >= 0 && a.daysLeft <= 90)
       .sort((a, b) => a.daysLeft - b.daysLeft);
+  }, [filteredAgreements]);
+
+  // Renewals: every agreement whose notice deadline or end date falls in the
+  // next 120 days (or whose notice deadline has passed but it has not ended),
+  // ordered by the first date that needs a decision.
+  const renewals = useMemo(() => {
+    const now = new Date();
+    now.setHours(0, 0, 0, 0);
+    const days = (iso) => (iso ? Math.round((new Date(`${iso}T00:00:00`) - now) / MS_PER_DAY) : null);
+    return filteredAgreements
+      .filter((a) => !['Terminated', 'Expired', 'Cancelled'].includes(a.status))
+      .map((a) => {
+        const endIn = days(a.endDate);
+        const noticeIn = days(a.noticeDeadline);
+        const next = [noticeIn, endIn].filter((d) => d !== null && (d >= 0 || (d === noticeIn && endIn !== null && endIn >= 0)));
+        return { ...a, endIn, noticeIn, firstIn: next.length ? Math.min(...next) : null };
+      })
+      .filter((a) => a.firstIn !== null && a.firstIn <= 120 && a.endIn !== null && a.endIn >= 0)
+      .sort((a, b) => a.firstIn - b.firstIn);
   }, [filteredAgreements]);
 
   const expiringBuckets = useMemo(
@@ -741,6 +761,53 @@ function DashboardsScreen() {
                 )}
               </div>
             </div>
+          </div>
+
+          <div className="dbd__card dbd__card--full">
+            <div className="dbd__card-header">
+              <h3 className="dbd__card-title">Renewals: notice deadlines and end dates (next 120 days)</h3>
+            </div>
+            {renewals.length === 0 ? (
+              <p className="dbd__chart-empty">No notice deadline or end date in the next 120 days.</p>
+            ) : (
+              <div className="dbd__renewals">
+                <table className="dbd__renewals-table">
+                  <thead>
+                    <tr>
+                      <th>Agreement</th>
+                      <th>Account</th>
+                      <th>Notice deadline</th>
+                      <th>End date</th>
+                      <th>Renews automatically</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {renewals.slice(0, 25).map((a) => (
+                      <tr key={a.id}>
+                        <td><Link to={`/dashboard/agreements/${a.id}`} className="dbd__renewals-link">{a.title}</Link></td>
+                        <td>{a.accountName || '-'}</td>
+                        <td>
+                          {a.noticeDeadline ? (
+                            <span className={a.noticeIn < 0 ? 'dbd__renewals-missed' : a.noticeIn <= 30 ? 'dbd__renewals-urgent' : ''}>
+                              {a.noticeDeadline} ({a.noticeIn < 0 ? `passed ${Math.abs(a.noticeIn)}d ago` : a.noticeIn === 0 ? 'today' : `in ${a.noticeIn}d`})
+                            </span>
+                          ) : (
+                            <span className="dbd__renewals-muted">No notice period</span>
+                          )}
+                        </td>
+                        <td>
+                          <span className={a.endIn <= 30 ? 'dbd__renewals-urgent' : ''}>
+                            {a.endDate} ({a.endIn === 0 ? 'today' : `in ${a.endIn}d`})
+                          </span>
+                        </td>
+                        <td>{a.autoRenewal === null || a.autoRenewal === undefined ? '-' : a.autoRenewal ? 'Yes' : 'No'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {renewals.length > 25 && <p className="dbd__chart-empty">And {renewals.length - 25} more.</p>}
+              </div>
+            )}
           </div>
 
           <div className="dbd__card">

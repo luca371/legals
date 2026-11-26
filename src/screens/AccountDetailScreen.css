@@ -679,3 +679,44 @@
   font-size: 0.78rem;
   color: var(--color-text-tertiary);
 }
+
+/* ---- Screening ---- */
+.accd__screen-overall,
+.accd__screen-sev {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  vertical-align: middle;
+}
+
+.accd__screen-overall--clear,
+.accd__screen-sev--low {
+  background: var(--color-success-soft);
+  color: var(--color-success);
+}
+
+.accd__screen-overall--attention,
+.accd__screen-sev--medium {
+  background: var(--color-warning-soft);
+  color: var(--color-warning);
+}
+
+.accd__screen-overall--critical,
+.accd__screen-sev--high {
+  background: var(--color-danger-soft);
+  color: var(--color-danger);
+}
+
+.accd__screen-evidence {
+  color: var(--color-text-tertiary);
+}
+
+.accd__screen-action {
+  margin-top: 2px;
+  font-size: 0.85em;
+  color: var(--color-text-secondary);
+}

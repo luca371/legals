@@ -14,7 +14,8 @@ import {
 import { useAuth } from '../AuthContext';
 import { indexObject } from '../embeddingsApi';
 import { computeAccountHealth } from '../healthScore';
-import { prepareAccountBrief } from '../agentApi';
+import { prepareAccountBrief, screenAccount } from '../agentApi';
+import { featureOn } from '../aiFeatures';
 import './AccountDetailScreen.css';
 
 const STATUS_OPTIONS = ['Active', 'Inactive'];
@@ -37,7 +38,7 @@ function ChevronIcon() {
 
 function AccountDetailScreen() {
   const confirm = useConfirm();
-  const { canWrite } = useAuth();
+  const { canWrite, aiFeatures } = useAuth();
   const { accountId } = useParams();
   const navigate = useNavigate();
 
@@ -58,6 +59,9 @@ function AccountDetailScreen() {
   const [error, setError] = useState('');
 
   const [brief, setBrief] = useState(null);
+  const [screening, setScreening] = useState(null);
+  const [screeningLoading, setScreeningLoading] = useState(false);
+  const [screeningError, setScreeningError] = useState('');
   const [briefLoading, setBriefLoading] = useState(false);
   const [briefError, setBriefError] = useState('');
 
@@ -73,6 +77,7 @@ function AccountDetailScreen() {
     try {
       const acc = await getAccount(accountId);
       setAccount(acc);
+      setScreening(acc.lastScreening || null);
     } catch (err) {
       console.error('Failed to load account:', err);
       setNotFound(true);
@@ -206,6 +211,19 @@ function AccountDetailScreen() {
     }
   };
 
+  const handleRunScreening = async () => {
+    setScreeningLoading(true);
+    setScreeningError('');
+    try {
+      setScreening(await screenAccount(accountId));
+    } catch (err) {
+      console.error('Failed to screen account:', err);
+      setScreeningError(err.message || 'Could not screen the account. Please try again.');
+    } finally {
+      setScreeningLoading(false);
+    }
+  };
+
   const handlePrepareBrief = async () => {
     setBriefLoading(true);
     setBriefError('');
@@ -279,12 +297,20 @@ function AccountDetailScreen() {
             >
               Playbook
             </button>
-            {canWrite && (
+            {canWrite && featureOn(aiFeatures, 'portfolio') && (
               <button
                 className={`accd__tab ${activeTab === 'brief' ? 'accd__tab--active' : ''}`}
                 onClick={() => setActiveTab('brief')}
               >
                 AI brief
+              </button>
+            )}
+            {canWrite && featureOn(aiFeatures, 'screening') && (
+              <button
+                className={`accd__tab ${activeTab === 'screening' ? 'accd__tab--active' : ''}`}
+                onClick={() => setActiveTab('screening')}
+              >
+                Screening
               </button>
             )}
           </div>
@@ -529,6 +555,74 @@ function AccountDetailScreen() {
                     </button>}
                   </div>
                 </>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'screening' && canWrite && (
+            <div className="accd__brief">
+              <div className="accd__brief-header">
+                <p className="accd__brief-hint">
+                  An AI agent checks what EsoVia knows about this account - its record, agreements, notice deadlines,
+                  obligations and tasks - against the screening criteria of the account's playbooks (or default criteria
+                  when none are set) and flags what needs attention. It uses internal data only and changes nothing.
+                </p>
+                <button type="button" className="accd__btn-primary" onClick={handleRunScreening} disabled={screeningLoading}>
+                  {screeningLoading ? 'Screening…' : screening ? 'Screen again' : 'Run screening'}
+                </button>
+              </div>
+
+              {screeningError && <p className="accd__error">{screeningError}</p>}
+              {screeningLoading && <p className="accd__empty">Checking the account. This can take up to a minute.</p>}
+
+              {screening && !screeningLoading && (
+                <div className="accd__brief-body">
+                  <p className="accd__brief-headline">
+                    <span className={`accd__screen-overall accd__screen-overall--${screening.overall}`}>
+                      {screening.overall === 'clear' ? 'Clear' : screening.overall === 'critical' ? 'Critical' : 'Needs attention'}
+                    </span>{' '}
+                    {screening.summary}
+                  </p>
+
+                  {screening.flags?.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Flags</h3>
+                      <ul className="accd__brief-list">
+                        {screening.flags.map((f, i) => (
+                          <li key={i}>
+                            <span className={`accd__screen-sev accd__screen-sev--${f.severity}`}>{f.severity}</span>{' '}
+                            <strong>{f.criterion}</strong>: {f.finding}
+                            {f.evidence && <span className="accd__screen-evidence"> ({f.evidence})</span>}
+                            {f.action && <div className="accd__screen-action">Action: {f.action}</div>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {screening.passed?.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Passed</h3>
+                      <ul className="accd__brief-list">
+                        {screening.passed.map((p, i) => <li key={i}>{p}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  {screening.notAssessed?.length > 0 && (
+                    <div className="accd__brief-section">
+                      <h3 className="accd__brief-title">Not assessed</h3>
+                      <ul className="accd__brief-list">
+                        {screening.notAssessed.map((n, i) => <li key={i}><strong>{n.criterion}</strong>{n.reason ? `: ${n.reason}` : ''}</li>)}
+                      </ul>
+                    </div>
+                  )}
+
+                  <p className="accd__brief-hint">
+                    {screening.usedDefaultCriteria ? 'Default criteria used: no playbook of this account defines screening criteria. ' : ''}
+                    Generated by AI on {new Date(screening.generatedAt).toLocaleString()}. Review before relying on it.
+                  </p>
+                </div>
               )}
             </div>
           )}

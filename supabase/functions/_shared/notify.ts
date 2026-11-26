@@ -92,3 +92,33 @@ export function sendActivationEmail({
     cc_email: ccEmail,
   });
 }
+
+// Any other notice, on the generic template (reminders for notice deadlines,
+// tasks and obligations).
+export function sendGenericEmail({
+  toEmail,
+  subject,
+  intro,
+  detail = '',
+  ctaLabel,
+  ctaPath,
+}: {
+  toEmail: string;
+  subject: string;
+  intro: string;
+  detail?: string;
+  ctaLabel: string;
+  ctaPath: string;
+}) {
+  return send(GENERIC_TEMPLATE_ID, {
+    to_email: toEmail,
+    to_name: toEmail,
+    from_name: 'EsoVia',
+    subject_line: subject,
+    intro_text: intro,
+    detail_line: detail,
+    cta_label: ctaLabel,
+    cta_link: `${appBaseUrl()}${ctaPath}`,
+    cc_email: '',
+  });
+}

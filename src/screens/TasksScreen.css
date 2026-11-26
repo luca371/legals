@@ -1,0 +1,256 @@
+.tsk {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  font-family: var(--font-sans);
+  max-width: 980px;
+}
+
+.tsk__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.tsk__heading {
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--color-accent);
+  margin: 0 0 4px;
+}
+
+.tsk__sub {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-secondary);
+}
+
+.tsk__btn-primary {
+  padding: 10px 18px;
+  background: var(--color-accent);
+  color: var(--color-surface);
+  border: none;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tsk__btn-primary:hover {
+  background: var(--color-accent-hover);
+}
+
+.tsk__btn-primary:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.tsk__form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 18px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+}
+
+.tsk__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.tsk__label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.tsk__input {
+  padding: 9px 11px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-family: var(--font-sans);
+  color: var(--color-text);
+  background: var(--color-surface);
+}
+
+.tsk__textarea {
+  resize: vertical;
+}
+
+.tsk__form-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.tsk__filters {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tsk__filter {
+  padding: 7px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-surface);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+}
+
+.tsk__filter--active {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.tsk__mine {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  color: var(--color-text-secondary);
+}
+
+.tsk__group-title {
+  margin: 4px 0 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-text-tertiary);
+}
+
+.tsk__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tsk__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+}
+
+.tsk__item--done .tsk__title {
+  text-decoration: line-through;
+  color: var(--color-text-tertiary);
+}
+
+.tsk__check {
+  margin-top: 3px;
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+.tsk__body {
+  flex: 1;
+  min-width: 0;
+}
+
+.tsk__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.tsk__title {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.tsk__type,
+.tsk__badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-secondary);
+}
+
+.tsk__badge {
+  background: var(--color-accent-soft);
+  color: var(--color-accent);
+}
+
+.tsk__details {
+  margin: 4px 0 0;
+  font-size: 0.83rem;
+  color: var(--color-text-secondary);
+  white-space: pre-wrap;
+}
+
+.tsk__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 0.78rem;
+  color: var(--color-text-tertiary);
+}
+
+.tsk__link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.tsk__link:hover {
+  text-decoration: underline;
+}
+
+.tsk__overdue {
+  color: var(--color-danger);
+  font-weight: 600;
+}
+
+.tsk__delete {
+  border: none;
+  background: none;
+  font-size: 1.2rem;
+  line-height: 1;
+  color: var(--color-text-tertiary);
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.tsk__delete:hover {
+  color: var(--color-danger);
+}
+
+.tsk__error {
+  margin: 0;
+  color: var(--color-danger);
+  font-size: 0.85rem;
+}
+
+.tsk__empty {
+  margin: 0;
+  color: var(--color-text-tertiary);
+  font-size: 0.88rem;
+}

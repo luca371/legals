@@ -2,6 +2,7 @@ import { corsHeaders, jsonResponse, serveWithCors } from '../_shared/cors.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 import { requireUser } from '../_shared/auth.ts';
 import { enforceAiLimit } from '../_shared/ratelimit.ts';
+import { accountPlaybooks, actionAllowed, actionNotAllowedResponse } from '../_shared/playbooks.ts';
 
 const SYSTEM_PROMPT = `You are the senior contract-quality reviewer embedded in "EsoVia", a contract lifecycle management tool — the kind of review an experienced contract manager (not a lawyer) gives before a contract goes out: thorough, specific, and genuinely useful, not a generic checklist. You are given an agreement's metadata and the text of its attached document(s).
 
@@ -48,14 +49,19 @@ serveWithCors(async (req) => {
   // Signed-in, active users only: these call paid AI APIs.
   const auth = await requireUser(req);
   if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
-  const limited = await enforceAiLimit(auth, 'review-agreement');
-  if (limited) return limited;
 
   try {
     const { documentText, metadata } = await req.json();
     if (!documentText || !String(documentText).trim()) {
       return jsonResponse({ error: 'documentText is required.' }, 400);
     }
+
+    if (metadata?.accountId) {
+      const assigned = await accountPlaybooks(auth.callerClient, String(metadata.accountId));
+      if (!actionAllowed(assigned, 'review')) return actionNotAllowedResponse('review');
+    }
+    const limited = await enforceAiLimit(auth, 'review-agreement');
+    if (limited) return limited;
 
     const playbook = (metadata && metadata.playbook ? String(metadata.playbook) : '').trim();
     const playbookSection = playbook

@@ -20,6 +20,9 @@ import { indexObject } from '../embeddingsApi';
 import AskELabel from '../components/AskELabel';
 import { useAuth } from '../AuthContext';
 import './SettingsScreen.css';
+import { AGENT_ACTIONS } from '../aiFeatures';
+
+const EMPTY_PLAYBOOK = { title: '', body: '', obligations: '', reviewCriteria: '', screeningCriteria: '', permittedActions: null };
 
 // Sequential, not parallel — Voyage throttles accounts with no payment
 // method on file to 3 requests/minute, and firing several at once just
@@ -115,7 +118,7 @@ function SettingsScreen() {
   const [playbooks, setPlaybooks] = useState([]);
   const [loadingPlaybooks, setLoadingPlaybooks] = useState(true);
   const [editingPlaybookId, setEditingPlaybookId] = useState(null); // null | 'new' | an id
-  const [playbookForm, setPlaybookForm] = useState({ title: '', body: '' });
+  const [playbookForm, setPlaybookForm] = useState(EMPTY_PLAYBOOK);
   const [savingPlaybook, setSavingPlaybook] = useState(false);
   const [playbookError, setPlaybookError] = useState('');
 
@@ -237,19 +240,26 @@ function SettingsScreen() {
 
   const handleStartNewPlaybook = () => {
     setEditingPlaybookId('new');
-    setPlaybookForm({ title: '', body: '' });
+    setPlaybookForm(EMPTY_PLAYBOOK);
     setPlaybookError('');
   };
 
   const handleStartEditPlaybook = (pb) => {
     setEditingPlaybookId(pb.id);
-    setPlaybookForm({ title: pb.title, body: pb.body });
+    setPlaybookForm({
+      title: pb.title,
+      body: pb.body,
+      obligations: pb.obligations,
+      reviewCriteria: pb.reviewCriteria,
+      screeningCriteria: pb.screeningCriteria,
+      permittedActions: pb.permittedActions,
+    });
     setPlaybookError('');
   };
 
   const handleCancelPlaybookEdit = () => {
     setEditingPlaybookId(null);
-    setPlaybookForm({ title: '', body: '' });
+    setPlaybookForm(EMPTY_PLAYBOOK);
     setPlaybookError('');
   };
 
@@ -265,7 +275,7 @@ function SettingsScreen() {
         await updatePlaybook(editingPlaybookId, playbookForm);
       }
       setEditingPlaybookId(null);
-      setPlaybookForm({ title: '', body: '' });
+      setPlaybookForm(EMPTY_PLAYBOOK);
       await loadPlaybooks();
     } catch (err) {
       console.error('Failed to save playbook:', err);
@@ -511,6 +521,65 @@ function SettingsScreen() {
               rows={8}
               required
             />
+            <label className="settings__playbook-label">
+              Obligations to track
+              <span className="settings__playbook-sub">What agreements with these accounts must contain and what to follow up. Used by drafting, review and the obligations finder.</span>
+              <textarea
+                className="settings__playbook-input"
+                value={playbookForm.obligations}
+                onChange={(e) => setPlaybookForm((f) => ({ ...f, obligations: e.target.value }))}
+                placeholder="e.g.&#10;- Quarterly service report from the supplier&#10;- Annual insurance certificate"
+                rows={4}
+              />
+            </label>
+            <label className="settings__playbook-label">
+              Review criteria
+              <span className="settings__playbook-sub">What AI review should check, on top of the rules above.</span>
+              <textarea
+                className="settings__playbook-input"
+                value={playbookForm.reviewCriteria}
+                onChange={(e) => setPlaybookForm((f) => ({ ...f, reviewCriteria: e.target.value }))}
+                placeholder="e.g.&#10;- Flag any unlimited liability&#10;- Flag auto-renewal longer than 12 months"
+                rows={4}
+              />
+            </label>
+            <label className="settings__playbook-label">
+              Screening criteria
+              <span className="settings__playbook-sub">What account screening checks. Leave empty to use the default criteria.</span>
+              <textarea
+                className="settings__playbook-input"
+                value={playbookForm.screeningCriteria}
+                onChange={(e) => setPlaybookForm((f) => ({ ...f, screeningCriteria: e.target.value }))}
+                placeholder="e.g.&#10;- Tax registration number on file&#10;- No agreement past its notice deadline"
+                rows={4}
+              />
+            </label>
+            <div className="settings__playbook-label">
+              Allowed AI actions on the accounts this playbook is assigned to
+              <span className="settings__playbook-sub">Untick an action to block it for those accounts. When several playbooks apply, the strictest wins.</span>
+              <div className="settings__playbook-actions">
+                {AGENT_ACTIONS.map((a) => {
+                  const allowed = !playbookForm.permittedActions || playbookForm.permittedActions.includes(a.key);
+                  return (
+                    <label key={a.key} className="settings__playbook-action">
+                      <input
+                        type="checkbox"
+                        checked={allowed}
+                        onChange={(e) =>
+                          setPlaybookForm((f) => {
+                            const current = f.permittedActions || AGENT_ACTIONS.map((x) => x.key);
+                            const next = e.target.checked ? [...new Set([...current, a.key])] : current.filter((k) => k !== a.key);
+                            // Everything allowed is stored as null, so new actions are allowed by default.
+                            return { ...f, permittedActions: next.length === AGENT_ACTIONS.length ? null : next };
+                          })
+                        }
+                      />
+                      {a.label}
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
             <div className="settings__playbook-form-actions">
               <button type="button" className="settings__reindex-btn settings__reindex-btn--secondary" onClick={handleCancelPlaybookEdit}>
                 Cancel
@@ -542,6 +611,16 @@ function SettingsScreen() {
                   </div>
                 </div>
                 <p className="settings__playbook-card-body">{pb.body}</p>
+                {(pb.obligations || pb.reviewCriteria || pb.screeningCriteria || pb.permittedActions) && (
+                  <p className="settings__playbook-sub">
+                    {[
+                      pb.obligations && 'obligations',
+                      pb.reviewCriteria && 'review criteria',
+                      pb.screeningCriteria && 'screening criteria',
+                      pb.permittedActions && `AI limited to: ${pb.permittedActions.map((k) => AGENT_ACTIONS.find((a) => a.key === k)?.label || k).join(', ') || 'nothing'}`,
+                    ].filter(Boolean).join(' · ')}
+                  </p>
+                )}
               </div>
             ))}
           </div>

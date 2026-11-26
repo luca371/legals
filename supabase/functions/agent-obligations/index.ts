@@ -3,6 +3,7 @@ import { requireWriter } from '../_shared/auth.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 import { monthStartIso, parseAnswerJson, readAgreementDocuments, type Row } from '../_shared/agent-docs.ts';
 import { enforceAiLimit } from '../_shared/ratelimit.ts';
+import { accountPlaybooks, actionAllowed, actionNotAllowedResponse, playbookForAgent } from '../_shared/playbooks.ts';
 
 // Obligation agent. Read-only: it reads ONE agreement and PROPOSES the
 // obligations it contains. It saves nothing - the user reviews the proposals
@@ -52,8 +53,6 @@ serveWithCors(async (req) => {
 
   const auth = await requireWriter(req);
   if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
-  const limited = await enforceAiLimit(auth, 'agent-obligations');
-  if (limited) return limited;
   const { admin, callerClient, user, tenantId } = auth;
 
   let runId: string | null = null;
@@ -70,13 +69,19 @@ serveWithCors(async (req) => {
     const { data: agreement, error: agreementError } = await callerClient
       .from('agreements')
       .select(
-        'id, title, account_name, account2_name, agreement_type, agreement_subtype, status, effective_date, end_date, content_html, attachments'
+        'id, title, account_id, account_name, account2_name, agreement_type, agreement_subtype, status, effective_date, end_date, content_html, attachments'
       )
       .eq('id', agreementId)
       .single();
     if (agreementError || !agreement) {
       return jsonResponse({ error: "This agreement doesn't exist or you can't access it." }, 404);
     }
+
+    const playbooks = await accountPlaybooks(callerClient, agreement.account_id);
+    if (!actionAllowed(playbooks, 'obligations')) return actionNotAllowedResponse('obligations');
+    const limited = await enforceAiLimit(auth, 'agent-obligations');
+    if (limited) return limited;
+    const trackedByPlaybook = playbooks.map(playbookForAgent).filter((p) => p?.obligationsToTrack);
 
     const { count: runsThisMonth } = await admin
       .from('agent_runs')
@@ -131,7 +136,10 @@ ${JSON.stringify({
   endDate: agreement.end_date,
   unreadableAttachments: unreadable,
 })}
-
+${trackedByPlaybook.length > 0 ? `
+Obligations this organization's playbooks say to track for this account (make sure every one that the document actually contains is listed; never invent one the document does not contain):
+${JSON.stringify(trackedByPlaybook.map((p) => ({ playbook: p.title, obligationsToTrack: p.obligationsToTrack })))}
+` : ''}
 Obligations already in the register (do not propose these again):
 ${JSON.stringify((existing || []).map((o: Row) => o.description))}
 

@@ -1,23 +1,27 @@
 import { NavLink } from 'react-router-dom';
 import AskELabel from './AskELabel';
 import { useAuth } from '../AuthContext';
+import { featureOn } from '../aiFeatures';
 import './Sidebar.css';
 
 const NAV_ITEMS = [
   { path: '/dashboard/agreements', label: 'Agreements', icon: IconAgreements },
   { path: '/dashboard/accounts', label: 'Accounts', icon: IconAccounts },
   { path: '/dashboard/dashboards', label: 'Dashboards', icon: IconDashboards },
+  { path: '/dashboard/tasks', label: 'Tasks', icon: IconTasks },
   { path: '/dashboard/templates', label: 'Template build', icon: IconTemplates, writerOnly: true },
-  { path: '/dashboard/draft', label: 'Draft with AI', icon: IconDraft, writerOnly: true },
-  { path: '/dashboard/ask-ai', label: 'Ask E', labelNode: <AskELabel />, icon: IconAskAI },
+  { path: '/dashboard/draft', label: 'Draft with AI', icon: IconDraft, writerOnly: true, feature: 'drafting' },
+  { path: '/dashboard/ask-ai', label: 'Ask E', labelNode: <AskELabel />, icon: IconAskAI, feature: 'ask_ai' },
   { path: '/dashboard/settings', label: 'Settings', icon: IconSettings, writerOnly: true },
 ];
 
 const ADMIN_ITEM = { path: '/dashboard/admin', label: 'Admin', icon: IconAdmin };
 
 function Sidebar({ collapsed, onToggle, isAdmin }) {
-  const { canWrite } = useAuth();
-  const navItems = NAV_ITEMS.filter((item) => !item.writerOnly || canWrite);
+  const { canWrite, aiFeatures } = useAuth();
+  const navItems = NAV_ITEMS.filter(
+    (item) => (!item.writerOnly || canWrite) && (!item.feature || featureOn(aiFeatures, item.feature))
+  );
 
   return (
     <aside className={`sidebar ${collapsed ? 'sidebar--collapsed' : ''}`}>
@@ -110,6 +114,17 @@ function IconDashboards({ className }) {
       <rect x="13.5" y="3.5" width="7" height="4.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
       <rect x="13.5" y="11" width="7" height="9.5" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
       <rect x="3.5" y="13.5" width="7" height="7" rx="1.2" stroke="currentColor" strokeWidth="1.6" />
+    </svg>
+  );
+}
+
+function IconTasks({ className }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="4" y="3.5" width="16" height="17" rx="2" stroke="currentColor" strokeWidth="1.6" />
+      <path d="M8 9l1.6 1.6L12.5 7.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M8 15.5l1.6 1.6 2.9-2.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M14.5 9.5H17M14.5 16H17" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
     </svg>
   );
 }

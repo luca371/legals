@@ -367,6 +367,7 @@ export const getAccount = async (id) => {
     registeredOffice: data.registered_office,
     status: data.status,
     customFields: data.custom_fields || {},
+    lastScreening: data.last_screening || null,
     createdBy: data.created_by,
     createdAt: data.created_at,
   };
@@ -446,17 +447,38 @@ export const updateAccount = async (id, updates) => {
 // rules") — each one gets assigned to whichever accounts it applies to, and
 // the reviewer then picks a subset of the account's assigned playbooks when
 // running Review AI on a specific agreement.
+const mapPlaybook = (p) => ({
+  id: p.id,
+  title: p.title,
+  body: p.body || '',
+  obligations: p.obligations || '',
+  reviewCriteria: p.review_criteria || '',
+  screeningCriteria: p.screening_criteria || '',
+  // null = every agent action allowed
+  permittedActions: Array.isArray(p.permitted_actions) ? p.permitted_actions : null,
+  createdAt: p.created_at,
+});
+
+const playbookPayload = (playbook) => ({
+  title: playbook.title,
+  body: playbook.body || '',
+  obligations: playbook.obligations || '',
+  review_criteria: playbook.reviewCriteria || '',
+  screening_criteria: playbook.screeningCriteria || '',
+  permitted_actions: Array.isArray(playbook.permittedActions) ? playbook.permittedActions : null,
+});
+
 export const listPlaybooks = async () => {
   const { data, error } = await supabase.from('playbooks').select('*').order('created_at', { ascending: false });
   if (error) throw error;
-  return data.map((p) => ({ id: p.id, title: p.title, body: p.body, createdAt: p.created_at }));
+  return data.map(mapPlaybook);
 };
 
 export const createPlaybook = async (playbook) => {
   const tenantId = await getCurrentTenantId();
   const { data, error } = await supabase
     .from('playbooks')
-    .insert({ tenant_id: tenantId, title: playbook.title, body: playbook.body })
+    .insert({ tenant_id: tenantId, ...playbookPayload(playbook) })
     .select()
     .single();
   if (error) throw error;
@@ -466,7 +488,7 @@ export const createPlaybook = async (playbook) => {
 export const updatePlaybook = async (id, playbook) => {
   const { error } = await supabase
     .from('playbooks')
-    .update({ title: playbook.title, body: playbook.body, updated_at: new Date().toISOString() })
+    .update({ ...playbookPayload(playbook), updated_at: new Date().toISOString() })
     .eq('id', id);
   if (error) throw error;
 };
@@ -498,10 +520,10 @@ export const setAccountPlaybooks = async (accountId, playbookIds) => {
 export const listPlaybooksByAccount = async (accountId) => {
   const { data, error } = await supabase
     .from('account_playbooks')
-    .select('playbook_id, playbooks(id, title, body, created_at)')
+    .select('playbook_id, playbooks(*)')
     .eq('account_id', accountId);
   if (error) throw error;
-  return data.map((r) => ({ id: r.playbooks.id, title: r.playbooks.title, body: r.playbooks.body, createdAt: r.playbooks.created_at }));
+  return data.filter((r) => r.playbooks).map((r) => mapPlaybook(r.playbooks));
 };
 
 export const listAgreementsByAccount = async (accountId) => {
@@ -561,6 +583,9 @@ export const listAgreements = async () => {
     relatedAgreementId: a.related_agreement_id || null,
     relationType: a.relation_type || null,
     reminderDaysOverride: a.reminder_days_override || null,
+    noticePeriodDays: a.notice_period_days ?? null,
+    noticeDeadline: a.notice_deadline || null,
+    autoRenewal: a.auto_renewal ?? null,
     lastAiReview: a.last_ai_review || null,
     createdBy: a.created_by,
     createdAt: a.created_at,
@@ -595,6 +620,9 @@ export const getAgreement = async (id) => {
     relatedAgreementId: data.related_agreement_id || null,
     relationType: data.relation_type || null,
     reminderDaysOverride: data.reminder_days_override || null,
+    noticePeriodDays: data.notice_period_days ?? null,
+    noticeDeadline: data.notice_deadline || null,
+    autoRenewal: data.auto_renewal ?? null,
     lastAiReview: data.last_ai_review || null,
     createdBy: data.created_by,
     createdAt: data.created_at,
@@ -656,7 +684,7 @@ export const createAgreement = async (agreement) => {
 export const updateAgreement = async (id, updates) => {
   const { data: before } = await supabase
     .from('agreements')
-    .select('title, status, content_html, effective_date, end_date, custom_fields, related_agreement_id, relation_type, reminder_days_override')
+    .select('title, status, content_html, effective_date, end_date, custom_fields, related_agreement_id, relation_type, reminder_days_override, notice_period_days, auto_renewal')
     .eq('id', id)
     .maybeSingle();
   const payload = { updated_at: new Date().toISOString() };
@@ -677,6 +705,12 @@ export const updateAgreement = async (id, updates) => {
   if (updates.relatedAgreementId !== undefined) payload.related_agreement_id = updates.relatedAgreementId;
   if (updates.relationType !== undefined) payload.relation_type = updates.relationType;
   if (updates.reminderDaysOverride !== undefined) payload.reminder_days_override = updates.reminderDaysOverride;
+  if (updates.noticePeriodDays !== undefined) {
+    payload.notice_period_days = updates.noticePeriodDays;
+    // A new deadline gets its own reminders.
+    payload.notice_reminders_sent = [];
+  }
+  if (updates.autoRenewal !== undefined) payload.auto_renewal = updates.autoRenewal;
   const { data, error } = await supabase.from('agreements').update(payload).eq('id', id).select().single();
   if (error) throw error;
   const changes = before
@@ -690,6 +724,8 @@ export const updateAgreement = async (id, updates) => {
         'Linked agreement': { before: before.related_agreement_id, after: data.related_agreement_id },
         'Link type': { before: before.relation_type, after: data.relation_type },
         'Reminder days': { before: before.reminder_days_override, after: data.reminder_days_override },
+        'Notice period (days)': { before: before.notice_period_days, after: data.notice_period_days },
+        'Auto-renewal': { before: before.auto_renewal, after: data.auto_renewal },
       })
     : [];
   const statusChange = changes.find((c) => c.field === 'Status');
@@ -1326,5 +1362,121 @@ export const createClause = async (clause) => {
 
 export const deleteClause = async (id) => {
   const { error } = await supabase.from('clause_library').delete().eq('id', id);
+  if (error) throw error;
+};
+
+// ---- AI features and credits ------------------------------------------------
+
+// { featureKey: false } for switched-off features; a missing key means on.
+export const getAiFeatures = async () => {
+  const tenantId = await getCurrentTenantId();
+  const { data, error } = await supabase.from('tenant_settings').select('ai_features').eq('tenant_id', tenantId).maybeSingle();
+  if (error) throw error;
+  return data?.ai_features || {};
+};
+
+export const updateAiFeatures = async (features) => {
+  const tenantId = await getCurrentTenantId();
+  const { error } = await supabase
+    .from('tenant_settings')
+    .upsert({ tenant_id: tenantId, ai_features: features, updated_at: new Date().toISOString() });
+  if (error) throw error;
+  logAuditEvent('updated', 'settings', tenantId, 'AI features', { features });
+};
+
+// Admins only (the database returns nothing for anyone else).
+export const getCreditStatus = async () => {
+  const { data, error } = await supabase.rpc('my_credit_status');
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return { balance: row?.balance ?? 0, enforced: !!row?.enforced };
+};
+
+export const getAiUsage = async (days = 30) => {
+  const { data, error } = await supabase.rpc('my_ai_usage', { p_days: days });
+  if (error) throw error;
+  return (data || []).map((r) => ({ feature: r.feature, calls: Number(r.calls), credits: Number(r.credits) }));
+};
+
+// ---- Tasks ------------------------------------------------------------------
+
+const mapTask = (t) => ({
+  id: t.id,
+  title: t.title,
+  details: t.details || '',
+  taskType: t.task_type,
+  status: t.status,
+  dueDate: t.due_date,
+  assigneeEmail: t.assignee_email || '',
+  agreementId: t.agreement_id,
+  agreementTitle: t.agreements?.title || '',
+  accountId: t.account_id,
+  obligationId: t.obligation_id,
+  source: t.source,
+  createdBy: t.created_by,
+  createdAt: t.created_at,
+  completedAt: t.completed_at,
+});
+
+export const listTasks = async ({ status = 'open', agreementId } = {}) => {
+  let query = supabase.from('tasks').select('*, agreements(title)');
+  if (status !== 'all') query = query.eq('status', status);
+  if (agreementId) query = query.eq('agreement_id', agreementId);
+  const { data, error } = await query
+    .order('due_date', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: false })
+    .limit(500);
+  if (error) throw error;
+  return data.map(mapTask);
+};
+
+// items: [{ title, details, taskType, dueDate, assigneeEmail, agreementId, accountId, obligationId }]
+export const createTasks = async (items, source = 'manual') => {
+  if (!items.length) return [];
+  const tenantId = await getCurrentTenantId();
+  const user = await getCurrentUser();
+  const { data, error } = await supabase
+    .from('tasks')
+    .insert(
+      items.map((t) => ({
+        tenant_id: tenantId,
+        title: t.title,
+        details: t.details || '',
+        task_type: t.taskType || 'other',
+        due_date: t.dueDate || null,
+        assignee_email: (t.assigneeEmail || '').trim() || null,
+        agreement_id: t.agreementId || null,
+        account_id: t.accountId || null,
+        obligation_id: t.obligationId || null,
+        source,
+        created_by: user?.email || '',
+      }))
+    )
+    .select('*, agreements(title)');
+  if (error) throw error;
+  data.forEach((t) => logAuditEvent('created', 'task', t.id, t.title, { source }));
+  return data.map(mapTask);
+};
+
+export const updateTask = async (id, updates) => {
+  const payload = {};
+  if (updates.title !== undefined) payload.title = updates.title;
+  if (updates.details !== undefined) payload.details = updates.details;
+  if (updates.taskType !== undefined) payload.task_type = updates.taskType;
+  if (updates.dueDate !== undefined) {
+    payload.due_date = updates.dueDate || null;
+    payload.reminder_sent_at = null;
+  }
+  if (updates.assigneeEmail !== undefined) payload.assignee_email = (updates.assigneeEmail || '').trim() || null;
+  if (updates.status !== undefined) {
+    payload.status = updates.status;
+    payload.completed_at = updates.status === 'done' ? new Date().toISOString() : null;
+  }
+  const { error } = await supabase.from('tasks').update(payload).eq('id', id);
+  if (error) throw error;
+};
+
+export const deleteTask = async (id) => {
+  const { error } = await supabase.from('tasks').delete().eq('id', id);
   if (error) throw error;
 };

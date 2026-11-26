@@ -4,6 +4,7 @@ import { requireWriter } from '../_shared/auth.ts';
 import { ANTHROPIC_MODEL, callAnthropic } from '../_shared/anthropic.ts';
 import { MAX_PDF_BYTES_FOR_TEXT, isPdfAttachment, pdfToText } from '../_shared/pdf.ts';
 import { enforceAiLimit } from '../_shared/ratelimit.ts';
+import { accountPlaybooks, actionAllowed, actionNotAllowedResponse, playbookForAgent } from '../_shared/playbooks.ts';
 
 // Account brief agent. Read-only: it looks up the account's real data with
 // tools, then writes a briefing for a quarterly review, a renewal or a
@@ -20,7 +21,8 @@ You have read-only tools. ALWAYS use them - never guess or invent anything. Typi
 1. Call list_account_agreements to see every agreement with this account.
 2. Call get_agreement_details for the agreements that matter most (active ones, the ones expiring soon, the ones flagged high risk) - up to about 6 - to read their actual document text and terms. The document text is what makes the briefing valuable: key terms (duration, notice and renewal, liability, exclusivity, payment, confidentiality scope) must come from it, not from metadata alone. The list tool never includes document text, so do not conclude a document is empty before calling get_agreement_details.
 3. Call list_account_playbooks to know which compliance rules apply to this account.
-4. Write the briefing.
+4. Call list_obligations_and_tasks to see the open obligations and tasks, with their due dates - the deadlines and outstanding actions belong in the briefing.
+5. Write the briefing.
 
 You are NOT providing legal advice. Keep everything at the level of "an experienced contract manager would flag this". Base every point only on data the tools returned - if something is not in the data, leave it out. Dates are YYYY-MM-DD; today's date is given in the user message.
 
@@ -66,7 +68,13 @@ const TOOLS = [
   },
   {
     name: 'list_account_playbooks',
-    description: 'Lists the playbooks (compliance rules) assigned to this account.',
+    description: 'Lists the playbooks assigned to this account: rules, obligations to track, review and screening criteria.',
+    input_schema: { type: 'object', properties: {}, required: [] },
+  },
+  {
+    name: 'list_obligations_and_tasks',
+    description:
+      "Lists the OPEN obligations from this account's agreements (from the obligations register) and the OPEN tasks for the account or its agreements, each with its due date and the agreement it belongs to.",
     input_schema: { type: 'object', properties: {}, required: [] },
   },
 ];
@@ -134,8 +142,6 @@ serveWithCors(async (req) => {
 
   const auth = await requireWriter(req);
   if ('error' in auth) return jsonResponse({ error: auth.error }, auth.status);
-  const limited = await enforceAiLimit(auth, 'agent-account-brief');
-  if (limited) return limited;
   const { admin, callerClient, user, tenantId } = auth;
 
   let runId: string | null = null;
@@ -159,6 +165,11 @@ serveWithCors(async (req) => {
     if (accountError || !account) {
       return jsonResponse({ error: "This account doesn't exist or you can't access it." }, 404);
     }
+
+    const playbooks = await accountPlaybooks(callerClient, accountId);
+    if (!actionAllowed(playbooks, 'account_brief')) return actionNotAllowedResponse('account_brief');
+    const limited = await enforceAiLimit(auth, 'agent-account-brief');
+    if (limited) return limited;
 
     const { count: runsThisMonth } = await admin
       .from('agent_runs')
@@ -190,7 +201,7 @@ serveWithCors(async (req) => {
         const { data, error } = await callerClient
           .from('agreements')
           .select(
-            'id, title, agreement_type, agreement_subtype, status, effective_date, end_date, related_agreement_id, relation_type, last_ai_review, docusign_envelopes'
+            'id, title, agreement_type, agreement_subtype, status, effective_date, end_date, notice_period_days, notice_deadline, auto_renewal, related_agreement_id, relation_type, last_ai_review, docusign_envelopes'
           )
           .eq('account_id', accountId)
           .order('created_at', { ascending: false })
@@ -204,6 +215,9 @@ serveWithCors(async (req) => {
           status: a.status,
           effectiveDate: a.effective_date,
           endDate: a.end_date,
+          noticePeriodDays: a.notice_period_days,
+          noticeDeadline: a.notice_deadline,
+          autoRenewal: a.auto_renewal,
           relatedAgreementId: a.related_agreement_id,
           relationType: a.relation_type,
           lastAiReview: a.last_ai_review
@@ -272,13 +286,45 @@ serveWithCors(async (req) => {
         };
       }
 
+      if (name === 'list_obligations_and_tasks') {
+        const { data: agreements } = await callerClient.from('agreements').select('id, title').eq('account_id', accountId).limit(200);
+        const ids = (agreements || []).map((a: Row) => a.id);
+        const titleOf = new Map((agreements || []).map((a: Row) => [a.id, a.title]));
+        const [obligations, tasksForAgreements, tasksForAccount] = await Promise.all([
+          ids.length
+            ? callerClient.from('obligations').select('agreement_id, description, responsible_party, due_date, recurrence, trigger_text')
+                .in('agreement_id', ids).eq('status', 'open').order('due_date', { ascending: true, nullsFirst: false }).limit(60)
+            : Promise.resolve({ data: [] }),
+          ids.length
+            ? callerClient.from('tasks').select('id, agreement_id, title, task_type, due_date, assignee_email')
+                .in('agreement_id', ids).eq('status', 'open').limit(60)
+            : Promise.resolve({ data: [] }),
+          callerClient.from('tasks').select('id, agreement_id, title, task_type, due_date, assignee_email')
+            .eq('account_id', accountId).eq('status', 'open').limit(60),
+        ]);
+        const tasks = new Map<string, Row>();
+        for (const t of [...(tasksForAgreements.data || []), ...(tasksForAccount.data || [])]) tasks.set(t.id, t);
+        return {
+          obligations: (obligations.data || []).map((o: Row) => ({
+            agreement: titleOf.get(o.agreement_id) || null,
+            description: o.description,
+            responsibleParty: o.responsible_party,
+            dueDate: o.due_date,
+            recurrence: o.recurrence,
+            trigger: o.trigger_text,
+          })),
+          tasks: [...tasks.values()].map((t) => ({
+            agreement: t.agreement_id ? titleOf.get(t.agreement_id) || null : null,
+            title: t.title,
+            type: t.task_type,
+            dueDate: t.due_date,
+            assignee: t.assignee_email,
+          })),
+        };
+      }
+
       if (name === 'list_account_playbooks') {
-        const { data, error } = await callerClient
-          .from('account_playbooks')
-          .select('playbooks(title, body)')
-          .eq('account_id', accountId);
-        if (error) throw error;
-        return (data || []).map((r: Row) => ({ title: r.playbooks?.title, body: r.playbooks?.body }));
+        return playbooks.map(playbookForAgent);
       }
 
       return { error: `Unknown tool: ${name}` };

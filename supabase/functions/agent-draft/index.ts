@@ -4,6 +4,7 @@ import { ANTHROPIC_MODEL } from '../_shared/anthropic.ts';
 import { monthStartIso, readAgreementDocuments, type Row } from '../_shared/agent-docs.ts';
 import { embedTexts } from '../_shared/voyage.ts';
 import { enforceAiLimit } from '../_shared/ratelimit.ts';
+import { PLAYBOOK_COLUMNS, actionAllowed, playbookForAgent } from '../_shared/playbooks.ts';
 
 // Draft Studio agent. The user chats, the agent writes the agreement. The
 // answer is STREAMED as plain text so the browser can type the document onto
@@ -195,7 +196,7 @@ serveWithCors(async (req) => {
     let existingAgreements: Row[] = [];
     if (matchedIds.length > 0) {
       const [pb, ag] = await Promise.all([
-        callerClient.from('account_playbooks').select('account_id, playbooks(title, body)').in('account_id', matchedIds),
+        callerClient.from('account_playbooks').select(`account_id, playbooks(${PLAYBOOK_COLUMNS})`).in('account_id', matchedIds),
         callerClient
           .from('agreements')
           .select('account_id, title, agreement_type, agreement_subtype, status, end_date')
@@ -254,9 +255,14 @@ ${JSON.stringify(
   }))
 )}
 
-PLAYBOOKS of those accounts (rules the document must respect):
-${JSON.stringify(playbooks.map((p) => ({ accountId: p.account_id, title: p.playbooks?.title, rules: p.playbooks?.body })))}
-
+PLAYBOOKS of those accounts (rules the document must respect; obligations it must contain):
+${JSON.stringify(playbooks.map((p) => ({ accountId: p.account_id, ...playbookForAgent(p.playbooks) })))}
+${(() => {
+  const blocked = matched.filter((a) => !actionAllowed(playbooks.filter((p) => p.account_id === a.id).map((p) => p.playbooks), 'draft'));
+  return blocked.length
+    ? `\nDRAFTING NOT PERMITTED for these accounts by their playbook: ${JSON.stringify(blocked.map((a) => a.name))}. If the user asks for an agreement with one of them, do not write a document: say in the chat that the account's playbook does not allow AI drafting.\n`
+    : '';
+})()}
 EXISTING AGREEMENTS with those accounts:
 ${JSON.stringify(existingAgreements)}
 

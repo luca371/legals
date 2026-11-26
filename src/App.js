@@ -8,7 +8,7 @@ import DashboardLayout from './layouts/DashboardLayout';
 import ProtectedRoute from './components/ProtectedRoute';
 import { AuthContext, profileFlags } from './AuthContext';
 import { ConfirmProvider } from './components/ConfirmProvider';
-import { onAuthStateChange, getUserStatus, getMfaStep, logout } from './supabase';
+import { onAuthStateChange, getUserStatus, getMfaStep, getAiFeatures, logout } from './supabase';
 import MfaScreen from './screens/MfaScreen';
 
 import AgreementsScreen from './screens/AgreementsScreen';
@@ -21,6 +21,8 @@ import AskAIScreen from './screens/AskAIScreen';
 import DraftStudioScreen from './screens/DraftStudioScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AdminScreen from './screens/AdminScreen';
+import TasksScreen from './screens/TasksScreen';
+import { featureOn } from './aiFeatures';
 
 function App() {
   const [user, setUser] = useState(null);
@@ -29,6 +31,8 @@ function App() {
   const [blockedMessage, setBlockedMessage] = useState('');
   // 'ok' | 'verify' (enter code) | 'enroll' (admin must set up two-factor)
   const [mfaStep, setMfaStep] = useState('ok');
+  // AI features switched off for the organization ({ key: false }).
+  const [aiFeatures, setAiFeatures] = useState({});
 
   useEffect(() => {
     const unsubscribe = onAuthStateChange(async (currentUser) => {
@@ -45,6 +49,11 @@ function App() {
         }
 
         setMfaStep(await getMfaStep(status.profile === 'admin'));
+        try {
+          setAiFeatures(await getAiFeatures());
+        } catch (err) {
+          console.error('Could not load AI feature settings:', err);
+        }
         setProfile(status.profile);
         setUser(currentUser);
       } else {
@@ -62,7 +71,7 @@ function App() {
     return null;
   }
 
-  const auth = profileFlags(profile);
+  const auth = { ...profileFlags(profile), aiFeatures, setAiFeatures };
   const { isAdmin, canWrite } = auth;
 
   const handleMfaDone = async () => {
@@ -104,8 +113,9 @@ function App() {
           <Route path="accounts/:accountId" element={<AccountDetailScreen />} />
           <Route path="dashboards" element={<DashboardsScreen />} />
           <Route path="templates" element={canWrite ? <TemplateBuildScreen /> : <Navigate to="/dashboard/agreements" replace />} />
-          <Route path="draft" element={canWrite ? <DraftStudioScreen /> : <Navigate to="/dashboard/agreements" replace />} />
-          <Route path="ask-ai" element={<AskAIScreen />} />
+          <Route path="tasks" element={<TasksScreen />} />
+          <Route path="draft" element={canWrite && featureOn(aiFeatures, 'drafting') ? <DraftStudioScreen /> : <Navigate to="/dashboard/agreements" replace />} />
+          <Route path="ask-ai" element={featureOn(aiFeatures, 'ask_ai') ? <AskAIScreen /> : <Navigate to="/dashboard/agreements" replace />} />
           <Route path="settings" element={canWrite ? <SettingsScreen /> : <Navigate to="/dashboard/agreements" replace />} />
           <Route
             path="admin"

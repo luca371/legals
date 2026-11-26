@@ -42,7 +42,10 @@ import {
   createObligations,
   setObligationStatus,
   deleteObligation,
+  listTasks,
+  createTasks,
 } from '../supabase';
+import { featureOn } from '../aiFeatures';
 import { sendForSignature, getSignatureStatus, getSignedDocument } from '../docusignApi';
 import { sendApprovalEmail, sendActivationEmail, sendReviewEmail } from '../emailApi';
 import { reviewAgreementWithAI } from '../reviewApi';
@@ -324,6 +327,16 @@ function findAndReplaceTextNode(root, searchText, replacementText) {
   return true;
 }
 
+// One playbook as the review AI reads it: the general rules plus the review
+// criteria and the obligations it should expect to find.
+function playbookToReviewText(pb) {
+  const parts = [`[${pb.title}]`];
+  if (pb.body?.trim()) parts.push(pb.body.trim());
+  if (pb.reviewCriteria?.trim()) parts.push(`Review criteria:\n${pb.reviewCriteria.trim()}`);
+  if (pb.obligations?.trim()) parts.push(`Obligations the agreement must contain:\n${pb.obligations.trim()}`);
+  return parts.join('\n');
+}
+
 function describeEmailError(err) {
   if (err?.text) return `${err.text}${err.status ? ` (${err.status})` : ''}`;
   if (err?.message) return err.message;
@@ -418,7 +431,7 @@ async function exportHtmlAsPdf(html, fileName) {
 
 function AgreementDetailScreen() {
   const confirm = useConfirm();
-  const { canWrite, isAdmin } = useAuth();
+  const { canWrite, isAdmin, aiFeatures } = useAuth();
   const { agreementId } = useParams();
   const navigate = useNavigate();
 
@@ -437,6 +450,15 @@ function AgreementDetailScreen() {
   const [renewalBrief, setRenewalBrief] = useState(null);
   const [renewalLoading, setRenewalLoading] = useState(false);
   const [renewalError, setRenewalError] = useState('');
+  // Notice period and auto-renewal as recorded on the agreement (editable).
+  const [noticeDaysInput, setNoticeDaysInput] = useState('');
+  const [autoRenewalInput, setAutoRenewalInput] = useState('');
+  const [savingNotice, setSavingNotice] = useState(false);
+  const [noticeMessage, setNoticeMessage] = useState('');
+  // Follow-up tasks: the agreement's open tasks, and next steps picked from the brief.
+  const [agreementTasks, setAgreementTasks] = useState([]);
+  const [selectedSteps, setSelectedSteps] = useState([]);
+  const [creatingTasks, setCreatingTasks] = useState(false);
   const [editing, setEditing] = useState(false);
   const [form, setForm] = useState(null);
   const [customValues, setCustomValues] = useState({});
@@ -574,6 +596,8 @@ function AgreementDetailScreen() {
       return;
     }
     setAgreement(agr);
+    setNoticeDaysInput(agr.noticePeriodDays ?? '');
+    setAutoRenewalInput(agr.autoRenewal === null || agr.autoRenewal === undefined ? '' : agr.autoRenewal ? 'yes' : 'no');
 
     try {
       const [schema, configs, map, approvals, reviews] = await Promise.all([
@@ -2013,9 +2037,80 @@ function AgreementDetailScreen() {
     }
   };
 
+  useEffect(() => {
+    if (activeNav !== 'renewal') return undefined;
+    let cancelled = false;
+    listTasks({ status: 'open', agreementId })
+      .then((rows) => { if (!cancelled) setAgreementTasks(rows); })
+      .catch((err) => console.error('Failed to load tasks:', err));
+    return () => { cancelled = true; };
+  }, [activeNav, agreementId]);
+
+  const saveNotice = async (days, auto) => {
+    setSavingNotice(true);
+    setNoticeMessage('');
+    try {
+      await updateAgreement(agreementId, { noticePeriodDays: days, autoRenewal: auto });
+      await load();
+      setNoticeMessage('Saved.');
+    } catch (err) {
+      console.error('Failed to save notice period:', err);
+      setNoticeMessage('Could not save the notice period.');
+    } finally {
+      setSavingNotice(false);
+    }
+  };
+
+  const handleSaveNotice = () => {
+    const raw = String(noticeDaysInput).trim();
+    const days = raw === '' ? null : Number(raw);
+    if (days !== null && (!Number.isInteger(days) || days < 0 || days > 3650)) {
+      setNoticeMessage('Enter the notice period as a whole number of days.');
+      return;
+    }
+    saveNotice(days, autoRenewalInput === '' ? null : autoRenewalInput === 'yes');
+  };
+
+  const handleUseBriefTerm = () => {
+    const term = renewalBrief?.term || {};
+    const days = Number.isInteger(term.noticePeriodDays) ? term.noticePeriodDays : agreement.noticePeriodDays ?? null;
+    const auto = typeof term.autoRenewal === 'boolean' ? term.autoRenewal : agreement.autoRenewal ?? null;
+    setNoticeDaysInput(days ?? '');
+    setAutoRenewalInput(auto === null ? '' : auto ? 'yes' : 'no');
+    saveNotice(days, auto);
+  };
+
+  const handleCreateTasksFromBrief = async () => {
+    const steps = (renewalBrief?.nextSteps || []).filter((_, i) => selectedSteps[i]);
+    if (!steps.length) return;
+    setCreatingTasks(true);
+    setRenewalError('');
+    try {
+      const created = await createTasks(
+        steps.map((st) => ({
+          title: st.step.length > 140 ? `${st.step.slice(0, 137)}…` : st.step,
+          details: st.step.length > 140 ? st.step : `From the renewal brief of "${agreement.title}".`,
+          taskType: 'renewal',
+          dueDate: /^\d{4}-\d{2}-\d{2}$/.test(st.by || '') ? st.by : null,
+          agreementId,
+          accountId: agreement.accountId || null,
+        })),
+        'agent'
+      );
+      setAgreementTasks((prev) => [...created, ...prev]);
+      setSelectedSteps([]);
+    } catch (err) {
+      console.error('Failed to create tasks:', err);
+      setRenewalError('Could not create the tasks.');
+    } finally {
+      setCreatingTasks(false);
+    }
+  };
+
   const handlePrepareRenewalBrief = async () => {
     setRenewalLoading(true);
     setRenewalError('');
+    setSelectedSteps([]);
     try {
       setRenewalBrief(await prepareRenewalBrief(agreementId));
     } catch (err) {
@@ -2053,9 +2148,10 @@ function AgreementDetailScreen() {
       }
 
       const selectedPlaybooks = availablePlaybooks.filter((pb) => selectedPlaybookIds.includes(pb.id));
-      const playbook = selectedPlaybooks.map((pb) => `[${pb.title}]\n${pb.body}`).join('\n\n');
+      const playbook = selectedPlaybooks.map(playbookToReviewText).join('\n\n');
 
       const metadata = {
+        accountId: agreement.accountId || null,
         title: agreement.title,
         accountName: agreement.accountName,
         agreementType: agreement.agreementType,
@@ -2188,7 +2284,7 @@ function AgreementDetailScreen() {
             <span className="agrd__nav-label">Obligations</span>
           </button>
           {canWrite && (
-            <button className={`agrd__nav-btn ${activeNav === 'renewal' ? 'agrd__nav-btn--active' : ''}`} onClick={() => setActiveNav('renewal')} title="Renewal brief">
+            <button className={`agrd__nav-btn ${activeNav === 'renewal' ? 'agrd__nav-btn--active' : ''}`} onClick={() => setActiveNav('renewal')} title="Renewal">
               <RenewalIcon />
               <span className="agrd__nav-label">Renewal</span>
             </button>
@@ -2369,7 +2465,7 @@ function AgreementDetailScreen() {
               <>
                 <div className="agrd__content-header">
                   <h3 className="agrd__content-title">Obligations</h3>
-                  {canWrite && (
+                  {canWrite && featureOn(aiFeatures, 'obligations') && (
                     <button type="button" className="agrd__btn-primary" onClick={handleFindObligations} disabled={findingObligations}>
                       {findingObligations ? 'Reading…' : 'Find obligations with AI'}
                     </button>
@@ -2478,11 +2574,64 @@ function AgreementDetailScreen() {
             {activeNav === 'renewal' && canWrite && (
               <>
                 <div className="agrd__content-header">
-                  <h3 className="agrd__content-title">Renewal brief</h3>
-                  <button type="button" className="agrd__btn-primary" onClick={handlePrepareRenewalBrief} disabled={renewalLoading}>
-                    {renewalLoading ? 'Preparing…' : renewalBrief ? 'Prepare again' : 'Prepare brief'}
-                  </button>
+                  <h3 className="agrd__content-title">Renewal</h3>
+                  {featureOn(aiFeatures, 'renewals') && (
+                    <button type="button" className="agrd__btn-primary" onClick={handlePrepareRenewalBrief} disabled={renewalLoading}>
+                      {renewalLoading ? 'Preparing…' : renewalBrief ? 'Prepare brief again' : 'Prepare renewal brief'}
+                    </button>
+                  )}
                 </div>
+
+                <div className="agrd__notice">
+                  <h4 className="agrd__renewal-title">Notice and renewal</h4>
+                  <div className="agrd__notice-row">
+                    <label className="agrd__notice-field">
+                      Notice period (days)
+                      <input
+                        type="number"
+                        min="0"
+                        className="agrd__notice-input"
+                        value={noticeDaysInput}
+                        onChange={(e) => setNoticeDaysInput(e.target.value)}
+                        placeholder="e.g. 30"
+                      />
+                    </label>
+                    <label className="agrd__notice-field">
+                      Renews automatically
+                      <select className="agrd__notice-input" value={autoRenewalInput} onChange={(e) => setAutoRenewalInput(e.target.value)}>
+                        <option value="">Not stated</option>
+                        <option value="yes">Yes</option>
+                        <option value="no">No</option>
+                      </select>
+                    </label>
+                    <div className="agrd__notice-field">
+                      Notice deadline
+                      <strong className="agrd__notice-deadline">
+                        {agreement.noticeDeadline || (agreement.endDate ? 'Set a notice period' : 'Set an end date first')}
+                      </strong>
+                    </div>
+                    <button type="button" className="agrd__btn-secondary" onClick={handleSaveNotice} disabled={savingNotice}>
+                      {savingNotice ? 'Saving…' : 'Save'}
+                    </button>
+                  </div>
+                  {noticeMessage && <p className="agrd__renewal-source">{noticeMessage}</p>}
+                  <p className="agrd__renewal-source">
+                    The notice deadline is the end date minus the notice period. Reminders are emailed before it, on the
+                    same schedule as expiry reminders.
+                  </p>
+                </div>
+
+                {agreementTasks.length > 0 && (
+                  <div className="agrd__renewal-section">
+                    <h4 className="agrd__renewal-title">Open tasks</h4>
+                    <ul className="agrd__renewal-list">
+                      {agreementTasks.map((t) => (
+                        <li key={t.id}>{t.dueDate ? <strong>{t.dueDate}: </strong> : null}{t.title}{t.assigneeEmail ? ` (${t.assigneeEmail})` : ''}</li>
+                      ))}
+                    </ul>
+                    <p className="agrd__renewal-source">Manage them in Tasks.</p>
+                  </div>
+                )}
                 <p className="agrd__renewal-hint">
                   An AI agent reads this agreement and prepares what you need before it ends: the term, notice
                   deadlines, whether it renews on its own, and a recommendation. It only reads - it never changes,
@@ -2513,6 +2662,11 @@ function AgreementDetailScreen() {
                         <div><dt>Notice deadline</dt><dd>{renewalBrief.term.noticeDeadline || 'Not stated'}</dd></div>
                       </dl>
                       {renewalBrief.term.source && <p className="agrd__renewal-source">Source: {renewalBrief.term.source}</p>}
+                      {(renewalBrief.term.noticePeriodDays !== null || renewalBrief.term.autoRenewal !== null) && (
+                        <button type="button" className="agrd__btn-secondary agrd__brief-apply" onClick={handleUseBriefTerm} disabled={savingNotice}>
+                          Save notice period{renewalBrief.term.noticePeriodDays !== null ? ` (${renewalBrief.term.noticePeriodDays} days)` : ''} and auto-renewal to the agreement
+                        </button>
+                      )}
                     </div>
 
                     {renewalBrief.keyTerms.length > 0 && (
@@ -2552,11 +2706,28 @@ function AgreementDetailScreen() {
                     {renewalBrief.nextSteps.length > 0 && (
                       <div className="agrd__renewal-section">
                         <h4 className="agrd__renewal-title">Next steps</h4>
-                        <ul className="agrd__renewal-list">
+                        <ul className="agrd__renewal-list agrd__renewal-steps">
                           {renewalBrief.nextSteps.map((s, i) => (
-                            <li key={i}>{s.by ? <strong>{s.by}: </strong> : null}{s.step}</li>
+                            <li key={i}>
+                              <label>
+                                <input
+                                  type="checkbox"
+                                  checked={!!selectedSteps[i]}
+                                  onChange={(e) => setSelectedSteps((prev) => { const next = [...prev]; next[i] = e.target.checked; return next; })}
+                                />{' '}
+                                {s.by ? <strong>{s.by}: </strong> : null}{s.step}
+                              </label>
+                            </li>
                           ))}
                         </ul>
+                        <button
+                          type="button"
+                          className="agrd__btn-secondary agrd__brief-apply"
+                          onClick={handleCreateTasksFromBrief}
+                          disabled={creatingTasks || !selectedSteps.some(Boolean)}
+                        >
+                          {creatingTasks ? 'Creating…' : 'Create tasks from the selected steps'}
+                        </button>
                       </div>
                     )}
 
@@ -3580,7 +3751,8 @@ function AgreementDetailScreen() {
                       type="button"
                       className="arv__btn-primary arv__run-btn"
                       onClick={handleRunReviewAI}
-                      disabled={reviewingAI || !aiReviewAttachmentId}
+                      disabled={reviewingAI || !aiReviewAttachmentId || !featureOn(aiFeatures, 'review')}
+                      title={featureOn(aiFeatures, 'review') ? undefined : 'AI review is turned off for your organization.'}
                     >
                       {reviewingAI ? 'Reviewing…' : aiReview ? 'Re-run review' : 'Run review'}
                     </button>
