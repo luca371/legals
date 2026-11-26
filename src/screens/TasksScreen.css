@@ -90,6 +90,14 @@
 .tsk__form-actions {
   display: flex;
   justify-content: flex-end;
+  gap: 8px;
+}
+
+.tsk__form-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--color-text);
 }
 
 .tsk__filters {
@@ -227,6 +235,28 @@
 .tsk__overdue {
   color: var(--color-danger);
   font-weight: 600;
+}
+
+.tsk__item-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.tsk__edit {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--color-accent);
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.tsk__edit:hover {
+  text-decoration: underline;
 }
 
 .tsk__delete {

@@ -1470,6 +1470,8 @@ export const updateTask = async (id, updates) => {
     payload.reminder_sent_at = null;
   }
   if (updates.assigneeEmail !== undefined) payload.assignee_email = (updates.assigneeEmail || '').trim() || null;
+  if (updates.agreementId !== undefined) payload.agreement_id = updates.agreementId || null;
+  if (updates.accountId !== undefined) payload.account_id = updates.accountId || null;
   if (updates.status !== undefined) {
     payload.status = updates.status;
     payload.completed_at = updates.status === 'done' ? new Date().toISOString() : null;

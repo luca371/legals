@@ -48,6 +48,7 @@ function TasksScreen() {
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState(null);
   const [calendarUrl, setCalendarUrl] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarBusy, setCalendarBusy] = useState(false);
@@ -129,7 +130,39 @@ function TasksScreen() {
     }
   };
 
-  const handleCreate = async (e) => {
+  const openNew = () => {
+    if (showForm && !editingId) {
+      setShowForm(false);
+      return;
+    }
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+    setError('');
+    setShowForm(true);
+  };
+
+  const openEdit = (task) => {
+    setEditingId(task.id);
+    setForm({
+      title: task.title,
+      taskType: task.taskType || 'other',
+      dueDate: task.dueDate || '',
+      assigneeEmail: task.assigneeEmail || '',
+      agreementId: task.agreementId || '',
+      details: task.details || '',
+    });
+    setError('');
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const closeForm = () => {
+    setShowForm(false);
+    setEditingId(null);
+    setForm(EMPTY_FORM);
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.title.trim()) {
       setError('Give the task a title.');
@@ -143,13 +176,39 @@ function TasksScreen() {
     setError('');
     try {
       const agreement = agreements.find((a) => a.id === form.agreementId);
-      const [created] = await createTasks([{ ...form, title: form.title.trim(), accountId: agreement?.accountId || null }]);
-      if (status !== 'done') setTasks((prev) => [created, ...prev]);
-      setForm(EMPTY_FORM);
-      setShowForm(false);
+      if (editingId) {
+        const original = tasks.find((t) => t.id === editingId);
+        const agreementChanged = (original?.agreementId || '') !== form.agreementId;
+        const updates = {
+          title: form.title.trim(),
+          taskType: form.taskType,
+          dueDate: form.dueDate,
+          assigneeEmail: form.assigneeEmail,
+          details: form.details,
+          ...(agreementChanged ? { agreementId: form.agreementId, accountId: agreement?.accountId || null } : {}),
+        };
+        await updateTask(editingId, updates);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === editingId
+              ? {
+                  ...t,
+                  ...updates,
+                  assigneeEmail: form.assigneeEmail.trim(),
+                  dueDate: form.dueDate || null,
+                  ...(agreementChanged ? { agreementTitle: agreement?.title || '' } : {}),
+                }
+              : t
+          )
+        );
+      } else {
+        const [created] = await createTasks([{ ...form, title: form.title.trim(), accountId: agreement?.accountId || null }]);
+        if (status !== 'done') setTasks((prev) => [created, ...prev]);
+      }
+      closeForm();
     } catch (err) {
-      console.error('Failed to create task:', err);
-      setError('Could not create the task.');
+      console.error('Failed to save task:', err);
+      setError(editingId ? 'Could not save the task.' : 'Could not create the task.');
     } finally {
       setSaving(false);
     }
@@ -209,9 +268,14 @@ function TasksScreen() {
         </div>
       </div>
       {canWrite && (
-        <button type="button" className="tsk__delete" onClick={() => handleDelete(t)} aria-label="Delete task">
-          ×
-        </button>
+        <div className="tsk__item-actions">
+          <button type="button" className="tsk__edit" onClick={() => openEdit(t)}>
+            Edit
+          </button>
+          <button type="button" className="tsk__delete" onClick={() => handleDelete(t)} aria-label="Delete task">
+            ×
+          </button>
+        </div>
       )}
     </li>
   );
@@ -228,8 +292,8 @@ function TasksScreen() {
             {showCalendar ? 'Hide calendar link' : 'Add to my calendar'}
           </button>
           {canWrite && (
-            <button type="button" className="tsk__btn-primary" onClick={() => setShowForm((v) => !v)}>
-              {showForm ? 'Cancel' : 'New task'}
+            <button type="button" className="tsk__btn-primary" onClick={openNew}>
+              {showForm && !editingId ? 'Cancel' : 'New task'}
             </button>
           )}
         </div>
@@ -256,7 +320,8 @@ function TasksScreen() {
       )}
 
       {showForm && (
-        <form className="tsk__form" onSubmit={handleCreate}>
+        <form className="tsk__form" onSubmit={handleSubmit}>
+          {editingId && <h3 className="tsk__form-title">Edit task</h3>}
           <label className="tsk__label">
             Title
             <input className="tsk__input" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} autoFocus />
@@ -289,7 +354,12 @@ function TasksScreen() {
             <textarea className="tsk__input tsk__textarea" rows={3} value={form.details} onChange={(e) => setForm({ ...form, details: e.target.value })} />
           </label>
           <div className="tsk__form-actions">
-            <button type="submit" className="tsk__btn-primary" disabled={saving}>{saving ? 'Saving…' : 'Create task'}</button>
+            {editingId && (
+              <button type="button" className="tsk__btn-secondary" onClick={closeForm}>Cancel</button>
+            )}
+            <button type="submit" className="tsk__btn-primary" disabled={saving}>
+              {saving ? 'Saving…' : editingId ? 'Save changes' : 'Create task'}
+            </button>
           </div>
         </form>
       )}

@@ -292,12 +292,17 @@ language plpgsql
 security definer
 set search_path = public
 as $$
+declare
+  recipient text := coalesce(nullif(new.assignee_email, ''), nullif(new.created_by, ''));
 begin
   begin
-    if new.assignee_email is not null
-       and lower(new.assignee_email) <> lower(coalesce(new.created_by, ''))
-       and (tg_op = 'INSERT' or lower(coalesce(old.assignee_email, '')) <> lower(new.assignee_email)) then
-      perform public.notify(new.tenant_id, new.assignee_email, 'task', 'New task: ' || new.title,
+    -- Everyone gets a notification for a new task they own, including the ones
+    -- they set for themselves (no assignee = the creator). Automation tasks
+    -- notify their owner too. Reassigning notifies the new assignee.
+    if recipient is not null
+       and recipient like '%@%'
+       and (tg_op = 'INSERT' or lower(coalesce(old.assignee_email, '')) <> lower(coalesce(new.assignee_email, ''))) then
+      perform public.notify(new.tenant_id, recipient, 'task', 'New task: ' || new.title,
         case when new.due_date is null then '' else 'Due ' || new.due_date end, '/dashboard/tasks');
     end if;
   exception when others then
